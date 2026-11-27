@@ -73,9 +73,19 @@ const IMAGE_ASSET = asset(2, 'image', '镜头2-生成图.png');
 const AUDIO_ASSET = asset(3, 'audio', '配乐-轻快.mp3');
 const ASSETS = new Map([VIDEO_ASSET, IMAGE_ASSET, AUDIO_ASSET].map((item) => [item.assetId, item]));
 
-const VIDEO_SOURCE = { id: '10000000-0000-4000-8000-000000000001', kind: 'video', assetId: VIDEO_ASSET.assetId, timebase: FPS, extentFrames: 336, durationSeconds: '14', durationOrigin: 'registered' };
-const IMAGE_SOURCE = { id: '10000000-0000-4000-8000-000000000002', kind: 'image', assetId: IMAGE_ASSET.assetId, width: 1920, height: 1080 };
-const AUDIO_SOURCE = { id: '10000000-0000-4000-8000-000000000003', kind: 'audio', assetId: AUDIO_ASSET.assetId, timebase: FPS, extentFrames: 336, durationSeconds: '14', durationOrigin: 'registered' };
+// Each source holds its file's address and media facts, as the list item it was picked from (inner#2171).
+const VIDEO_SOURCE = {
+  id: '10000000-0000-4000-8000-000000000001', kind: 'video', url: VIDEO_ASSET.fileUrl, coverUrl: VIDEO_ASSET.coverUrl, name: VIDEO_ASSET.displayName,
+  mimeType: VIDEO_ASSET.mimeType, width: 1920, height: 1080, timebase: FPS, extentFrames: 336, durationSeconds: '14', durationOrigin: 'registered',
+};
+const IMAGE_SOURCE = {
+  id: '10000000-0000-4000-8000-000000000002', kind: 'image', url: IMAGE_ASSET.fileUrl, name: IMAGE_ASSET.displayName, mimeType: IMAGE_ASSET.mimeType,
+  width: 1920, height: 1080,
+};
+const AUDIO_SOURCE = {
+  id: '10000000-0000-4000-8000-000000000003', kind: 'audio', url: AUDIO_ASSET.fileUrl, name: AUDIO_ASSET.displayName, mimeType: AUDIO_ASSET.mimeType,
+  timebase: FPS, extentFrames: 336, durationSeconds: '14', durationOrigin: 'registered',
+};
 const VIDEO = { ...PLACED, id: '30000000-0000-4000-8000-000000000001', kind: 'video', trackId: MAIN, sourceId: VIDEO_SOURCE.id, startFrame: 0, durationFrames: 48, mute: true };
 const IMAGE = { ...PLACED, id: '30000000-0000-4000-8000-000000000002', kind: 'image', trackId: 'v2', sourceId: IMAGE_SOURCE.id, startFrame: 0, durationFrames: 72 };
 const AUDIO = { ...PLACED, id: '30000000-0000-4000-8000-000000000003', kind: 'audio', trackId: 'v3', sourceId: AUDIO_SOURCE.id, startFrame: 0, durationFrames: 72, gain: 2 };
@@ -355,7 +365,9 @@ beforeEach(() => {
   decodeDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'decode');
   Object.defineProperty(HTMLImageElement.prototype, 'decode', { configurable: true, writable: true, value: decode });
   const createElement = document.createElement.bind(document);
-  vi.spyOn(document, 'createElement').mockImplementation((tagName: string, options?: ElementCreationOptions) => {
+  // One signature: the overloads also list Electron's <webview> once Playwright loads its types.
+  const doc = document as unknown as { createElement: (tagName: string, options?: ElementCreationOptions) => HTMLElement };
+  vi.spyOn(doc, 'createElement').mockImplementation((tagName, options) => {
     const element = createElement(tagName, options);
     if (element instanceof HTMLMediaElement) mediaElements.push(element);
     return element;
@@ -378,9 +390,6 @@ beforeEach(() => {
       const kind = config?.params?.kind;
       return { items: [...ASSETS.values()].filter((item) => item.kind === kind), nextCursor: null };
     }
-    const assetId = url.startsWith(`/projects/${PROJECT}/assets/`) ? url.slice(`/projects/${PROJECT}/assets/`.length) : '';
-    const found = ASSETS.get(assetId);
-    if (found !== undefined) return found;
     throw new ApiException({ status: 404, message: 'Not found' });
   });
 });
@@ -593,7 +602,9 @@ describe('the add media dialog (design §6.2, acceptance 2, 3)', () => {
     const added = Object.values(storedClips()).find((record) => record.kind === 'image');
     expect(added).toMatchObject({ kind: 'image', sourceInFrame: 0, durationFrames: 96 });
     const sources = currentDoc().getMap('sources').toJSON() as Record<string, Record<string, unknown>>;
-    expect(sources[String(added?.sourceId)]).toMatchObject({ kind: 'image', assetId: IMAGE_ASSET.assetId, width: 1920, height: 1080 });
+    expect(sources[String(added?.sourceId)]).toEqual({
+      id: added?.sourceId, kind: 'image', url: IMAGE_ASSET.fileUrl, name: IMAGE_ASSET.displayName, mimeType: 'image/png', width: 1920, height: 1080,
+    });
   });
 
   it('lists Project sounds with their length and adds one for the length of its file', async () => {
@@ -876,47 +887,33 @@ describe('sound through Web Audio (design §5.2, §7.4, §7.5)', () => {
 });
 
 describe('media that cannot be read (design §6.6, acceptance 7)', () => {
-  it('says the user may not read a picture and to contact the Project admin, on the clip, in its properties and in the preview', async () => {
-    vi.mocked(apiGet).mockImplementation(async (url: string) => {
-      if (url === `/projects/${PROJECT}/assets/${IMAGE_ASSET.assetId}`) throw new ApiException({ status: 403, message: 'Forbidden' });
-      if (url === `/projects/${PROJECT}/timeline-limits`) throw new ApiException({ status: 500, message: 'down' });
-      throw new ApiException({ status: 404, message: 'Not found' });
-    });
-    seed([IMAGE]);
-    show();
-    const clip = await screen.findByTestId('timeline-clip-' + IMAGE.id);
-    await waitFor(() => expect(clip).toHaveTextContent('没有权限读取此图片'));
-    const note = await screen.findByTestId('timeline-preview-note-' + IMAGE.id);
-    expect(note).toHaveTextContent('轨道 2');
-    expect(note).toHaveTextContent('没有权限读取此图片');
-    fireEvent.click(clip);
-    const panel = screen.getByTestId('timeline-side-panel');
-    expect(panel).toHaveTextContent('没有权限读取此图片');
-    expect(panel).toHaveTextContent('联系 Studio Admin');
-  });
-
-  it('says a sound could not be read and retries only that asset', async () => {
-    let failing = true;
-    const route = vi.mocked(apiGet).getMockImplementation()!;
-    vi.mocked(apiGet).mockImplementation(async (url: string, config?: unknown) => {
-      if (url === `/projects/${PROJECT}/assets/${AUDIO_ASSET.assetId}` && failing) throw new ApiException({ status: 500, message: 'down' });
-      return route(url, config as never);
-    });
+  it('says a sound could not be read, on the clip, in its properties and in the preview, and retries only that layer', async () => {
     seed([AUDIO, IMAGE]);
     show();
+    const sound = await waitFor(() => {
+      const found = mediaOf(AUDIO.id, 'audio');
+      if (found === undefined) throw new Error('no audio element');
+      return found;
+    });
+    // A file stored by its address cannot be read only when its element fails (inner#2171).
+    Object.defineProperty(sound, 'error', { configurable: true, value: { code: 2, message: 'network' } });
+    act(() => { sound.dispatchEvent(new Event('error')); });
     const clip = await screen.findByTestId('timeline-clip-' + AUDIO.id);
     await waitFor(() => expect(clip).toHaveTextContent('音频读取失败'));
     const note = await screen.findByTestId('timeline-preview-note-' + AUDIO.id);
     expect(note).toHaveTextContent('轨道 3');
     expect(note).toHaveTextContent('音频读取失败');
-    const reads = (assetId: string): number => vi.mocked(apiGet).mock.calls.filter(([url]) => url === `/projects/${PROJECT}/assets/${assetId}`).length;
-    const imageReads = reads(IMAGE_ASSET.assetId);
-    const audioReads = reads(AUDIO_ASSET.assetId);
-    failing = false;
+    fireEvent.click(clip);
+    const panel = screen.getByTestId('timeline-side-panel');
+    expect(panel).toHaveTextContent('音频读取失败');
+    expect(within(panel).getByTestId('timeline-media-retry')).toBeInTheDocument();
+    const reload = vi.spyOn(sound, 'load').mockImplementation(() => undefined);
+    const picture = layerOf(IMAGE.id);
     fireEvent.click(within(note).getByRole('button', { name: '重试' }));
-    await waitFor(() => expect(reads(AUDIO_ASSET.assetId)).toBeGreaterThan(audioReads));
-    expect(reads(IMAGE_ASSET.assetId)).toBe(imageReads);
-    await waitFor(() => expect(screen.queryByTestId('timeline-preview-note-' + AUDIO.id)).toBe(null));
+    expect(reload).toHaveBeenCalledTimes(1);
+    // The picture's layer is the same element, not loaded again.
+    expect(layerOf(IMAGE.id)).toBe(picture);
+    expect(picture).toHaveAttribute('src', IMAGE_ASSET.fileUrl);
   });
 });
 

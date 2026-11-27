@@ -35,8 +35,6 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useTimelineEditPrefsStore } from '@web/stores/timeline-edit-prefs';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 import { gesture, moveableMock, resetMoveableMock } from '@web/spaces/timeline/__tests__/helpers/moveable-mock';
-import { timelineAssetKey } from '@web/spaces/timeline/use-timeline-asset';
-import { corsUrl } from '@web/lib/cors-url';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
@@ -62,11 +60,6 @@ const ASSET: ProjectRegisteredAsset = {
   fileUrl: 'https://cdn.example/registered-launch.mp4',
   coverUrl: 'https://cdn.example/registered-launch.jpg',
   width: 1280, height: 720, durationSeconds: 2, mimeType: 'video/mp4', sizeBytes: 8192,
-};
-const LOCAL_ASSET: ProjectRegisteredAsset = {
-  ...ASSET, assetId: '20000000-0000-4000-8000-000000000002',
-  projectReferenceId: '50000000-0000-4000-8000-000000000002',
-  displayName: 'Local video.mp4', fileUrl: 'https://cdn.example/registered-local.mp4',
 };
 const SOURCE: TimelineVideoSource = {
   id: '10000000-0000-4000-8000-000000000001', kind: 'video', url: ASSET.fileUrl, coverUrl: ASSET.coverUrl,
@@ -2798,64 +2791,29 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     expect(layout().clips[X]?.transform).toEqual(PIP);
   });
 
-  it('notes a loading or unavailable video by its track in the note layer, retries only it, and keeps the selection', async () => {
-    let localCalls = 0;
-    const pending = deferred<ProjectRegisteredAsset>();
-    vi.mocked(timelineApi.resolveAsset).mockImplementation(async (_projectId, assetId) => {
-      if (assetId !== LOCAL_ASSET.assetId) return ASSET;
-      localCalls += 1;
-      return localCalls === 1 ? pending.promise : LOCAL_ASSET;
-    });
-    const server = seededDoc(timeline([clipAt(CLIP.id, MAIN, 0, 48), clipAt(X, 'v2', 0, 24, { sourceId: SOURCE_B.id, transform: PIP })], [track(MAIN, 0), track('v2', 1)], [SOURCE, SOURCE_B]));
-    try { Y.applyUpdate(currentDoc(), Y.encodeStateAsUpdate(server), 'provider'); } finally { server.destroy(); }
+  it('notes an unreadable video by its track in the note layer, retries only it, and keeps the selection (design §6.6)', async () => {
+    seedPip();
     showTimeline();
-    fireEvent.click(await screen.findByTestId('timeline-clip-' + CLIP.id));
+    await layersReady(X, CLIP.id);
+    fireEvent.click(screen.getByTestId('timeline-clip-' + CLIP.id));
+    const failed = previewVideo(X);
+    const other = previewVideo(CLIP.id);
+    Object.defineProperty(failed, 'error', { configurable: true, value: { code: 4 } });
+    fireEvent(failed, new Event('error'));
     const notes = await screen.findByTestId('timeline-preview-notes');
-    const loading = await waitFor(() => within(notes).getByTestId('timeline-preview-note-' + X));
-    expect(loading).toHaveTextContent(t('timeline.track', { index: 2 }));
-    await act(async () => { pending.reject(new Error('unreachable')); });
     const retry = await waitFor(() => within(notes).getByTestId('timeline-video-retry-' + X));
-    expect(within(notes).getByTestId('timeline-preview-note-' + X)).toHaveTextContent(t('timeline.track', { index: 2 }));
+    const note = within(notes).getByTestId('timeline-preview-note-' + X);
+    expect(note).toHaveTextContent(t('timeline.track', { index: 2 }));
+    expect(note).toHaveTextContent(t('timeline.media.readFailed', { kind: 'video' }));
     // The selected clip's properties say nothing of another clip's failure.
     expect(screen.getByTestId('timeline-side-panel')).not.toHaveTextContent(t('timeline.media.readFailed', { kind: 'video' }));
-    // The other layer is untouched by the failure.
-    expect(previewVideo(CLIP.id)).toHaveAttribute('src', corsUrl(ASSET.fileUrl));
     expect(screen.queryByTestId('timeline-layer-overlay')?.contains(retry) ?? false).toBe(false);
-    mouseClick(retry);
-    await waitFor(() => expect(localCalls).toBe(2));
-    await waitFor(() => expect(previewVideo(X)).toHaveAttribute('src', corsUrl(LOCAL_ASSET.fileUrl)));
+    const failedLoad = vi.spyOn(failed, 'load').mockImplementation(() => undefined);
+    const otherLoad = vi.spyOn(other, 'load').mockImplementation(() => undefined);
+    fireEvent.click(retry);
+    expect(failedLoad).toHaveBeenCalledTimes(1);
+    expect(otherLoad).not.toHaveBeenCalled();
     expect(selectedOnTrack(CLIP.id)).toBe('true');
-  });
-
-  /**
-   * Seed the full-frame CLIP (the default asset) on the main track and the picture-in-picture X (LOCAL_ASSET) above it.
-   * @param withClip - Whether CLIP is there under X.
-   * @throws {Error} When the fixture is invalid.
-   */
-  function seedPipOwnAsset(withClip = true): void {
-    const pip = clipAt(X, 'v2', 0, 24, { sourceId: SOURCE_B.id, transform: PIP });
-    const server = seededDoc(timeline(withClip ? [clipAt(CLIP.id, MAIN, 0, 48), pip] : [pip], [track(MAIN, 0), track('v2', 1)], [SOURCE, SOURCE_B]));
-    try { Y.applyUpdate(currentDoc(), Y.encodeStateAsUpdate(server), 'provider'); } finally { server.destroy(); }
-  }
-
-  it('picks the lower ready layer, not an upper video whose asset read failed, and gives the failed one no handles (§4.2)', async () => {
-    vi.mocked(timelineApi.resolveAsset).mockImplementation(async (_projectId, assetId) => {
-      if (assetId === LOCAL_ASSET.assetId) throw new Error('unreachable');
-      return ASSET;
-    });
-    seedPipOwnAsset();
-    showTimeline();
-    await waitFor(() => expect(previewVideo(CLIP.id)).toHaveAttribute('src', corsUrl(ASSET.fileUrl)));
-    await waitFor(() => screen.getByTestId('timeline-video-retry-' + X));
-    clickPreview(PIP_CENTRE);
-    await waitFor(() => expect(selectedOnTrack(CLIP.id)).toBe('true'));
-    expect(selectedOnTrack(X)).toBe('false');
-    await handlesShown();
-    // Selected from its track, the failed layer still gets no handles.
-    fireEvent.click(screen.getByTestId('timeline-clip-' + X));
-    expect(selectedOnTrack(X)).toBe('true');
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
-    expect(moveableMock.mounted).toBe(0);
   });
 
   it('picks the lower ready layer, not an upper video whose element failed to load, and gives the failed one no handles (§4.2)', async () => {
@@ -2884,27 +2842,6 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     expect(screen.getByTestId('timeline-preview')).toHaveClass('isolate');
   });
 
-  it('keeps a video ready, with no unavailable note, when a refetch of its asset fails while its data is cached (§6.2)', async () => {
-    let localCalls = 0;
-    vi.mocked(timelineApi.resolveAsset).mockImplementation(async (_projectId, assetId) => {
-      if (assetId !== LOCAL_ASSET.assetId) return ASSET;
-      localCalls += 1;
-      if (localCalls === 1) return LOCAL_ASSET;
-      throw new Error('unreachable');
-    });
-    seedPipOwnAsset();
-    const { client } = showTimeline();
-    await waitFor(() => expect(previewVideo(X)).toHaveAttribute('src', corsUrl(LOCAL_ASSET.fileUrl)));
-    const key = timelineAssetKey(PROJECT, LOCAL_ASSET.assetId);
-    await act(async () => { await client.refetchQueries({ queryKey: key }); });
-    expect(localCalls).toBe(2);
-    expect(client.getQueryState(key)?.status).toBe('error');
-    expect(client.getQueryData(key)).toEqual(LOCAL_ASSET);
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
-    expect(screen.queryByTestId('timeline-preview-note-' + X)).toBe(null);
-    expect(screen.queryByTestId('timeline-video-retry-' + X)).toBe(null);
-    expect(previewVideo(X)).toHaveAttribute('src', corsUrl(LOCAL_ASSET.fileUrl));
-  });
 });
 
 /**

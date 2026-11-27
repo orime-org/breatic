@@ -19,7 +19,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TimelineDocumentV1, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
 import { createMediaLayerController } from '@web/spaces/timeline/media-layer-controller';
 
-type AssetState = 'loading' | 'ready' | 'failed';
 type LaneKind = 'video' | 'audio';
 
 interface ElementFixture {
@@ -34,10 +33,13 @@ interface ElementFixture {
 const MAX_GAIN = 10 ** (12 / 20);
 
 const SOURCE: TimelineVideoSource = {
-  id: '10000000-0000-4000-8000-000000000001', kind: 'video', assetId: '20000000-0000-4000-8000-000000000001',
-  timebase: { num: 24, den: 1 }, extentFrames: 240, durationSeconds: '10', durationOrigin: 'registered',
+  id: '10000000-0000-4000-8000-000000000001', kind: 'video', url: 'https://cdn.example/assets/clip.mp4', coverUrl: null,
+  name: 'clip.mp4', mimeType: 'video/mp4', width: 1920, height: 1080, timebase: { num: 24, den: 1 }, extentFrames: 240, durationSeconds: '10', durationOrigin: 'registered',
 };
-const AUDIO_SOURCE = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002', kind: 'audio', assetId: '20000000-0000-4000-8000-000000000002' };
+const AUDIO_SOURCE = {
+  id: '10000000-0000-4000-8000-000000000002', kind: 'audio', url: 'https://cdn.example/assets/voice.mp3', name: 'voice.mp3', mimeType: 'audio/mpeg',
+  timebase: SOURCE.timebase, extentFrames: SOURCE.extentFrames, durationSeconds: SOURCE.durationSeconds, durationOrigin: SOURCE.durationOrigin,
+};
 const A: TimelineVideoClip = {
   id: '30000000-0000-4000-8000-000000000001', trackId: 'visual-1', kind: 'video', sourceId: SOURCE.id,
   startFrame: 0, sourceInFrame: 0, durationFrames: 240, rate: { num: 2, den: 1 }, gain: 1.5, mute: false,
@@ -153,14 +155,11 @@ function elementFixture(kind: LaneKind = 'video', log: string[] = [], facts: Par
  * A layer as the Space hands it to the controller.
  * @param clipId - The clip.
  * @param kind - Whether it is a video or a sound.
- * @param state - Its asset state.
- * @returns The layer.
+ * @returns The layer, read from the address its source holds (inner#2171).
  * @throws {never} Never.
  */
-function layer(clipId: string, kind: LaneKind = 'video', state: AssetState = 'ready'): { clipId: string; kind: LaneKind; fileUrl: string | null; coverUrl: string | null; state: AssetState } {
-  return state === 'ready'
-    ? { clipId, kind, fileUrl: `https://cdn.test/${clipId}.${kind === 'video' ? 'mp4' : 'mp3'}`, coverUrl: kind === 'video' ? `https://cdn.test/${clipId}.jpg` : null, state }
-    : { clipId, kind, fileUrl: null, coverUrl: null, state };
+function layer(clipId: string, kind: LaneKind = 'video'): { clipId: string; kind: LaneKind; fileUrl: string; coverUrl: string | null } {
+  return { clipId, kind, fileUrl: `https://cdn.test/${clipId}.${kind === 'video' ? 'mp4' : 'mp3'}`, coverUrl: kind === 'video' ? `https://cdn.test/${clipId}.jpg` : null };
 }
 
 /**
@@ -263,17 +262,13 @@ describe('createMediaLayerController elements', () => {
     expect(controller.states().get(A.id)).toBe('ready');
   });
 
-  it('reports a loading asset as loading, and a failed asset or an element error as failed, for a sound too', () => {
+  it('reports a lane as ready, and as failed once its element errors, for a sound too', () => {
     const a = elementFixture();
-    const b = elementFixture();
     const loud = elementFixture('audio');
-    const { controller, onChange } = controllerFor({ [A.id]: a, [B.id]: b, [LOUD.id]: loud });
-    controller.sync([layer(A.id, 'video', 'loading'), layer(B.id, 'video', 'failed'), layer(LOUD.id, 'audio')]);
-    expect(controller.states().get(A.id)).toBe('loading');
-    expect(controller.states().get(B.id)).toBe('failed');
-    expect(controller.states().get(LOUD.id)).toBe('ready');
-    controller.sync([layer(A.id), layer(B.id, 'video', 'failed'), layer(LOUD.id, 'audio')]);
+    const { controller, onChange } = controllerFor({ [A.id]: a, [LOUD.id]: loud });
+    controller.sync([layer(A.id), layer(LOUD.id, 'audio')]);
     expect(controller.states().get(A.id)).toBe('ready');
+    expect(controller.states().get(LOUD.id)).toBe('ready');
     const changes = onChange.mock.calls.length;
     a.facts.error = { code: 3, message: 'Decode failed' } as MediaError;
     a.element.dispatchEvent(new Event('error'));

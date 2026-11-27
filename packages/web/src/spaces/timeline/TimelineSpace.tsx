@@ -206,7 +206,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
   const uploads = React.useMemo(() => getTimelineUploads(doc, name, {
     projectId, spaceId, onLanded: (kind) => { void queryClient.invalidateQueries({ queryKey: ['timeline-media', projectId, kind] }); },
   }), [doc, name, projectId, spaceId, queryClient]);
-  const material = React.useMemo(() => getTimelineMediaDraft(doc, name, { projectId, spaceId, edit: editWithNotice, startUpload: uploads.start }), [doc, name, projectId, spaceId, editWithNotice, uploads]);
+  const material = React.useMemo(() => getTimelineMediaDraft(doc, name, { projectId, spaceId, queryClient, edit: editWithNotice, startUpload: uploads.start }), [doc, name, projectId, spaceId, queryClient, editWithNotice, uploads]);
   const materialState = React.useSyncExternalStore(material.subscribe, material.getSnapshot);
   const [materialOpen, setMaterialOpen] = useExclusiveOverlay(`timeline-material:${projectId}:${spaceId}`);
   // Activity suspends effects while hidden; the material draft and the edit session read the current rendered role.
@@ -416,8 +416,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
    */
   const baseOf = React.useCallback((clip: TimelineClip): TimelineLayerBox | null => {
     if (clip.kind === 'video') {
-      const source = document.sources[clip.sourceId];
-      return timelineLayerBase(canvas, { width: source?.width ?? null, height: source?.height ?? null });
+      const source = timelineClipSource(document.sources, clip);
+      return timelineLayerBase(canvas, source?.kind === 'video' ? source : { width: null, height: null });
     }
     if (clip.kind === 'image') {
       // The registered size, else the decoded one (design §2.2); unknown until one of them is.

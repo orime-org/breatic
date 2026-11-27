@@ -27,7 +27,7 @@ import { validateTimelineRange } from '@web/data/yjs/timeline-time';
 import {
   FPS, MAIN, OFF, ON, V2, V3, cid, clip, idFactory, seededDoc, timeline, track,
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
-import { ASSET_ID, UPLOAD_ID, addUpload, clipRecords, completedUpload, uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
+import { UPLOAD_ID, addUpload, clipRecords, completedUpload, uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
 
 const NAME = 'project-p/timeline-upload-property';
 
@@ -123,7 +123,7 @@ describe('upload placeholders under any interleaving (fast-check)', () => {
               if (converted === undefined) continue;
               expect(converted, `conversion moved clip ${id}`).toMatchObject({ kind: registered.result.kind, ...placed });
               const source = read.sources[converted.sourceId ?? ''];
-              expect(source, `converted clip ${id} has no source`).toMatchObject({ assetId: ASSET_ID });
+              expect(source, `converted clip ${id} has no source`).toMatchObject({ url: registered.result.url });
               if (registered.result.kind === 'image') expect(converted.sourceInFrame).toBe(0);
               else if (source !== undefined) expect(validateTimelineRange(converted, source as TimelineVideoSource, FPS), `converted clip ${id} reads past its source`).toBe(true);
             }

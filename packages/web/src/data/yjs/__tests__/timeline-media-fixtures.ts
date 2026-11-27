@@ -12,17 +12,17 @@
  */
 
 import type {
-  TimelineClip, TimelineDocumentV1, TimelineTrack, TimelineVideoClip, TimelineVideoSource,
+  TimelineAudioSource, TimelineClip, TimelineDocumentV1, TimelineImageSource, TimelineTrack, TimelineVideoClip, TimelineVideoSource,
 } from '@breatic/shared';
 
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { FPS, SETTINGS, SOURCE } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 
 /** A registered picture (design §2.2): it has no length of its own. */
-export interface ImageSource { id: string; kind: 'image'; assetId: string; width: number | null; height: number | null }
+export type ImageSource = TimelineImageSource;
 
 /** A registered sound (design §2.2), measured like a video. */
-export type AudioSource = Omit<TimelineVideoSource, 'kind'> & { kind: 'audio' };
+export type AudioSource = TimelineAudioSource;
 
 /** Any source of a version 3 document. */
 export type MediaSource = TimelineVideoSource | ImageSource | AudioSource;
@@ -50,12 +50,13 @@ export const MAX_GAIN = 10 ** (12 / 20);
 
 /** A 1080 x 1920 picture. */
 export const IMAGE: ImageSource = {
-  id: '10000000-0000-4000-8000-0000000000e1', kind: 'image', assetId: '20000000-0000-4000-8000-0000000000e1', width: 1080, height: 1920,
+  id: '10000000-0000-4000-8000-0000000000e1', kind: 'image', url: 'https://cdn.example/assets/still.png', name: 'still.png', mimeType: 'image/png',
+  width: 1080, height: 1920,
 };
 
 /** 120 frames at 24 fps of sound. */
 export const AUDIO: AudioSource = {
-  id: '10000000-0000-4000-8000-0000000000a5', kind: 'audio', assetId: '20000000-0000-4000-8000-0000000000a5',
+  id: '10000000-0000-4000-8000-0000000000a5', kind: 'audio', url: 'https://cdn.example/assets/voice.mp3', name: 'voice.mp3', mimeType: 'audio/mpeg',
   timebase: FPS, extentFrames: 120, durationSeconds: '5', durationOrigin: 'registered',
 };
 

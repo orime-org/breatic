@@ -10,6 +10,7 @@ import { initializeTimelineDocument } from '@breatic/shared/space-content';
 import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
 import type {
   ProjectRegisteredAsset,
+  TimelineVideoSource,
   TimelineSettings,
   TimelineTrack,
   TimelineVideoClip,
@@ -244,7 +245,7 @@ describe('prepareTimelineMediaPlacement', () => {
   it.each([null, ''])('names a video whose display name is %j after its address\'s file (inner#2171 visual round 1)', (displayName) => {
     const result = prepareUnchanged(seededDoc(), placementInput({ asset: { ...ASSET, displayName } }));
     if (!result.ok) throw new Error(result.reason);
-    expect(result.command.operation === 'add_video' && result.command.parameters.source?.name).toBe('registered-demo.mp4');
+    expect(result.command.operation === 'add_media' && result.command.parameters.source.name).toBe('registered-demo.mp4');
   });
 
   it('refuses a read-only connection without changing the collaborative document', () => {
@@ -263,10 +264,12 @@ describe('prepareTimelineMediaPlacement', () => {
     const base = expectedCommand();
     const sound = { ...ASSET, kind: 'audio', width: null, height: null, mimeType: 'audio/mpeg' } as ProjectRegisteredAsset;
     const result = prepareUnchanged(seededDoc(), placementInput({ asset: sound }));
+    // A sound is stored by its address like a video, with no cover and no size (design §2.2).
+    const { coverUrl: _cover, width: _width, height: _height, ...measured } = base.parameters.source as TimelineVideoSource;
     expect(result).toEqual({ ok: true, command: {
       ...base,
       parameters: {
-        source: { ...base.parameters.source, kind: 'audio' },
+        source: { ...measured, kind: 'audio', mimeType: 'audio/mpeg' },
         clip: { ...base.parameters.clip, kind: 'audio' },
       },
     } });
@@ -282,7 +285,7 @@ describe('prepareTimelineMediaPlacement', () => {
     expect(result).toEqual({ ok: true, command: {
       ...base,
       parameters: {
-        source: { id: SOURCE_ID, kind: 'image', assetId: ASSET.assetId, width, height },
+        source: { id: SOURCE_ID, kind: 'image', url: ASSET.fileUrl, name: ASSET.displayName, mimeType: 'image/png', width, height },
         clip: { ...base.parameters.clip, kind: 'image', sourceInFrame: 0, durationFrames: 120 },
       },
     } });

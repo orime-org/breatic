@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type * as Y from 'yjs';
+import type { QueryClient } from '@tanstack/react-query';
 import { durationToFrames, newId, TIMELINE_MAIN_TRACK_ID, type ProjectRegisteredAsset, type TimelineUploadClip } from '@breatic/shared';
 import { TIMELINE_DEFAULT_PLACEMENT, type TimelineEditCommand, type TimelineEditPlacement, type TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 
+import { timelineApi } from '@web/data/api/timeline';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { docName } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
@@ -34,6 +36,8 @@ export interface TimelineMediaDraftSnapshot {
 interface TimelineMediaDraftInputs {
   projectId: string;
   spaceId: string;
+  /** Reads the Timeline limits a new picture's length comes from (inner#1709). */
+  queryClient: QueryClient;
   edit: (command: TimelineEditCommand, options?: TimelineEditOptions) => TimelineEditPlan;
   /** Hands a placed local file to the document's background uploads. */
   startUpload: (uploadId: string, file: File) => void;

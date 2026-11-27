@@ -8,7 +8,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { TimelineVideoSourceSchema, type ProjectRegisteredAsset } from '@breatic/shared';
+import { TimelineAudioSourceSchema, TimelineImageSourceSchema, TimelineVideoSourceSchema, type ProjectRegisteredAsset } from '@breatic/shared';
 import { initializeTimelineDocument } from '@breatic/shared/space-content';
 
 import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-media-placement';
@@ -45,9 +45,9 @@ function sourceFor(asset: ProjectRegisteredAsset, decodedDurationSeconds?: numbe
   initializeTimelineDocument(doc, { width: 1920, height: 1080, fps: { num: 24, den: 1 } });
   const result = prepareTimelineMediaPlacement(doc, {
     asset, trackId: 'main', startFrame: 0, clipId: '30000000-0000-4000-8000-000000000001', sourceId: SOURCE_ID, canWrite: true,
-    placement: { magnet: false, linkage: false }, ...(decodedDurationSeconds === undefined ? {} : { decodedDurationSeconds }),
+    placement: { magnet: false, linkage: false }, imageDurationSeconds: 5, ...(decodedDurationSeconds === undefined ? {} : { decodedDurationSeconds }),
   });
-  if (!result.ok || result.command.operation !== 'add_video') throw new Error('placement refused');
+  if (!result.ok || result.command.operation !== 'add_media') throw new Error('placement refused');
   return result.command.parameters.source as unknown as Record<string, unknown>;
 }
 
@@ -68,5 +68,36 @@ describe('a placed Project video is stored by its address (inner#2171)', () => {
 
   it('measures an item without a duration by the one the browser read', () => {
     expect(sourceFor({ ...ASSET, durationSeconds: null }, 4.2)).toMatchObject({ durationSeconds: '4.2', durationOrigin: 'decoded' });
+  });
+});
+
+describe('a placed Project picture or sound is stored by its address too (inner#1709 design §2.5)', () => {
+  const PICTURE: ProjectRegisteredAsset = {
+    ...ASSET, displayName: 'still.png', kind: 'image', fileUrl: 'https://cdn.example/assets/def456.png', coverUrl: null,
+    width: 800, height: 600, durationSeconds: null, mimeType: 'image/png',
+  };
+  const SOUND: ProjectRegisteredAsset = {
+    ...ASSET, displayName: 'voice.mp3', kind: 'audio', fileUrl: 'https://cdn.example/assets/ghi789.mp3', coverUrl: null,
+    width: null, height: null, durationSeconds: 3.5, mimeType: 'audio/mpeg',
+  };
+
+  it('stores a picture\'s address, name, type and size, with no asset id', () => {
+    const source = sourceFor(PICTURE);
+    expect(source).toEqual({ id: SOURCE_ID, kind: 'image', url: PICTURE.fileUrl, name: 'still.png', mimeType: 'image/png', width: 800, height: 600 });
+    expect(TimelineImageSourceSchema.safeParse(source).success).toBe(true);
+  });
+
+  it('stores a sound\'s address, name, type and length, with no cover, size or asset id', () => {
+    const source = sourceFor(SOUND);
+    expect(source).toEqual({
+      id: SOURCE_ID, kind: 'audio', url: SOUND.fileUrl, name: 'voice.mp3', mimeType: 'audio/mpeg',
+      timebase: { num: 24, den: 1 }, extentFrames: 84, durationSeconds: '3.5', durationOrigin: 'registered',
+    });
+    expect(TimelineAudioSourceSchema.safeParse(source).success).toBe(true);
+  });
+
+  it('names an unnamed picture or sound after its file', () => {
+    expect(sourceFor({ ...PICTURE, displayName: '' }).name).toBe('def456.png');
+    expect(sourceFor({ ...SOUND, displayName: null }).name).toBe('ghi789.mp3');
   });
 });
