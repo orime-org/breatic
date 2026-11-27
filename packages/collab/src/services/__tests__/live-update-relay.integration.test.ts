@@ -38,6 +38,7 @@ import {
   listenLiveUpdates,
   projectsRepo,
   publishAssetPeaksReady,
+  publishVideoPresentationChanged,
   publishNotificationsChanged,
   publishUploadEnded,
   type Redis,
@@ -217,7 +218,10 @@ function completedStatus(key: string): UploadStatus {
   return {
     key,
     state: "completed",
-    result: { assetId: randomUUID(), fileUrl: `https://assets.example.test/${key}`, kind: "image", width: 64, height: 48 },
+    result: {
+      assetId: randomUUID(), fileUrl: `https://assets.example.test/${key}`, kind: "image", width: 64, height: 48,
+      coverUrl: null, durationSeconds: null, mimeType: "image/png", sizeBytes: 1024,
+    },
   };
 }
 
@@ -417,6 +421,23 @@ describe("a waveform made ready", () => {
     await publishAssetPeaksReady(s.P2, randomUUID(), url);
     await arrived(onP2, "asset-peaks:ready");
     expect(toldOf(onP1, "asset-peaks:ready")).toHaveLength(1);
+  });
+});
+
+describe("a video presentation changed", () => {
+  it("H-12 reaches the named Project's meta connections with the asset and its address (frames-split §7.20)", async () => {
+    const s = await scenario();
+    const onP1 = await open(I1, s.U, projectMetaDocName(s.P1));
+    const onP2 = await open(I1, s.U, projectMetaDocName(s.P2));
+    const assetId = randomUUID();
+    const url = `https://assets.example.test/${createHash("sha256").update(assetId).digest("hex")}.mp4`;
+    await publishVideoPresentationChanged(s.P1, assetId, url);
+    const [got] = await arrived(onP1, "video-presentation:changed");
+    expect(got).toMatchObject({ t: "video-presentation:changed", projectId: s.P1, assetId, url });
+    expect(Object.keys(got!).filter((k) => !["t", "projectId", "assetId", "url"].includes(k))).toEqual([]);
+    await publishVideoPresentationChanged(s.P2, randomUUID(), url);
+    await arrived(onP2, "video-presentation:changed");
+    expect(toldOf(onP1, "video-presentation:changed")).toHaveLength(1);
   });
 });
 

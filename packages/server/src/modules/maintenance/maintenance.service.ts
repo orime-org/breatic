@@ -21,6 +21,15 @@ export interface MaintenanceAnswer<T> {
   };
 }
 /**
+ * The storage port qualification reads a derived row's descriptor through, or null while the executor is not configured.
+ * @returns The port.
+ * @throws {Error} When the configured storage client cannot be built.
+ */
+function qualificationStorage(): Pick<ReturnType<typeof getMaintenanceDependencies>["storage"], "read"> | null {
+  return maintenanceAvailability().configured ? getMaintenanceDependencies().storage : null;
+}
+
+/**
  * Read all physical BullMQ categories independently, including paused and prioritized.
  * @returns Fresh queue counts and the actual job failure retention.
  * @throws {Error} On queue or configuration infrastructure failure.
@@ -64,7 +73,7 @@ export async function candidates(pageSize: number, cursor?: string): Promise<Mai
     const obj = await repo.findObject(r.storageKey);
     const op = obj ? await repo.findOperationById(obj.operationId) : null;
     return {
-      id: r.id, storageKey: r.storageKey, keptStorageKey: r.keptStorageKey, createdAt: r.createdAt.toISOString(), source: r.source, operationKey: op?.key ?? null
+      id: r.id, kind: r.kind, storageKey: r.storageKey, keptStorageKey: r.keptStorageKey, createdAt: r.createdAt.toISOString(), source: r.source, operationKey: op?.key ?? null
     };
   }));
   return {
@@ -100,18 +109,18 @@ export async function preview(ids: string[], requestedBy: string): Promise<Maint
       });
       continue;
     }
-    const scope = {
+    const scope: ReclaimScope = {
       id, storageKey: row.storageKey, keptStorageKey: row.keptStorageKey
     };
     let reason = await qualify(row, {
-      config: maintenanceConfig(), now: maintenanceNow
+      config: maintenanceConfig(), now: maintenanceNow, storage: qualificationStorage()
     });
     if (!reason && await repo.findObject(row.storageKey))
       reason = "already_approved";
     if (!reason) {
       if (!maintenanceAvailability().configured)
         reason = "executor_unavailable";
-      else {
+      else if (row.keptStorageKey !== null) {
         reason = await checkKeptHead(getMaintenanceDependencies().storage, {
           stage: "preview", requestedBy, operationKey: null, previewId: null,
           candidateIds: [row.id], storageKeys: [row.storageKey], keptStorageKey: row.keptStorageKey,
@@ -179,7 +188,8 @@ export async function submit(input: MaintenanceSubmission): Promise<MaintenanceA
       physicalReason = "executor_unavailable";
     else {
       const storage = getMaintenanceDependencies().storage;
-      const keptKeys = [...new Set(checkedPreview.items.map(item => item.keptStorageKey))];
+      // A row without a kept key (a run's or an analysis's intermediate) has no kept object to check.
+      const keptKeys = [...new Set(checkedPreview.items.flatMap(item => item.keptStorageKey === null ? [] : [item.keptStorageKey]))];
       for (let offset = 0; offset < keptKeys.length; offset += 4) {
         const results = await Promise.all(keptKeys.slice(offset, offset + 4).map(async (key) => {
           const candidates = checkedPreview.items.filter(item => item.keptStorageKey === key);
@@ -237,7 +247,7 @@ export async function submit(input: MaintenanceSubmission): Promise<MaintenanceA
         break;
       }
       reason = await qualify(row, {
-        config: maintenanceConfig(), now: maintenanceNow
+        config: maintenanceConfig(), now: maintenanceNow, storage: qualificationStorage()
       }, tx);
       if (!reason)
         reason = physicalReason;

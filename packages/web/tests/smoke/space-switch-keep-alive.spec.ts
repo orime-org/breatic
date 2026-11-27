@@ -17,6 +17,7 @@ import { expect, type Page } from 'playwright/test';
 import { CANVAS_SPACE, TEXT_BODY, liveModuleUrl } from '../helpers/live-module';
 import { selectFirstParagraph } from '../helpers/bubble-bar';
 import { dragTabOnto } from '../helpers/tab-strip';
+import { roomForUploads } from '../helpers/upload-budget';
 import { DOCUMENT_EDITOR, VISIBLE_SPACE, visibleSpace } from '../helpers/space';
 import {
   activeId,
@@ -540,41 +541,24 @@ test('an upload started on one canvas lands there, done, while another is shown'
   }).toBe(320);
 });
 
-test('a hidden canvas takes no keys and stops what it was playing', async ({ page }) => {
+test('a hidden canvas takes no keys and stops what it was playing @needs-ingest @needs-storage', async ({ page }) => {
   // A5: keys pressed in the document do not reach the canvas behind it, and a
   // video playing on the canvas pauses when it is hidden.
   const { canvas, doc } = await canvasAndDocument(page);
-  const projectId = projectIdOf(page.url());
   await showSpace(page, canvas);
-  const src = `${new URL(page.url()).origin}/keep-alive-clip.mp4`;
-  await page.route('**/keep-alive-clip.mp4', (route) =>
-    route.fulfill({ contentType: 'video/mp4', body: CLIP }),
-  );
-  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
-  await page.evaluate(
-    async ([at, pid, sid, url]: string[]) => {
-      const mod = (await import(/* @vite-ignore */ at!)) as {
-        addNode: (p: string, s: string, n: unknown) => void;
-      };
-      mod.addNode(pid!, sid!, {
-        id: 'kept-video',
-        type: 'video',
-        position: { x: 0, y: 0 },
-        data: {
-          name: 'keep-alive',
-          createdAt: Date.now(),
-          createdBy: 'keep-alive',
-          locked: false,
-          state: 'idle',
-          attachments: [],
-          content: url,
-        },
-      });
-    },
-    [canvasAt, projectId, canvas, src],
-  );
-  const node = page.locator('.react-flow__node[data-id="kept-video"]');
+  // A canvas video plays only a registered asset, through the presentation the
+  // server prepares for it, so the clip is a real upload.
+  await roomForUploads(1);
+  await page
+    .locator('input[data-testid="canvas-upload-input"][multiple]')
+    .setInputFiles([{ name: 'kept-video.mp4', mimeType: 'video/mp4', buffer: CLIP }]);
+  const added = visibleSpace(page).locator('.react-flow__node');
+  await expect(added).toHaveCount(1);
+  const nodeId = (await added.getAttribute('data-id'))!;
+  const node = page.locator(`.react-flow__node[data-id="${nodeId}"]`);
+  // The renderer's element appears once the upload is stored and presented.
   const media = node.getByTestId('media-element');
+  await expect(media).toBeAttached({ timeout: 120_000 });
   await expect
     .poll(() => media.evaluate((el: HTMLMediaElement) => el.readyState), { timeout: 20_000 })
     .toBeGreaterThanOrEqual(2);
@@ -584,7 +568,11 @@ test('a hidden canvas takes no keys and stops what it was playing', async ({ pag
   await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.paused)).toBe(false);
 
   await showSpace(page, doc);
-  await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.paused)).toBe(true);
+  // A hidden canvas releases the video's renderer, so the check is the one a
+  // listener makes: nothing on the page is still playing.
+  await expect
+    .poll(() => page.evaluate(() => [...document.querySelectorAll('video')].some((el) => !el.paused)))
+    .toBe(false);
   await page.locator(DOCUMENT_EDITOR).click();
   await page.keyboard.press('Backspace');
   await page.keyboard.press('Delete');

@@ -185,7 +185,7 @@ async function execute(c: Claim, deps: MaintenanceDependencies): Promise<void> {
       await finish(c, result, null, uncertain, deps);
       return;
     }
-    if (await head(candidate.keptStorageKey) !== "present") {
+    if (candidate.keptStorageKey !== null && await head(candidate.keptStorageKey) !== "present") {
       result.reason = "kept_missing";
       await finish(c, result, null, uncertain, deps);
       return;

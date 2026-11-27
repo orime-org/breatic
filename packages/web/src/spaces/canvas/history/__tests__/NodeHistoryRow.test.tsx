@@ -18,6 +18,13 @@ import {
   expectHoverableSiblingFill,
 } from '@web/test-utils/selection-fill';
 
+import type * as RequestModule from '@web/data/api/request';
+// A video row's preview reads its presentation (frames-split §7.8); the read stays pending, so it plays the original.
+vi.mock('@web/data/api/request', async (importOriginal) => ({
+  ...(await importOriginal<typeof RequestModule>()),
+  apiGet: vi.fn(() => new Promise<never>(() => undefined)),
+}));
+
 // t(key) → key, so assertions target the i18n key the chip renders.
 vi.mock('@web/i18n/use-translation', () => ({
   useTranslation: () => (key: string) => key,
@@ -88,6 +95,7 @@ function renderRow(
 ): void {
   renderWithTooltips(
     <NodeHistoryRow
+      projectId='p'
       entry={e}
       modality={modality}
       isCurrent={false}
@@ -162,6 +170,7 @@ describe('NodeHistoryRow (#1619)', () => {
     renderWithTooltips(
       <>
         <NodeHistoryRow
+          projectId='p'
           entry={entry()}
           modality='image'
           isCurrent
@@ -169,6 +178,7 @@ describe('NodeHistoryRow (#1619)', () => {
           onRestore={() => {}}
         />
         <NodeHistoryRow
+          projectId='p'
           entry={entry({ id: 'h2' })}
           modality='image'
           isCurrent={false}
@@ -359,6 +369,7 @@ describe('reading a row against its fill (#2186)', () => {
   it('sets the chip, time, operator and Current tag in foreground-secondary on the current row', () => {
     renderWithTooltips(
       <NodeHistoryRow
+        projectId='p'
         entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
         modality='text'
         isCurrent
@@ -378,6 +389,7 @@ describe('reading a row against its fill (#2186)', () => {
   it('turns the same text foreground-secondary while the pointer is on another row', () => {
     renderWithTooltips(
       <NodeHistoryRow
+        projectId='p'
         entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
         modality='text'
         isCurrent={false}

@@ -4,12 +4,15 @@
 /**
  * The media container's whole service (#209 + #210, design §4.2).
  *
- * Two endpoints. The probe runs ffprobe over the object it was handed, lifts
+ * The probe runs ffprobe over the object it was handed, lifts
  * a cover frame with ffmpeg when asked for one, cuts a preview with vips when
  * asked for one and there is still time, reads an audio object's peaks when
  * asked for them, and answers with all of it. The run
  * takes one mini-tool job (inner#888), answers 202, and reports on its own
- * when the job ends. It decides nothing about
+ * when the job ends.
+ * The presentation endpoint (`/presentation`) holds its request until the
+ * probe has planned the source's frame grid and answers with the plan or a
+ * failure code. It decides nothing about
  * what the media is: which stream carries the dimensions and whether a cover
  * is wanted are the caller's judgements, made where the stored bytes have
  * already been read.
@@ -40,9 +43,7 @@ import {
 } from "@ingest/probe-answer.js";
 import {
   PREVIEW_MAX_BYTES,
-  PROBE_MAX_BYTES,
   peaksArgs,
-  probeArgs,
   coverArgs,
   previewArgs,
   agentPictureArgs,
@@ -59,6 +60,10 @@ import type { ProbeReport } from "@ingest/media-metadata.js";
 import type { ProbeRequest } from "@ingest/probe-answer.js";
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { runJob, type RunBody } from "./mini-tool-run.js";
+import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
+import { probeServedObject } from "@ingest/container/served-object-read.js";
+import { uploadProbeReport } from "@ingest/container/decoded-display.js";
+import { handlePresentationRun, PRESENTATION_RUN_PATH } from "@ingest/container/presentation-run.js";
 import { runLongMediaProbe, type LongMediaProbeRunRequest } from "./long-media-probe.js";
 import { readLongMediaSegmentRunRequest, runLongMediaSegment } from "./long-media-segment.js";
 
@@ -87,14 +92,12 @@ async function probe(
   wantCover: boolean,
   signal: AbortSignal,
 ): Promise<{ report: ProbeReport; cover: Uint8Array | null }> {
-  const probed = await runTool("ffprobe", probeArgs(objectUrl), {
-    maxBytes: PROBE_MAX_BYTES,
-    signal,
-  });
-  const report =
+  const probed = await probeServedObject(objectUrl, signal);
+  const read =
     probed === null
       ? NOTHING_FOUND
       : readProbeOutput(probed.toString("utf8"));
+  const report = await uploadProbeReport(read, objectUrl, wantCover, signal);
 
   // Nothing to lift a frame from: an audio file with no art, or one whose only
   // video stream is attached album art. `pickMediaMetadata` is the one place
@@ -105,7 +108,7 @@ async function probe(
   const hasFrame = pickMediaMetadata(report).width !== null;
   if (!wantCover || !hasFrame) return { report, cover: null };
 
-  const cut = await runTool("ffmpeg", coverArgs(objectUrl), {
+  const cut = await runTool("ffmpeg", coverArgs(objectUrl, "object", report), {
     maxBytes: COVER_MAX_BYTES,
     signal,
   });
@@ -252,6 +255,10 @@ function send(res: ServerResponse, answer: Response): void {
 }
 
 createServer((req, res) => {
+  if (req.method === "POST" && req.url === PRESENTATION_RUN_PATH) {
+    void handlePresentationRun(req, res);
+    return;
+  }
   if (req.method === "POST" && req.url === LONG_MEDIA_SEGMENT_PATH) {
     void (async () => {
       const chunks: Buffer[] = [];
@@ -302,17 +309,23 @@ createServer((req, res) => {
     void (async () => {
       const chunks: Buffer[] = [];
       for await (const chunk of req) chunks.push(chunk);
-      let job: RunBody;
+      let job: unknown;
       try {
-        job = JSON.parse(Buffer.concat(chunks).toString("utf8")) as RunBody;
+        job = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      const version = typeof job === "object" && job !== null && "schemaVersion" in job ? job.schemaVersion : undefined;
+      if (version !== undefined && version !== 2) {
         res.writeHead(400).end();
         return;
       }
       // Taken before it runs: the object that sent it marks the job running
       // on this answer, and the run reports on its own when it ends.
       res.writeHead(202).end();
-      await runJob(job);
+      if (version === 2) await runPlanJob(job as PlanRunBody);
+      else await runJob(job as RunBody);
     })();
     return;
   }

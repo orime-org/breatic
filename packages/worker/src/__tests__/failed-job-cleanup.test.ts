@@ -16,6 +16,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type * as coreModule from "@breatic/core";
 
 const mockPublishNodeEvent = vi.hoisted(() => vi.fn());
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
@@ -32,7 +33,8 @@ const mockFailTask = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise
   throw new Error("running-slot lock unavailable");
 }));
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...await importOriginal<typeof coreModule>(),
   publishNodeEvent: mockPublishNodeEvent,
   publishActivityNew: vi.fn(),
   announceSpaceTasksVersion: mockAnnounceSpaceTasksVersion,

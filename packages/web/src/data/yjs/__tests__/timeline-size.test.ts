@@ -58,7 +58,7 @@ const COPY = cid(22);
  * @returns The source.
  */
 function source(n: number): TimelineVideoSource {
-  return { ...SOURCE, id: `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`, assetId: `20000000-0000-4000-8000-${String(n).padStart(12, '0')}` };
+  return { ...SOURCE, id: `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`, url: `https://cdn.example/assets/source-${String(n).padStart(12, '0')}.mp4` };
 }
 
 const S1 = source(1);

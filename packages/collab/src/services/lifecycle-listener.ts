@@ -13,21 +13,28 @@
  *
  *   - `project:duplicated` → copy the source's meta doc and the content rows
  *                            of the Spaces it lists to `project-{new}/` in the
- *                            yjs DB, then close the new project's connections
- *                            so a client that raced in and lazy-seeded a
- *                            default meta reloads the copied content.
+ *                            yjs DB, record the copy as completed on its
+ *                            Project row (inner#1706), which is when pages may
+ *                            open it, then close the new project's connections.
+ *                            A command for a copy already completed copies
+ *                            nothing, so a redelivery never overwrites what the
+ *                            user has done in the copy since.
  *   - `project:archived`   → close the project's connections, so members
  *                            re-authenticate and come back read-only.
  *   - `project:restored`   → close the project's connections, so members
  *                            re-authenticate and come back writable.
  *
- * A command is acknowledged once the close request is published; a copy or a
- * publish that throws leaves it for a retry. The copy is idempotent on its
- * canvas documents (`ON CONFLICT DO NOTHING`).
+ * A command is acknowledged once the close request is published, or at once
+ * when its copy is already completed (nothing is copied or closed then); a
+ * completion read, a copy, a completion write or a publish that throws leaves
+ * it for a retry. A copy that
+ * ran before its completion could be recorded runs again with the same result
+ * (`ON CONFLICT DO NOTHING` on content, the source's meta over the copy's).
  */
 
 import {
   createLogger,
+  projectsRepo,
   publishProjectConnectionsClose,
   type Redis,
 } from "@breatic/core";
@@ -39,7 +46,6 @@ import {
   type GroupConsumerSettings,
 } from "@collab/services/stream-group-consumer.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
-import { acceptSpaceMediaReferences } from "@collab/services/space-media-acceptance.js";
 
 const logger = createLogger("lifecycle-listener");
 
@@ -66,9 +72,12 @@ export async function handleLifecycleEvent(
   publish: PublishConnectionsClose,
 ): Promise<void> {
   if (event.type === "project:duplicated") {
-    await yjsDocumentsRepo.duplicateByProjectPrefix(event.sourceId, event.newId, async (rows) => {
-      for (const row of rows) await acceptSpaceMediaReferences(row.name, row.data);
-    });
+    if (await projectsRepo.isDuplicateCompleted(event.newId)) {
+      logger.info({ sourceId: event.sourceId, newId: event.newId }, "project_duplicated_already_completed");
+      return;
+    }
+    await yjsDocumentsRepo.duplicateByProjectPrefix(event.sourceId, event.newId);
+    await projectsRepo.markDuplicateCompleted(event.newId);
     await publish(event.newId, "content-updated");
     logger.info({ sourceId: event.sourceId, newId: event.newId }, "project_duplicated_copy_handled");
     return;

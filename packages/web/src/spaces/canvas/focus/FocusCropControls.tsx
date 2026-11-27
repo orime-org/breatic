@@ -20,8 +20,9 @@ import {
 import { toast } from '@web/lib/toast';
 import { canvasRootOf, useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { fromFraction, toFraction } from '@web/spaces/canvas/crop/crop-geometry';
-import { cropSourceSelector, intrinsicSize, isCropSource, originalSrc, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
+import { cropMediaOf, cropSourceSelector, intrinsicSize, originalSrc, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
+import type { VideoToolPanelState } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
 import { isFreeEscape } from '@web/spaces/canvas/use-escape-in-space';
 
 /**
@@ -94,6 +95,19 @@ interface FocusCropControlsProps {
    * one node's crop must not tear down the whole continuous session).
    */
   onBackToPick: () => void;
+  /**
+   * A video source's state by the panel derivation (frames-split §5.5 interface states row, §7.12); absent for an image.
+   * Anything but `usable` replaces the timeline with a status line and Confirm cannot be pressed.
+   */
+  sourceState?: VideoToolPanelState;
+  /** The candidate's failure code behind a `retryable` or `unsupported` state. */
+  sourceFailure?: string | null;
+  /** Whether a `retryable` state is the source's presentation read failing; its Retry rereads it. */
+  sourceReadFailed?: boolean;
+  /** The existing source repair, for a temporary failure. */
+  onRetrySource?: () => void;
+  /** Whether that repair is still waiting. */
+  retryingSource?: boolean;
 }
 
 /**
@@ -127,10 +141,15 @@ export function handOffFocusToPickBanner(barRoot: Element | null, canvasRoot: Pa
  * target, so Esc still peels back to picking when it has scrolled away.
  * @param root0 - Component props.
  * @param root0.onConfirm - Receives the confirmed natural-pixel crop.
+ * @param root0.sourceState - A video source's derived state; absent for an image.
+ * @param root0.sourceFailure - The candidate failure behind it.
+ * @param root0.sourceReadFailed - Whether a retryable state is the presentation read failing.
+ * @param root0.onRetrySource - Repairs a temporarily failed source.
+ * @param root0.retryingSource - Whether that repair waits.
  * @param root0.onBackToPick - Returns to the pick state (Cancel / bare Esc).
  * @returns The bar, or null when no node is being cropped.
  */
-export function FocusCropControls({ onConfirm, onBackToPick }: FocusCropControlsProps): React.JSX.Element | null {
+export function FocusCropControls({ onConfirm, onBackToPick, sourceState, sourceFailure = null, sourceReadFailed = false, onRetrySource, retryingSource = false }: FocusCropControlsProps): React.JSX.Element | null {
   const { spaceId } = useCanvasContext();
   const t = useTranslation();
   const store = useCanvasSessionStore();
@@ -141,11 +160,12 @@ export function FocusCropControls({ onConfirm, onBackToPick }: FocusCropControls
   const frame = focus?.frame ?? null;
 
   // The node's media, looked up each time its crop box reports: a remount
-  // hands the box a new element and the box writes a new frame for it.
+  // hands the box a new element and the box writes a new frame for it. A
+  // video's time and frame clock are its native element's, also behind a
+  // transparent video's display canvas.
   const sourceEl = React.useMemo((): CropSourceEl | null => {
     if (nodeId === null || frame === null) return null;
-    const el = canvasRootOf(spaceId).querySelector(cropSourceSelector(nodeId));
-    return isCropSource(el) ? el : null;
+    return cropMediaOf(canvasRootOf(spaceId).querySelector(cropSourceSelector(nodeId)))?.source ?? null;
   }, [frame, nodeId, spaceId]);
 
   // The timeline's own value: WHERE THE USER PUT THE HANDLE, seeded from the
@@ -154,7 +174,7 @@ export function FocusCropControls({ onConfirm, onBackToPick }: FocusCropControls
   const [duration, setDuration] = React.useState(Number.NaN);
 
   // Park the video and read it, keyed on the element so a remount cannot leave
-  // any of the three behind. Seeding is not optional: the element fired
+  // either mirror behind. Seeding is not optional: the element fired
   // `loadedmetadata` long before the user picked it. `seeked` is deliberately
   // NOT subscribed: a media element rounds a written position to its own time
   // base, and feeding that back into the Slider knocks it off the step grid
@@ -272,22 +292,24 @@ export function FocusCropControls({ onConfirm, onBackToPick }: FocusCropControls
   /** Confirm the current marquee: map to natural pixels and hand off. */
   const onConfirmClick = (): void => {
     if (rect === null || !isCropUsable(rect, box, frame.natural)) return;
-    const el = canvasRootOf(spaceId).querySelector(cropSourceSelector(focus.nodeId));
+    const media = cropMediaOf(canvasRootOf(spaceId).querySelector(cropSourceSelector(focus.nodeId)));
     // The content may have changed between the last layout and this click:
     // never crop new content at the old marquee's coordinates (round-2).
-    if (isCropSource(el) && originalSrc(el) !== focus.content) {
+    if (media !== null && originalSrc(media.shown) !== focus.content) {
       clearMarquee();
       toast.warning(t('canvas.generatePanel.focusSourceChanged'));
       return;
     }
-    if (!isCropSource(el) || intrinsicSize(el).width === 0) {
+    const el = media?.source ?? null;
+    if (el === null || intrinsicSize(el).width === 0) {
       // Not decodable yet (a bitmap still loading, a broken URL, a video whose
       // metadata has not arrived — the opening state of every video): say so,
       // and keep the marquee so a retry confirms the same selection (A7a).
       toast.error(t('canvas.generatePanel.focusExportFailed'));
       return;
     }
-    const natural = intrinsicSize(el);
+    // A video is framed in its selected version's display geometry, which the crop box reports (frames-split §5.5).
+    const natural = el instanceof HTMLVideoElement && frame.natural != null && frame.natural.width > 0 ? frame.natural : intrinsicSize(el);
     const accepted = onConfirm({
       crop: toNaturalCrop(rect, box, natural),
       natural,
@@ -300,7 +322,9 @@ export function FocusCropControls({ onConfirm, onBackToPick }: FocusCropControls
     if (accepted) backToPick();
   };
 
-  const confirmDisabled = rect === null || !isCropUsable(rect, box, frame.natural);
+  // A video with no selected version cannot be cropped yet (frames-split §5.5 interface states row).
+  const sourceBlocked = isVideoSource && sourceState !== undefined && sourceState !== 'usable';
+  const confirmDisabled = sourceBlocked || rect === null || !isCropUsable(rect, box, frame.natural);
 
   return (
     <NodeToolbar nodeId={focus.nodeId} isVisible position={Position.Bottom} offset={BAR_OFFSET}>
@@ -313,7 +337,16 @@ export function FocusCropControls({ onConfirm, onBackToPick }: FocusCropControls
         // its no-wrap items.
         className='nodrag nopan flex w-max flex-col gap-1.5 rounded-overlay border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
       >
-        {isVideoSource ? (
+        {sourceBlocked ? (
+          <div data-testid='focus-crop-source-state' className='flex items-center justify-between gap-2'>
+            {sourceState === 'waiting-presentation' ? <span data-testid='focus-crop-source-waiting' className='text-muted-foreground'>{t('canvas.miniTool.videoUI.preparingVideo')}</span> : null}
+            {sourceState === 'retryable' ? <>
+              <span className='text-status-error-foreground'>{t(sourceReadFailed ? 'canvas.miniTool.videoUI.sourceUnavailable' : 'canvas.miniTool.videoUI.preparationFailed')}</span>
+              <Button variant='outline' size='compact' data-testid='focus-crop-source-retry' loading={retryingSource} onClick={onRetrySource}>{t('canvas.task.action.retry')}</Button>
+            </> : null}
+            {sourceState === 'unsupported' ? <span data-testid='focus-crop-source-unsupported' className='text-status-error-foreground'>{t(sourceFailure === 'too_long' ? 'canvas.miniTool.videoUI.tooLongToPrepare' : 'canvas.miniTool.videoUI.ledgerUnsupported')}</span> : null}
+          </div>
+        ) : isVideoSource ? (
           <div data-testid='focus-crop-timeline' className='flex items-center gap-2'>
             <span data-testid='focus-crop-time-current' className='shrink-0 tabular-nums text-muted-foreground'>
               {hasDuration ? formatPreciseTime(currentTime) : UNKNOWN_TIME}
@@ -352,9 +385,9 @@ export function FocusCropControls({ onConfirm, onBackToPick }: FocusCropControls
               size={null}
               data-testid={`focus-ratio-${key}`}
               aria-pressed={samePreset(preset, item)}
-              disabled={shape === null}
+              disabled={shape === null || sourceBlocked}
               onClick={() => {
-                if (shape) onPresetClick(item, shape);
+                if (shape && !sourceBlocked) onPresetClick(item, shape);
               }}
               // whitespace-nowrap + shrink-0 (user 2026-07-17 #1): without
               // them the CJK labels wrapped one character per line.
@@ -363,7 +396,7 @@ export function FocusCropControls({ onConfirm, onBackToPick }: FocusCropControls
                 (item.kind === 'ratio' ? 'tabular-nums ' : '') +
                 (samePreset(preset, item) ? 'bg-foreground text-background' : 'text-muted-foreground ') +
                 // `Button` keeps hover on a disabled item, so only live items get it.
-                (shape !== null && !samePreset(preset, item) ? 'hover:bg-accent hover:text-accent-foreground' : '')
+                (shape !== null && !sourceBlocked && !samePreset(preset, item) ? 'hover:bg-accent hover:text-accent-foreground' : '')
               }
             >
               {label}

@@ -41,6 +41,7 @@ const NOW = Date.parse(OPENED) + 10 * 60 * 1000;
 function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
   return {
     id: 't-1',
+    taskId: null,
     projectId: 'p-1',
     spaceId: 's-1',
     nodeId: 'n-1',
@@ -69,7 +70,7 @@ function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
  * Render one row with a roster that names `u-1`.
  * @param over - Entry overrides.
  * @param props - Row props beyond the entry.
- * @param props.hasRetryFile - Whether this session holds the File.
+ * @param props.canRetry - Whether the failed task can run again.
  * @param props.readOnly - Whether this user may write.
  * @param props.onView - Open the node's history at this task's result.
  * @param props.onRetry - Send the stashed File again.
@@ -82,7 +83,7 @@ function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
 function renderRow(
   over: Partial<NodeTaskEntry> = {},
   props: {
-    hasRetryFile?: boolean;
+    canRetry?: boolean;
     readOnly?: boolean;
     onView?: (id: string) => void;
     onRetry?: (id: string) => void;
@@ -101,7 +102,7 @@ function renderRow(
         <TaskRow
           entry={entry(over)}
           now={NOW}
-          hasRetryFile={props.hasRetryFile ?? false}
+          canRetry={props.canRetry ?? false}
           readOnly={props.readOnly ?? false}
           retrying={props.retrying ?? false}
           dismissing={props.dismissing ?? false}
@@ -240,6 +241,12 @@ describe('TaskRow', () => {
     );
   });
 
+  it('keeps a lone word off the last line of why it ended', () => {
+    renderRow({ status: 'failed', errorMessage: 'The connection dropped.' });
+
+    expect(screen.getByText('The connection dropped.').className).toContain('text-pretty');
+  });
+
   it('says a cause we recognise in the user’s own language', () => {
     // The row is read by whoever opens the list, so a cause this product
     // knows travels as a code and becomes a sentence here. A sentence written
@@ -316,19 +323,19 @@ describe('TaskRow', () => {
 
   it('offers a retry only while this session still holds the File', async () => {
     const onRetry = vi.fn();
-    renderRow({ status: 'failed' }, { hasRetryFile: true, onRetry });
+    renderRow({ status: 'failed' }, { canRetry: true, onRetry });
     await userEvent.click(screen.getByTestId('task-action-retry'));
     expect(onRetry).toHaveBeenCalledWith('t-1');
 
     cleanup();
-    renderRow({ status: 'failed' }, { hasRetryFile: false });
+    renderRow({ status: 'failed' }, { canRetry: false });
     expect(screen.queryByTestId('task-action-retry')).toBeNull();
     expect(screen.getByTestId('task-action-clear')).toBeInTheDocument();
   });
 
   it('spins only the button whose request is out, and leaves the other usable', async () => {
     const onDismiss = vi.fn();
-    renderRow({ status: 'failed' }, { hasRetryFile: true, retrying: true, onDismiss });
+    renderRow({ status: 'failed' }, { canRetry: true, retrying: true, onDismiss });
     expect(screen.getByTestId('task-action-retry')).toHaveAttribute('aria-busy', 'true');
     const clear = screen.getByTestId('task-action-clear');
     expect(clear).not.toHaveAttribute('aria-busy');
@@ -337,7 +344,7 @@ describe('TaskRow', () => {
     expect(onDismiss).toHaveBeenCalledWith('t-1');
 
     cleanup();
-    renderRow({ status: 'failed' }, { hasRetryFile: true, dismissing: true });
+    renderRow({ status: 'failed' }, { canRetry: true, dismissing: true });
     expect(screen.getByTestId('task-action-clear')).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByTestId('task-action-retry')).not.toHaveAttribute('aria-busy');
   });

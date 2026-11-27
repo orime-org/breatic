@@ -1,0 +1,5 @@
+avi_h264_12_5.avi
+
+AVI, 160x120 H.264 at 25/2 fps, no audio; every packet has a dts and no pts, so packet times are read from the dts; one keyframe; 50 frames. Grid rate 25/2 (nominal) per the sample set's rate table, not 25. From the sample set's round-11 samples; the exact generating command was not recorded with the sample.
+
+From the maintainers' frame-grid sample set (inner#1306), copied unchanged. Used by container/__tests__/frame-grid-*.node.test.ts.

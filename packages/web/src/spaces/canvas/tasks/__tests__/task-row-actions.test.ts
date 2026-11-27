@@ -22,7 +22,7 @@ describe('taskRowActions', () => {
       taskRowActions({
         status: 'running',
         hasResult: false,
-        hasRetryFile: false,
+        canRetry: false,
         readOnly: false,
       }),
     ).toEqual([]);
@@ -33,7 +33,7 @@ describe('taskRowActions', () => {
       taskRowActions({
         status: 'done',
         hasResult: true,
-        hasRetryFile: false,
+        canRetry: false,
         readOnly: false,
       }),
     ).toEqual(['finish']);
@@ -44,7 +44,7 @@ describe('taskRowActions', () => {
       taskRowActions({
         status: 'done',
         hasResult: false,
-        hasRetryFile: false,
+        canRetry: false,
         readOnly: false,
       }),
     ).toEqual(['finish']);
@@ -55,7 +55,7 @@ describe('taskRowActions', () => {
       taskRowActions({
         status: 'failed',
         hasResult: false,
-        hasRetryFile: true,
+        canRetry: true,
         readOnly: false,
       }),
     ).toEqual(['retry', 'clear']);
@@ -68,7 +68,7 @@ describe('taskRowActions', () => {
       taskRowActions({
         status: 'failed',
         hasResult: false,
-        hasRetryFile: false,
+        canRetry: false,
         readOnly: false,
       }),
     ).toEqual(['clear']);
@@ -79,7 +79,7 @@ describe('taskRowActions', () => {
       taskRowActions({
         status: 'expired',
         hasResult: false,
-        hasRetryFile: false,
+        canRetry: false,
         readOnly: false,
       }),
     ).toEqual(['clear']);
@@ -92,7 +92,7 @@ describe('taskRowActions', () => {
       taskRowActions({
         status: 'expired',
         hasResult: true,
-        hasRetryFile: false,
+        canRetry: false,
         readOnly: false,
       }),
     ).toEqual(['view', 'clear']);
@@ -106,7 +106,7 @@ describe('taskRowActions', () => {
         taskRowActions({
           status,
           hasResult: true,
-          hasRetryFile: true,
+          canRetry: true,
           readOnly: false,
         }),
       ).not.toContain('retry');
@@ -116,7 +116,7 @@ describe('taskRowActions', () => {
   it('never offers replacing the node from any row', () => {
     for (const status of ['running', 'done', 'failed', 'expired'] as const) {
       expect(
-        taskRowActions({ status, hasResult: true, hasRetryFile: true, readOnly: false }),
+        taskRowActions({ status, hasResult: true, canRetry: true, readOnly: false }),
       ).not.toContain('replace');
     }
   });
@@ -126,7 +126,7 @@ describe('taskRowActions', () => {
       taskRowActions({
         status: 'failed',
         hasResult: true,
-        hasRetryFile: true,
+        canRetry: true,
         readOnly: false,
       }),
     ).toEqual(['retry', 'clear']);
@@ -144,7 +144,7 @@ describe('a user who cannot write', () => {
         taskRowActions({
           status,
           hasResult: true,
-          hasRetryFile: true,
+          canRetry: true,
           readOnly: true,
         }),
       ).toEqual([]);
@@ -156,7 +156,7 @@ describe('a user who cannot write', () => {
       taskRowActions({
         status: 'done',
         hasResult: true,
-        hasRetryFile: false,
+        canRetry: false,
         readOnly: false,
       }),
     ).toEqual(['finish']);

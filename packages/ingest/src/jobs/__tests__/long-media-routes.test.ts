@@ -248,6 +248,42 @@ describe("POST /long-media/jobs", () => {
     await expect(stub.report()).resolves.toMatchObject({ phase: "planning", version: 2 });
   });
 
+  it("builds a report from the measured window of a stream that declares no duration, and refuses a malformed one", async () => {
+    const probePayload = { ...payload, jobId: "operation-probe-measured:source-0", operationId: "operation-probe-measured" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(probePayload) });
+    const id = env.LONG_MEDIA.idFromName(probePayload.jobId);
+    const stub = env.LONG_MEDIA.get(id);
+    await stub.transition({ type: "start" }, Date.now());
+    await stub.startAttempt("probe-measured-attempt", Date.now());
+    await stub.applyAttemptEvent({ type: "accepted", attemptId: "probe-measured-attempt", epoch: 1 }, Date.now());
+    // An Opus track in a WebM: Matroska writes no stream duration.
+    const stdout = JSON.stringify({ streams: [{
+      index: 0, codec_type: "audio", codec_name: "opus", channels: 1, channel_layout: "mono", sample_rate: "48000", start_pts: "-7", time_base: "1/1000",
+    }] });
+    const context = {
+      className: "LongMediaContainer",
+      containerId: id.toString(),
+      params: {
+        attemptId: "probe-measured-attempt",
+        epoch: 1,
+        sourceFingerprint: probePayload.source.sha256,
+        profileVersion: probePayload.profileVersion,
+      },
+    };
+    const measured = [{ index: 0, start: { numerator: "0", denominator: "1" }, end: { numerator: "144024", denominator: "48000" } }];
+
+    const malformed = await acceptLongMediaProbeReport(new Request("http://long-media.local/probe-report", {
+      method: "POST", body: JSON.stringify({ stdout, measured: [{ index: 0, start: { numerator: "0", denominator: "0" }, end: measured[0]!.end }] }),
+    }), env, context);
+    const accepted = await acceptLongMediaProbeReport(new Request("http://long-media.local/probe-report", {
+      method: "POST", body: JSON.stringify({ stdout, measured }),
+    }), env, context);
+
+    expect(malformed.status).toBe(400);
+    expect(accepted.status).toBe(200);
+    await expect(stub.report()).resolves.toMatchObject({ phase: "planning", version: 2 });
+  });
+
   it("serves only the one source key and measured size authorized for the probe", async () => {
     const key = "long-media-source-test/source.mp4";
     await env.BUCKET.put(key, new Uint8Array([1, 2, 3]));

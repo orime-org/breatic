@@ -106,7 +106,7 @@ export interface ButtonProps
    * need a matching `aria-disabled:` style to apply while it waits.
    */
   loading?: boolean;
-  /** Leading icon; its classes size and space the spinner that replaces it. */
+  /** Leading icon; its classes size the spinner that replaces it, and a label beside it is spaced from both. */
   icon?: React.ReactElement<{ className?: string }>;
 }
 
@@ -122,7 +122,8 @@ function swallowPress(event: React.MouseEvent<HTMLButtonElement>): void {
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, loading = false, icon, ...props }, ref) => {
-    const classes = buttonVariants({ variant, size });
+    const spaced = icon !== undefined && React.Children.toArray(props.children).length > 0;
+    const classes = buttonVariants({ variant, size, className: spaced ? 'gap-1.5' : undefined });
     if (asChild) return <Slot {...props} className={cn(classes, className)} ref={ref} />;
     const { disabled, onClick, children } = props;
     const lead = loading ? (

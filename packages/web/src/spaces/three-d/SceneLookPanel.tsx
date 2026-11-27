@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
-import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { t as translate, type SceneImportLimits, type SceneLook, type SceneObject } from '@breatic/shared';
-import { resolveSceneAsset } from '@web/data/api/scene';
 import { peekSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
 import { toast } from '@web/lib/toast';
 import type { SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import { SceneImagePickerDialog } from '@web/spaces/three-d/SceneImagePickerDialog';
 import { SceneLookSection, type SceneLookGesture } from '@web/spaces/three-d/SceneLookSection';
-import { checkLookWrite, picturesOf } from '@web/spaces/three-d/look-texture-budget';
+import { checkLookWrite } from '@web/spaces/three-d/look-texture-budget';
 import { isLookImageType, lookLimitNotice, pageSceneLookUploads, pictureReadFailedNotice, unsupportedPictureNotice, type LookUploadNotice } from '@web/spaces/three-d/scene-look-uploads';
 import { takeStepKey } from '@web/spaces/three-d/slider-step-key';
 import { pageLookPictureSizes } from '@web/spaces/three-d/look-picture-size';
@@ -36,15 +35,6 @@ export interface SceneLookPanelProps {
   /** The properties panel's number-field drafts. */
   fieldDrafts: SceneFieldDraftOwner['fieldDrafts'];
   onFieldDraftChange: SceneFieldDraftOwner['onFieldDraftChange'];
-}
-
-/**
- * The resolved URLs of the pictures, in order; a stable array while they are unchanged.
- * @param results - The picture queries' results.
- * @returns Each picture's URL, when resolved.
- */
-function urlsOnly(results: ReadonlyArray<{ data?: { url: string } }>): Array<string | undefined> {
-  return results.map((result) => result.data?.url);
 }
 
 /**
@@ -121,7 +111,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const showingPictures = React.useMemo(() => new Set(showing), [showing]);
   const queryClient = useQueryClient();
   const uploads = React.useMemo(() => pageSceneLookUploads(queryClient), [queryClient]);
-  const sizes = React.useMemo(() => pageLookPictureSizes(projectId), [projectId]);
+  const sizes = pageLookPictureSizes();
   const uploadVersion = React.useSyncExternalStore(uploads.subscribe, uploads.getVersion);
   const [pickerPart, setPickerPart] = React.useState<string | null>(null);
   const isChecking = React.useCallback(
@@ -156,17 +146,6 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   }, [session, objectId]);
   const onCommand = React.useCallback((command: Parameters<SceneSession['execute']>[0]): boolean => session.execute(command).ok, [session]);
 
-  const pictures = React.useMemo(() => picturesOf(look), [look]);
-  const urls = useQueries({ queries: pictures.map((assetId) => ({
-    queryKey: ['scene-asset', projectId, assetId] as const,
-    queryFn: ({ signal }: { signal: AbortSignal }) => resolveSceneAsset(projectId, assetId, signal),
-    staleTime: Number.POSITIVE_INFINITY,
-  })), combine: urlsOnly });
-  const urlOf = React.useMemo(() => {
-    const known = new Map(pictures.map((assetId, index) => [assetId, urls[index]]));
-    return (assetId: string): string | undefined => known.get(assetId);
-  }, [pictures, urls]);
-
   const pick = React.useCallback((image: SceneViewImage): void => {
     const part = pickerPart;
     if (part === null || !ready) return;
@@ -184,7 +163,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
       try {
         let size: Awaited<ReturnType<typeof sizes.read>>;
         try {
-          size = await sizes.read(image.assetId, textureLimits.maxPictureHeaderBytes);
+          size = await sizes.read(image.url, textureLimits.maxPictureHeaderBytes);
         } catch {
           if (isLatest()) notify(pictureReadFailedNotice(name));
           return;
@@ -198,14 +177,14 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
         const current = openObject(session.name, objectId);
         if (!current) return;
         const issue = await checkLookWrite({ ownBytes: ready.ownBytes, clampBytes: ready.clampBytes, limits: textureLimits,
-          look: current.look ?? {}, part, map: image.assetId, mapSize: size, size: (assetId) => sizes.size(assetId, textureLimits.maxPictureHeaderBytes) });
+          look: current.look ?? {}, part, map: image.url, mapSize: size, size: (url) => sizes.size(url, textureLimits.maxPictureHeaderBytes) });
         if (!isLatest()) return;
         if (issue) {
           notify(lookLimitNotice(issue, textureLimits));
           return;
         }
         if (!openObject(session.name, objectId)) return;
-        peekSceneSession(session.name)!.execute({ type: 'look', id: objectId, part, set: { map: image.assetId } });
+        peekSceneSession(session.name)!.execute({ type: 'look', id: objectId, part, set: { map: image.url } });
       } finally {
         if (isLatest()) {
           latestPicks.delete(key);
@@ -230,7 +209,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   return <>
     <SceneLookSection objectId={objectId} parts={ready ? ready.parts : report === 'failed' ? 'failed' : 'loading'} look={look}
       selectedPart={selectedPart} mutable={mutable} onSelectPart={onSelectPart} onCommand={onCommand} onChoosePicture={setPickerPart}
-      gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={checking} pictureUrl={urlOf}
+      gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={checking}
       showingPictures={showingPictures} fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
     <SceneImagePickerDialog projectId={projectId} open={pickerPart !== null} onOpenChange={openChange} onPick={pick} onPickFile={pickFile} />
   </>;

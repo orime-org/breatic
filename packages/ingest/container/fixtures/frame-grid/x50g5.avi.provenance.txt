@@ -1,0 +1,6 @@
+x50g5.avi
+
+AVI, 320x240 MPEG-4 Part 2 with B-frames at 50 fps, a keyframe every 5 frames (0.10 s, shorter than FFmpeg CLI's 3/23 s seek pullback), MP3 audio slightly longer than the video; 76 frames. A seek at 0.10 or 0.12 s fails in FFmpeg's CLI and succeeds at 0.15 s.
+Made with FFmpeg 8.0.1 for the sample set's seek check, which reads every grid frame through the design's seek rule (no -ss below the earliest keyframe packet time plus the largest keyframe interval, landing check, doubling back-off) and compares it with a whole-file decode through the same placement chain; the exact generating command was not recorded with the sample.
+
+From the maintainers' frame-grid sample set (inner#1306), copied unchanged. Used by container/__tests__/frame-grid-*.node.test.ts.

@@ -8,16 +8,18 @@
 
 import { inArray, sql } from "drizzle-orm";
 import { agentUsageRecords, db } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import type { UsageRow } from "@domain/credit/usage-recorder.js";
 
 /**
- * Append one usage row. A container run's row is written once per task.
+ * Append one usage row. Container consumption deduplicates by its operation key.
  * @param row - The paid call to record.
+ * @param tx - An enclosing transaction when usage and business state commit together.
  * @returns Nothing once the row is written, or once an earlier attempt's is found.
  * @throws {Error} When the write fails.
  */
-export async function insertUsageRecord(row: UsageRow): Promise<void> {
-  await db
+export async function insertUsageRecord(row: UsageRow, tx?: DbTx): Promise<void> {
+  await (tx ?? db)
     .insert(agentUsageRecords)
     .values({
       operationKey: row.operationKey,

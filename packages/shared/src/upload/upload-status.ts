@@ -19,7 +19,13 @@ export const UPLOAD_STATUS_MAX_KEYS = 100;
  */
 export const STUDIO_PAGE_POLL_DEFAULT_MS = 2000;
 
-/** What a finished upload registered as. */
+/**
+ * How many Projects one Studio page poll may ask about while they are being copied (inner#1706): as many as uploads,
+ * one request's worth; a page with more asks about the first ones, and each copy that finishes makes room for the next.
+ */
+export const COPYING_POLL_MAX_IDS = 100;
+
+/** What a finished upload registered as: the media facts a Space stores beside its address (inner#2171 design §4). */
 export interface UploadStatusResult {
   assetId: string;
   fileUrl: string;
@@ -27,6 +33,11 @@ export interface UploadStatusResult {
   /** Pixel size read off the stored bytes; null when there is none. */
   width: number | null;
   height: number | null;
+  /** A video's cover; null for anything else or a video without one. */
+  coverUrl: string | null;
+  durationSeconds: number | null;
+  mimeType: string;
+  sizeBytes: number;
 }
 
 /**

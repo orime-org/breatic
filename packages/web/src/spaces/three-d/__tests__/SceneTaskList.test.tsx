@@ -39,6 +39,15 @@ const ME = 'user-me';
 const NOW = Date.parse('2026-11-06T10:00:00.000Z');
 
 /**
+ * The model file a row holding this asset carries.
+ * @param assetId - The row's asset, if any.
+ * @returns The model file, or null without an asset.
+ */
+function modelFileOf(assetId: unknown): SpaceTask['modelFile'] {
+  return typeof assetId === 'string' ? { url: `https://cdn.example/assets/${assetId}.glb`, mimeType: 'model/gltf-binary', sizeBytes: 2048 } : null;
+}
+
+/**
  * One row as the server answers it.
  * @param over - What differs from a running upload started a minute ago.
  * @returns The row.
@@ -47,7 +56,7 @@ function row(over: Partial<SpaceTask>): SpaceTask {
   return {
     id: 'task', label: 'Lamp', status: 'running', startedByUserId: ME,
     startedAt: new Date(NOW - 60_000).toISOString(), deadlineAt: new Date(NOW - 60_000 + 7_200_000).toISOString(),
-    errorMessage: null, assetId: null, ...over,
+    errorMessage: null, assetId: null, modelFile: modelFileOf(over.assetId), ...over,
   };
 }
 
@@ -320,7 +329,7 @@ function generation(over: Record<string, unknown>): SpaceTask {
   const { errorMessage: _unused, ...shared } = row({});
   return {
     ...shared, kind: 'generation', origin: 'space', model: { name: 'tripo-h3.1-t23d', displayName: 'Tripo H3.1' }, mode: 't23d',
-    prompt: 'A brass desk lamp', params: {}, inputs: [], errorMessage: null, label: 'A brass desk lamp', ...over,
+    prompt: 'A brass desk lamp', params: {}, inputs: [], errorMessage: null, label: 'A brass desk lamp', modelFile: modelFileOf(over.assetId), ...over,
   } as unknown as SpaceTask;
 }
 

@@ -58,6 +58,7 @@ const project: ContainerProject = {
   canArchive: false,
   canRestore: false,
   canLeave: false,
+  copying: false,
 };
 
 // The flags the server sends for each caller on a live project

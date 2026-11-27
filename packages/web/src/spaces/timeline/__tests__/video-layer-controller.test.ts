@@ -13,7 +13,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TimelineDocumentV1, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
 import { createVideoLayerController } from '@web/spaces/timeline/video-layer-controller';
 
-type AssetState = 'loading' | 'ready' | 'failed';
 
 interface ElementFixture {
   element: HTMLVideoElement;
@@ -23,7 +22,8 @@ interface ElementFixture {
 }
 
 const SOURCE: TimelineVideoSource = {
-  id: '10000000-0000-4000-8000-000000000001', kind: 'video', assetId: '20000000-0000-4000-8000-000000000001',
+  id: '10000000-0000-4000-8000-000000000001', kind: 'video', url: 'https://cdn.example/assets/clip.mp4', coverUrl: null,
+  name: 'clip.mp4', mimeType: 'video/mp4', width: 1920, height: 1080,
   timebase: { num: 24, den: 1 }, extentFrames: 240, durationSeconds: '10', durationOrigin: 'registered',
 };
 const A: TimelineVideoClip = {
@@ -73,14 +73,11 @@ function elementFixture(facts: Partial<ElementFixture['facts']> = {}): ElementFi
 /**
  * A layer as the Space hands it to the controller.
  * @param clipId - The clip.
- * @param state - Its asset state.
  * @returns The layer.
  * @throws {never} Never.
  */
-function layer(clipId: string, state: AssetState = 'ready'): { clipId: string; fileUrl: string | null; coverUrl: string | null; state: AssetState } {
-  return state === 'ready'
-    ? { clipId, fileUrl: `https://cdn.test/${clipId}.mp4`, coverUrl: `https://cdn.test/${clipId}.jpg`, state }
-    : { clipId, fileUrl: null, coverUrl: null, state };
+function layer(clipId: string): { clipId: string; fileUrl: string; coverUrl: string | null } {
+  return { clipId, fileUrl: `https://cdn.test/${clipId}.mp4`, coverUrl: `https://cdn.test/${clipId}.jpg` };
 }
 
 /**
@@ -165,14 +162,11 @@ describe('createVideoLayerController elements', () => {
     expect(controller.states().get(A.id)).toBe('ready');
   });
 
-  it('reports a loading asset as loading, and a failed asset or an element error as failed', () => {
+  it('reports a lane as ready, and as failed once its element errors', () => {
     const a = elementFixture();
     const b = elementFixture();
     const { controller, onChange } = controllerFor({ [A.id]: a, [B.id]: b });
-    controller.sync([layer(A.id, 'loading'), layer(B.id, 'failed')]);
-    expect(controller.states().get(A.id)).toBe('loading');
-    expect(controller.states().get(B.id)).toBe('failed');
-    controller.sync([layer(A.id), layer(B.id, 'failed')]);
+    controller.sync([layer(A.id), layer(B.id)]);
     expect(controller.states().get(A.id)).toBe('ready');
     const changes = onChange.mock.calls.length;
     a.facts.error = { code: 3, message: 'Decode failed' } as MediaError;

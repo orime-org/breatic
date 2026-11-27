@@ -139,7 +139,7 @@ function DrawSurface({ kind, drawing, exporting, geometry }: DrawSurfaceProps): 
    * @returns The point.
    */
   const toFraction = (clientX: number, clientY: number): [number, number] => {
-    const shown = geometry.el.getBoundingClientRect();
+    const shown = geometry.shown.getBoundingClientRect();
     return [(clientX - shown.left) / shown.width, (clientY - shown.top) / shown.height];
   };
 

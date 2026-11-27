@@ -398,7 +398,7 @@ describe("Project media backfill candidate scans", () => {
 
   it("pages recognized live Space snapshots in name order without altering bytes or timestamps", async () => {
     const scope = await scopeFixture();
-    const range = idRange(6);
+    const range = idRange(7);
     const prefix = `project-${scope.projectId}/`;
     const variants = [
       { name: `${prefix}timeline-${idAt(range, 3)}`, deleted: false },
@@ -407,6 +407,7 @@ describe("Project media backfill candidate scans", () => {
       { name: `${prefix}canvas-${idAt(range, 4)}`, deleted: true },
       { name: `${prefix}meta`, deleted: false },
       { name: `${prefix}unknown-${idAt(range, 5)}`, deleted: false },
+      { name: `${prefix}3d-${idAt(range, 6)}`, deleted: false },
     ];
     for (const [index, row] of variants.entries()) {
       await yjsSql`INSERT INTO yjs_documents (name, data, created_at, updated_at, deleted_at)
@@ -421,7 +422,8 @@ describe("Project media backfill candidate scans", () => {
         updated_at::text AS updated, deleted_at::text AS deleted FROM yjs_documents
         WHERE name = ANY(${owned.documents}::text[]) ORDER BY name`;
     const before = await snapshot();
-    const expected = variants.filter((row) => !row.deleted && !row.name.endsWith("/meta") && !row.name.includes("/unknown-")).map((row) => row.name).sort();
+    // Backfill reads media only from canvas and Document (inner#2171 design §5.5).
+    const expected = variants.filter((row) => !row.deleted && /\/(?:canvas|document)-/.test(row.name)).map((row) => row.name).sort();
     const found: { name: string; data: Uint8Array }[] = [];
     let cursor = prefix;
     while (found.length < expected.length) {
@@ -441,7 +443,7 @@ describe("Project media backfill candidate scans", () => {
     expect(next.every((row) => !row.name.startsWith(prefix))).toBe(true);
     const global = await scanMediaBackfillDocuments(null, 1);
     expect(global).toHaveLength(1);
-    expect(global[0]!.name).toMatch(/^project-.+\/(?:canvas|document|timeline)-.+$/);
+    expect(global[0]!.name).toMatch(/^project-.+\/(?:canvas|document)-.+$/);
     expect(await snapshot()).toEqual(before);
   });
 

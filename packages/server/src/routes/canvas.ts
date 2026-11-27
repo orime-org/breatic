@@ -109,6 +109,11 @@ canvas.use("*", requireAuth);
  * cut band decodes in the browser while its peaks file is missing; past either
  * the band stays plain; a band past either reads its peaks again when the
  * server announces them (#1580).
+ *
+ * `maxOutputs`: the frames and split `max_outputs`, which the panel checks
+ * before creating the nodes (frames-split §10.7).
+ * `quoteDebounceMs`: how long a video tool panel's priced inputs hold still before
+ * it asks for a quote.
  * `joinMaxClips`: the most clips one join takes, its source included; the
  * join panel's add tile and slot pick stop there (inner#1825 §6.3).
  * @param c - Hono context (auth required, no params)
@@ -123,6 +128,8 @@ canvas.get("/limits", (c) => {
       understandLongMediaMaxBytes: getUnderstandConfig().long_media.max_source_bytes,
       waveformMaxSeconds: getMiniToolsConfig().waveform_max_seconds,
       waveformMaxBytes: getMiniToolsConfig().waveform_max_bytes,
+      quoteDebounceMs: getMiniToolsConfig().quote_debounce_ms,
+      maxOutputs: Object.fromEntries((["video.extract-frames", "video.split"] as const).map((tool) => [tool, getMiniToolsConfig().executions[tool].max_outputs])),
       joinMaxClips: getMiniToolsConfig().join_max_clips,
     },
   });

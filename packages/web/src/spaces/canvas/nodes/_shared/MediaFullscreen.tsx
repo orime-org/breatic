@@ -10,6 +10,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { takeStray } from '@web/lib/stray-file-drop';
 import { cn } from '@web/lib/utils';
 import { MediaPlayer, type MediaPlayerHandle } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { PresentedMediaPlayer } from '@web/spaces/canvas/nodes/_shared/PresentedMediaPlayer';
 import type { MediaPlayerState } from '@web/spaces/canvas/nodes/_shared/use-media-player';
 
 /** What a full-screen view shows. */
@@ -22,6 +23,8 @@ export interface MediaFullscreenSource {
   poster?: string;
   /** The media's own size when known; the box is reserved from it before it loads. */
   size?: { width: number; height: number };
+  /** The Project of a registered video, which then plays its selected version's playback file (frames-split §7.8). */
+  projectId?: string;
 }
 
 /** Props for {@link MediaFullscreen}. */
@@ -76,6 +79,7 @@ function stopDrop(event: React.DragEvent): void {
  * @param root0.poster - A video's cover.
  * @param root0.name - The file's name, for the dialog's title.
  * @param root0.size - The media's own size when known.
+ * @param root0.projectId - The Project of a registered video.
  * @param root0.id - The content's id.
  * @param root0.start - Where a video starts.
  * @param root0.onCloseAutoFocus - Where the focus goes as it closes.
@@ -88,6 +92,7 @@ export function MediaFullscreen({
   poster,
   name,
   size,
+  projectId,
   id,
   start,
   onCloseAutoFocus,
@@ -170,7 +175,8 @@ export function MediaFullscreen({
             </div>
           ) : (
             <div className='w-full [&_video]:max-h-[90vh]'>
-              <MediaPlayer ref={player} modality='video' src={src} poster={poster} fullPoster size={size} start={start} onDimensions={setMeasured} />
+              {projectId ? <PresentedMediaPlayer ref={player} projectId={projectId} src={src} poster={poster} fullPoster size={size} start={start} onDimensions={setMeasured} />
+                : <MediaPlayer ref={player} modality='video' src={src} poster={poster} fullPoster size={size} start={start} onDimensions={setMeasured} />}
             </div>
           )}
           <DialogClose

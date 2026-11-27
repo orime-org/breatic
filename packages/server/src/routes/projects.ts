@@ -30,7 +30,6 @@ import {
   projectMembersService,
   projectService,
   recentService,
-  sceneAssetService,
 } from "@server/modules";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import { projectNameSchema, t } from "@breatic/shared";
@@ -84,20 +83,6 @@ projects.get(
       },
     };
     return c.json({ data });
-  },
-);
-
-/**
- * `GET /projects/:id/three-d/assets/:assetId` — resolve a registered scene model or part picture.
- * @returns The registered asset URL, MIME type and registered size in the standard data envelope.
- */
-projects.get(
-  "/:id/three-d/assets/:assetId",
-  validate("param", z.object({ id: z.string().uuid(), assetId: z.string().uuid() })),
-  requireRoleOnParam("id", "viewer"),
-  async (c) => {
-    const { id, assetId } = c.req.valid("param");
-    return c.json({ data: await sceneAssetService.resolveSceneAsset(id, c.get("user").id, assetId) });
   },
 );
 
@@ -264,6 +249,7 @@ projects.get("/:id", async (c) => {
     canManageMeta,
     canRestore,
     canLeave,
+    copying: project.copying,
   };
   return c.json({ data: detail });
 });

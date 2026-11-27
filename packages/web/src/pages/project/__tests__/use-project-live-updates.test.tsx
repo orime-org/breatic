@@ -151,7 +151,8 @@ describe('an upload\'s ending', () => {
     const s1: UploadStatus = {
       key: k1,
       state: 'completed',
-      result: { assetId: 'a-1', fileUrl: 'https://assets.example.test/k1.png', kind: 'image', width: 64, height: 48 },
+      result: { assetId: 'a-1', fileUrl: 'https://assets.example.test/k1.png', kind: 'image', width: 64, height: 48,
+        coverUrl: null, durationSeconds: null, mimeType: 'image/png', sizeBytes: 1024 },
     };
     const s2: UploadStatus = { key: k2, state: 'failed', reason: 'over_cap' };
     double.send({ t: 'upload:ended', key: k1, status: s1 });
@@ -186,6 +187,20 @@ describe('a waveform made ready', () => {
     vi.advanceTimersByTime(C);
     expect(heard).toEqual([url]);
     stop();
+    view.unmount();
+  });
+});
+
+describe('a video presentation changed (frames-split §7.20)', () => {
+  it('reads that video\'s presentation in this Project again, and not for another Project\'s', () => {
+    const double = providerDouble();
+    const view = mount(double.provider);
+    const url = 'https://assets.example.test/v.mp4';
+    double.send({ t: 'video-presentation:changed', projectId: P1, assetId: 'a-1', url });
+    expect(invalidations(['video-presentation', 1, P1, url])).toBe(1);
+    double.send({ t: 'video-presentation:changed', projectId: P2, assetId: 'a-1', url });
+    expect(invalidations(['video-presentation', 1, P2, url])).toBe(0);
+    expect(invalidations(['video-presentation', 1, P1, url])).toBe(1);
     view.unmount();
   });
 });

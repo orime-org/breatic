@@ -16,7 +16,7 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { validate } from "@breatic/core";
 import { webAnimationExecutionService as executions } from "@server/modules";
-import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
+import { commaListQuerySchema, idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 
 const timeline = new Hono<{ Variables: AuthVariables }>();
 
@@ -26,11 +26,7 @@ timeline.use("*", requireAuth);
 const MAX_RESOLVED_IDS = 500;
 
 /** A comma-separated list of uuids in a query parameter; absent or empty reads as none. */
-const idList = z
-  .string()
-  .optional()
-  .transform((value) => (value === undefined || value === "" ? [] : value.split(",")))
-  .pipe(z.array(z.uuid()).max(MAX_RESOLVED_IDS));
+const idList = commaListQuerySchema.pipe(z.array(z.uuid()).max(MAX_RESOLVED_IDS));
 
 const spaceQuery = z.object({ projectId: z.uuid(), spaceId: z.uuid() });
 const webSourcesQuery = z.object({ projectId: z.uuid(), sourceIds: idList, executionIds: idList });

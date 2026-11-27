@@ -42,9 +42,11 @@ const TRIGGER_CLASS = {
 /**
  * Whether the card has anything to put behind its `⋯`.
  * @param project - The card's project and the server's verdict on what its viewer may do.
- * @returns True when at least one entry would show.
+ * @returns True when at least one entry would show; never while the project is still being copied.
  */
 export function hasCardMenu(project: ContainerProject): boolean {
+  // A copy still being copied offers nothing until it opens (inner#1706).
+  if (project.copying) return false;
   return (
     project.canManageMeta ||
     project.canDuplicate ||

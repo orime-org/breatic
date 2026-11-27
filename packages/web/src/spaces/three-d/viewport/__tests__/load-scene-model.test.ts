@@ -62,57 +62,49 @@ function partsGlb(): ArrayBuffer {
   return result;
 }
 
+/**
+ * A registered GLB as the scene stores it: by address, type and size (inner#2171).
+ * @param url - Its address.
+ * @param sizeBytes - Its size.
+ * @returns The model source.
+ */
+function registered(url: string, sizeBytes = glb().byteLength): { kind: 'asset'; url: string; mimeType: 'model/gltf-binary'; sizeBytes: number } {
+  return { kind: 'asset', url, mimeType: 'model/gltf-binary', sizeBytes };
+}
+
 describe('registered GLB placement transport (inner#1689)', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('resolves an asset id, uses shared HTTP and parses with the installed GLTFLoader', async () => {
+  it('reads a model from the address its source stores, uses shared HTTP and parses with the installed GLTFLoader', async () => {
     vi.mocked(httpRequest).mockResolvedValue(new Response(glb()));
-    const resolve = vi.fn().mockResolvedValue({ url: 'https://assets.example/model.glb', mimeType: 'model/gltf-binary', sizeBytes: glb().byteLength });
     const signal = new AbortController().signal;
-    const root = await loadSceneModel({ kind: 'asset', assetId: 'registered' }, signal, resolve, '#888888', IMPORT_LIMITS);
-    expect(resolve).toHaveBeenCalledWith('registered', signal);
+    const root = await loadSceneModel(registered('https://assets.example/model.glb'), signal, '#888888', IMPORT_LIMITS);
     expect(httpRequest).toHaveBeenCalledWith('https://assets.example/model.glb', { method: 'GET' }, { replaySafe: true, signal });
     expect(root.children.map((child) => child.name)).toEqual(['registered-model']);
     disposeModelTemplate(root);
   });
 
-  it('does not transfer an asset after its owner aborted while resolving', async () => {
-    const abort = new AbortController();
-    const resolve = vi.fn().mockImplementation(async () => {
-      abort.abort();
-      return { url: 'https://assets.example/model.glb', mimeType: 'model/gltf-binary', sizeBytes: glb().byteLength };
-    });
-    await expect(loadSceneModel({ kind: 'asset', assetId: 'registered' }, abort.signal, resolve, '#888888', IMPORT_LIMITS)).rejects.toMatchObject({ name: 'AbortError' });
-    expect(httpRequest).toHaveBeenCalledTimes(0);
-  });
-
   it('rejects unsupported types before transfer and malformed binary containers before parsing', async () => {
     const signal = new AbortController().signal;
-    const resolve = vi.fn().mockResolvedValue({ url: 'https://assets.example/model.glb', mimeType: 'model/gltf+json', sizeBytes: glb().byteLength });
-    await expect(loadSceneModel({ kind: 'asset', assetId: 'registered' }, signal, resolve, '#888888', IMPORT_LIMITS)).rejects.toThrow('unsupported model type');
+    const unsupported = { ...registered('https://assets.example/model.glb'), mimeType: 'model/gltf+json' as 'model/gltf-binary' };
+    await expect(loadSceneModel(unsupported, signal, '#888888', IMPORT_LIMITS)).rejects.toThrow('unsupported model type');
     expect(httpRequest).toHaveBeenCalledTimes(0);
-    resolve.mockResolvedValue({ url: 'https://assets.example/model.glb', mimeType: 'model/gltf-binary', sizeBytes: glb().byteLength });
     vi.mocked(httpRequest).mockResolvedValue(new Response(new Uint8Array([1, 2, 3, 4])));
-    await expect(loadSceneModel({ kind: 'asset', assetId: 'registered' }, signal, resolve, '#888888', IMPORT_LIMITS)).rejects.toThrow('not a binary glTF');
+    await expect(loadSceneModel(registered('https://assets.example/model.glb'), signal, '#888888', IMPORT_LIMITS)).rejects.toThrow('not a binary glTF');
   });
 
   // inner#1692 replaced the procedural nine-part figure with the rigged GLB asset; only the stage block stays procedural.
   it('builds the stage block procedurally without any transfer', async () => {
-    const resolve = vi.fn();
-    const root = await loadSceneModel({ kind: 'builtin', id: 'box' }, new AbortController().signal, resolve, '#888888', IMPORT_LIMITS);
+    const root = await loadSceneModel({ kind: 'builtin', id: 'box' }, new AbortController().signal, '#888888', IMPORT_LIMITS);
     expect(root.children).toHaveLength(1);
     expect(root.children[0]).toBeInstanceOf(Mesh);
-    expect(resolve).toHaveBeenCalledTimes(0);
     expect(httpRequest).toHaveBeenCalledTimes(0);
     disposeModelTemplate(root);
   });
 
   it('loads the built-in figure from its same-origin GLB as a rigged humanoid (inner#1692)', async () => {
     vi.mocked(httpRequest).mockImplementation(async () => new Response(Uint8Array.from(readFileSync(FIGURE_PATH))));
-    const resolve = vi.fn();
-    const root = await loadSceneModel({ kind: 'builtin', id: 'figure' }, new AbortController().signal, resolve, '#888888', IMPORT_LIMITS);
-    // A built-in source is never resolved as a registered asset.
-    expect(resolve).toHaveBeenCalledTimes(0);
+    const root = await loadSceneModel({ kind: 'builtin', id: 'figure' }, new AbortController().signal, '#888888', IMPORT_LIMITS);
     expect(httpRequest).toHaveBeenCalledTimes(1);
     const requested = new URL(String(vi.mocked(httpRequest).mock.calls[0]?.[0]));
     expect(requested.origin).toBe(location.origin);
@@ -129,8 +121,7 @@ describe('registered GLB placement transport (inner#1689)', () => {
 
   it('puts each primitive in its glTF material\'s part, one without a material in the default part, and gives it UVs (inner#1693 design 5.1)', async () => {
     vi.mocked(httpRequest).mockImplementation(async () => new Response(partsGlb()));
-    const resolve = vi.fn().mockResolvedValue({ url: 'https://assets.example/parts.glb', mimeType: 'model/gltf-binary', sizeBytes: partsGlb().byteLength });
-    const root = await loadSceneModel({ kind: 'asset', assetId: 'parts' }, new AbortController().signal, resolve, '#888888', IMPORT_LIMITS);
+    const root = await loadSceneModel(registered('https://assets.example/parts.glb', partsGlb().byteLength), new AbortController().signal, '#888888', IMPORT_LIMITS);
     const parts: string[] = [];
     let instanced: InstancedMesh | null = null;
     root.traverse((child) => {

@@ -14,13 +14,15 @@
 
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
 import {
+  assetRepo,
+  assetService,
   modelCatalog,
   nodeTaskService,
   sceneTaskService,
   taskService,
   type SceneTaskRow,
 } from "@breatic/domain";
-import { modesOf, picturesOf, t, type SceneGenerationOrigin, type SceneTaskNotice, type TaskEntity } from "@breatic/shared";
+import { isSceneModelMediaType, modesOf, picturesOf, t, type SceneGenerationOrigin, type SceneTaskNotice, type TaskEntity } from "@breatic/shared";
 import * as projectService from "@server/modules/project/project.service.js";
 import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
@@ -45,7 +47,12 @@ interface SpaceTaskCommon {
   errorMessage: string | null;
   /** What the user is told beside a done generation (inner#1692); null when nothing. */
   notice: SceneTaskNotice | null;
+  /** The model file "Place in scene" stores, by address, type and size; null while there is none to place (inner#2171 design §4, §10). */
+  modelFile: SceneModelFileWire | null;
 }
+
+/** A finished row's model file, as a scene object stores it. */
+interface SceneModelFileWire { url: string; mimeType: string; sizeBytes: number }
 
 /** A model upload, as the panel reads it. */
 export interface SpaceImportWire extends SpaceTaskCommon {
@@ -115,6 +122,7 @@ export async function listSpaceTasks(
   const { tasks, harvested } = await sceneTaskService.harvestAndList(projectId, spaceId);
   if (harvested > 0) await publishSpaceTasksQuietly(projectId, spaceId);
   const runs = await sceneTaskService.runsOf(tasks);
+  const models = await modelFilesOf(projectId, tasks);
   return {
     serverNow: new Date().toISOString(),
     tasks: tasks.map((row): SpaceTaskWire => {
@@ -130,12 +138,30 @@ export async function listSpaceTasks(
         assetId: row.assetId,
         errorMessage: row.errorMessage,
         notice: row.notice,
+        modelFile: row.assetId === null ? null : models.get(row.assetId) ?? null,
       };
       return row.action === "generate"
         ? { ...common, kind: "generation", ...generationFields(row, row.taskId === null ? undefined : runs.get(row.taskId)) }
         : { ...common, kind: "import" };
     }),
   };
+}
+
+/**
+ * Read the model files of the rows that hold one, in one ledger read.
+ * @param projectId - The project, whose Studio holds the models.
+ * @param rows - The Space's rows.
+ * @returns Each live model asset's file, by asset id; a deleted asset or one that is not a model has none.
+ * @throws {Error} When the ledger cannot be read.
+ */
+async function modelFilesOf(projectId: string, rows: readonly SceneTaskRow[]): Promise<Map<string, SceneModelFileWire>> {
+  const assetIds = [...new Set(rows.flatMap((row) => (row.assetId === null ? [] : [row.assetId])))];
+  if (assetIds.length === 0) return new Map();
+  const studioId = await assetService.resolveOwnerStudioId(projectId);
+  const assets = await assetRepo.findLiveManyInStudio(studioId, assetIds);
+  return new Map(assets.flatMap((asset) => (isSceneModelMediaType(asset.mimeType)
+    ? [[asset.id, { url: asset.fileUrl, mimeType: asset.mimeType, sizeBytes: asset.sizeBytes }] as const]
+    : [])));
 }
 
 /**

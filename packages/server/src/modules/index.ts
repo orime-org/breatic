@@ -19,7 +19,6 @@ export * as enterpriseMembershipService from "@server/modules/enterprise-members
 export * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 export * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 export * as pasteAssetsService from "@server/modules/asset/pasteAssets.service.js";
-export * as sceneAssetService from "@server/modules/asset/scene-asset.service.js";
 export * as sceneTasksService from "@server/modules/asset/scene-tasks.service.js";
 export * as sceneGenerationService from "@server/modules/asset/scene-generation.service.js";
 export { holdRun } from "@server/modules/task/generation-task.js";
@@ -34,7 +33,7 @@ export * as attachmentService from "@server/modules/conversation/conversation-at
 export * as agentInstructionsService from "@server/modules/conversation/agent-instructions.service.js";
 export * as runningTurnsService from "@server/modules/conversation/running-turns.service.js";
 export * as memoryService from "@server/modules/memory/memory.service.js";
-export { precheckAgentTurn, precheckCredits, reserveForRun } from "@server/modules/credit/credit-precheck.service.js";
+export { explainHoldRefusal, precheckAgentTurn, precheckCredits, reserveForRun, reserveForRunIn } from "@server/modules/credit/credit-precheck.service.js";
 export * as creditViewService from "@server/modules/credit/credit-view.service.js";
 export {
   assertStorageAllowance,
@@ -48,6 +47,7 @@ export * as projectJoinRequestService from "@server/modules/project-join-request
 export * as notificationService from "@server/modules/notification/notification.service.js";
 export * as studioService from "@server/modules/studio/studio.service.js";
 export * as textToolService from "@server/modules/text-tool/text-tool.service.js";
+export * as miniToolPlannedRunService from "@server/modules/mini-tool/planned-run.js";
 export * as webAnimationExecutionService from "@server/modules/web-animation/web-animation-execution.service.js";
 export * as documentVersionService from "@server/modules/document-version/document-version.service.js";
 

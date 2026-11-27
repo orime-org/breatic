@@ -35,7 +35,8 @@ const V2 = 'v2';
 const V3 = 'v3';
 
 const VIDEO_SOURCE: TimelineVideoSource = {
-  id: '10000000-0000-4000-8000-000000000001', kind: 'video', assetId: '20000000-0000-4000-8000-000000000001',
+  id: '10000000-0000-4000-8000-000000000001', kind: 'video', url: 'https://cdn.example/assets/clip.mp4', coverUrl: null,
+  name: 'clip.mp4', mimeType: 'video/mp4', width: 1920, height: 1080,
   timebase: FPS, extentFrames: 240, durationSeconds: '10', durationOrigin: 'registered',
 };
 const VIDEO: TimelineVideoClip = {
@@ -238,7 +239,7 @@ type PooledLayer = TimelineWebLayer & { role?: 'visible' | 'premount' | 'idle'; 
 
 // `web_animation.preview_premount_ms` (2000) at 24 fps: video clips premount as far ahead as web copies do.
 const VIDEO_PREMOUNT_FRAMES = 48;
-const NO_VIDEO_LAYERS: ReadonlyArray<{ clipId: string; fileUrl: string | null; coverUrl: string | null; state: 'loading' | 'ready' | 'failed' }> = [];
+const NO_VIDEO_LAYERS: ReadonlyArray<{ clipId: string; fileUrl: string; coverUrl: string | null }> = [];
 
 /**
  * The video layers the Space hands the playback at a frame (#1410 design §6.2): every video clip covering it or
@@ -248,12 +249,12 @@ const NO_VIDEO_LAYERS: ReadonlyArray<{ clipId: string; fileUrl: string | null; c
  * @returns The layers.
  * @throws {never} Never.
  */
-function videoLayersAt(document: TimelineDocumentV1, frame: number): Array<{ clipId: string; fileUrl: string | null; coverUrl: string | null; state: 'ready' }> {
+function videoLayersAt(document: TimelineDocumentV1, frame: number): Array<{ clipId: string; fileUrl: string; coverUrl: string | null }> {
   const order = new Map(Object.values(document.tracks).map((track) => [track.id, track.order]));
   return Object.values(document.clips)
     .filter((clip) => clip.kind === 'video' && frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - VIDEO_PREMOUNT_FRAMES)
     .sort((a, b) => (order.get(a.trackId) ?? 0) - (order.get(b.trackId) ?? 0))
-    .map((clip) => ({ clipId: clip.id, fileUrl: `https://cdn.test/${clip.id}.mp4`, coverUrl: null, state: 'ready' as const }));
+    .map((clip) => ({ clipId: clip.id, fileUrl: `https://cdn.test/${clip.id}.mp4`, coverUrl: null }));
 }
 
 /**

@@ -32,6 +32,7 @@ import {
   type MentionListRef,
 } from '@web/features/reference-mention/MentionList';
 import { wasLastChangeLocalUserInput } from '@web/features/reference-mention/reference-mention-local-input';
+import { KEEPS_DIALOG_OPEN } from '@web/lib/keeps-dialog-open';
 
 /**
  * What opens the list: `@`, and the full-width at sign (U+FF20) a Chinese,
@@ -79,6 +80,23 @@ export interface MentionSuggestionInput<T> {
   refreshRef?: RefreshHandleRef;
   /** Whether the last transaction was a local keystroke; injectable for tests. */
   isLocalUserInput?: (editor: Editor) => boolean;
+}
+
+/** The `@` list open on each editor: whether it is on screen, and how to close it. */
+const openLists = new WeakMap<Editor, { onScreen:() => boolean; close: () => void }>();
+
+/**
+ * Closes the `@` list an editor has on screen, for a host that takes Escape
+ * before the editor does (a modal dialog decides Escape at the document,
+ * and a key it claims never reaches the editor).
+ * @param editor - The editor.
+ * @returns True when a list was on screen and is now closed.
+ */
+export function closeMentionList(editor: Editor): boolean {
+  const list = openLists.get(editor);
+  if (list === undefined || !list.onScreen()) return false;
+  list.close();
+  return true;
 }
 
 /**
@@ -296,6 +314,10 @@ export function makeMentionSuggestion<T>(
             applyVisibility();
           };
           el = document.createElement('div');
+          // Inside a modal dialog's text it still takes presses (inner#2115).
+          el.setAttribute(KEEPS_DIALOG_OPEN, '');
+          el.style.pointerEvents = 'auto';
+          openLists.set(props.editor, { onScreen, close: () => exitSuggestion(props.editor.view) });
           el.style.position = 'absolute';
           el.style.top = '0';
           el.style.left = '0';
@@ -454,6 +476,7 @@ export function makeMentionSuggestion<T>(
             onEditorClick = null;
           }
           if (input.refreshRef) input.refreshRef.current = null;
+          openLists.delete(props.editor);
           wanted = false;
           showable = false;
           latestProps = null;

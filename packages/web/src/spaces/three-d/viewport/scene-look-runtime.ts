@@ -166,7 +166,7 @@ export class SceneLookRuntime {
     if (this.highlight?.key.startsWith(`${id}:`)) this.setHighlight(null, null, null);
     releaseLook(state.root);
     const textures = this.deps.textures();
-    for (const [assetId, texture] of state.held) textures?.release(assetId, texture);
+    for (const [url, texture] of state.held) textures?.release(url, texture);
     this.deps.onPictures(id, null);
   }
 
@@ -237,13 +237,13 @@ export class SceneLookRuntime {
     state.appliedKey = key;
     const { programChanged } = applyLook(state.root, model.table, state.look, {
       themeColor,
-      picture: (assetId) => (state.states.get(assetId) === 'ready' ? state.held.get(assetId) ?? null : null),
+      picture: (url) => (state.states.get(url) === 'ready' ? state.held.get(url) ?? null : null),
     });
     if (programChanged) this.deps.onProgramChanged(state.root);
     const states = [...state.states];
     this.deps.onPictures(id, states.length === 0 ? null : {
       retry: states.some(([, status]) => status === 'failed'), over: states.some(([, status]) => status === 'over'),
-      shown: states.filter(([, status]) => status === 'ready').map(([assetId]) => assetId),
+      shown: states.filter(([, status]) => status === 'ready').map(([url]) => url),
     });
     this.deps.onChanged(id);
   }
@@ -260,26 +260,26 @@ export class SceneLookRuntime {
     const textures = this.deps.textures();
     const model = lookModelOf(state.root);
     const wanted = picturesOf(state.look);
-    for (const [assetId, texture] of [...state.held]) {
-      if (!wanted.includes(assetId)) {
-        state.held.delete(assetId);
-        textures?.release(assetId, texture);
+    for (const [url, texture] of [...state.held]) {
+      if (!wanted.includes(url)) {
+        state.held.delete(url);
+        textures?.release(url, texture);
       }
     }
-    for (const assetId of [...state.states.keys()]) if (!wanted.includes(assetId)) state.states.delete(assetId);
+    for (const url of [...state.states.keys()]) if (!wanted.includes(url)) state.states.delete(url);
     if (!textures || !model || wanted.length === 0) {
       this.apply(id, state);
       return;
     }
     /**
      * Whether a picture keeps its failure without a new request.
-     * @param assetId - The picture.
+     * @param url - The picture.
      * @returns True for a failed picture outside a retry.
      */
-    const stillFailed = (assetId: string): boolean => !retrying && state.states.get(assetId) === 'failed';
-    for (const assetId of wanted) if (!state.held.has(assetId) && !stillFailed(assetId)) state.states.set(assetId, 'loading');
+    const stillFailed = (url: string): boolean => !retrying && state.states.get(url) === 'failed';
+    for (const url of wanted) if (!state.held.has(url) && !stillFailed(url)) state.states.set(url, 'loading');
     this.apply(id, state);
-    const sizes = new Map(await Promise.all(wanted.map(async (assetId) => [assetId, stillFailed(assetId) ? null : await textures.size(assetId, this.deps.limits().maxPictureHeaderBytes)] as const)));
+    const sizes = new Map(await Promise.all(wanted.map(async (url) => [url, stillFailed(url) ? null : await textures.size(url, this.deps.limits().maxPictureHeaderBytes)] as const)));
     if (run !== state.run || this.objects.get(id) !== state) return;
     const limits = this.deps.limits();
     const input: LookTextureInput = { ownBytes: model.ownBytes, look: state.look, sizes, limits,
@@ -292,35 +292,35 @@ export class SceneLookRuntime {
     // An unusable picture leaves its part first and is released after, so no material shows a closed image.
     const dropped: Array<[string, Texture]> = [];
     const toLoad: string[] = [];
-    for (const assetId of wanted) {
-      const verdict = verdicts.get(assetId);
+    for (const url of wanted) {
+      const verdict = verdicts.get(url);
       if (!verdict || !verdict.usable) {
-        const held = state.held.get(assetId);
+        const held = state.held.get(url);
         if (held) {
-          state.held.delete(assetId);
-          dropped.push([assetId, held]);
+          state.held.delete(url);
+          dropped.push([url, held]);
         }
-        state.states.set(assetId, verdict && !verdict.usable && verdict.reason !== 'unknown' ? 'over' : 'failed');
-      } else if (state.held.has(assetId)) state.states.set(assetId, 'ready');
-      else toLoad.push(assetId);
+        state.states.set(url, verdict && !verdict.usable && verdict.reason !== 'unknown' ? 'over' : 'failed');
+      } else if (state.held.has(url)) state.states.set(url, 'ready');
+      else toLoad.push(url);
     }
     if (dropped.length > 0) {
       this.apply(id, state);
-      for (const [assetId, held] of dropped) textures.release(assetId, held);
+      for (const [url, held] of dropped) textures.release(url, held);
     }
     let failed = false;
-    await Promise.all(toLoad.map(async (assetId) => {
+    await Promise.all(toLoad.map(async (url) => {
       try {
-        const texture = await textures.acquire(assetId, limits.maxTextureEdge);
+        const texture = await textures.acquire(url, limits.maxTextureEdge);
         if (run !== state.run || this.objects.get(id) !== state) {
-          textures.release(assetId, texture);
+          textures.release(url, texture);
           return;
         }
-        state.held.set(assetId, texture);
-        state.states.set(assetId, 'ready');
+        state.held.set(url, texture);
+        state.states.set(url, 'ready');
       } catch {
         failed = true;
-        if (run === state.run) state.states.set(assetId, 'failed');
+        if (run === state.run) state.states.set(url, 'failed');
       }
       if (run === state.run) this.apply(id, state);
     }));

@@ -18,7 +18,9 @@ import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.j
 import { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
 import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamics.js";
 import { PEAK_LIMITER, buildEqFilter } from "@shared/audio-eq.js";
+import { shownFilters } from "@ingest/shown-picture.js";
 import { pickMediaMetadata, realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
+import { ffmpegSeconds, landingDemuxer, readMicroseconds, seekBeforeLanding, seekLandingArgs } from "@ingest/probe-command.js";
 
 /** The container's run endpoint, which the Durable Object posts a job to. */
 export const RUN_PATH = "/run";
@@ -51,7 +53,7 @@ const SOURCE = ["-protocol_whitelist", "file"];
  * An odd-sized source is legal, and the encoders, vidstab and zscale all need
  * even sides; every chain that re-encodes starts here.
  */
-const EVEN = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
+const EVEN = "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1";
 
 /**
  * Round down to an even number of at least 2, which libx264 needs.
@@ -138,6 +140,19 @@ function hdrFilter(transfer: string, source: ProbeReport): string {
 }
 
 /**
+ * The filters that take the source's frames, as FFmpeg's default decode gives them, to the
+ * picture it shows (`shownFilters`: a non-square sample aspect ratio scaled to the shown size), followed by the given
+ * filters; a crop rectangle from the panel is in that shown picture.
+ * @param source - The source's probe.
+ * @param filters - The operation's own video filters.
+ * @returns The filter chain text.
+ */
+function shown(source: ProbeReport, filters: string): string {
+  const picture = shownFilters(source);
+  return picture === null ? filters : `${picture},${filters}`;
+}
+
+/**
  * The source's picture into the output: copied when an mp4 plays it as it is,
  * otherwise encoded as H.264 on even sides.
  * @param source - The source's probe.
@@ -145,7 +160,7 @@ function hdrFilter(transfer: string, source: ProbeReport): string {
  */
 function videoOut(source: ProbeReport): string[] {
   const codec = realVideoStream(source)?.codecName ?? "";
-  if (!MP4_VIDEO.has(codec)) return ["-vf", EVEN, ...H264];
+  if (!MP4_VIDEO.has(codec)) return ["-vf", shown(source, EVEN), ...H264];
   // An HEVC stream copied into mp4 is tagged hev1 by default, which Safari does not open.
   return codec === "hevc" ? ["-c:v", "copy", "-tag:v", "hvc1"] : ["-c:v", "copy"];
 }
@@ -156,7 +171,7 @@ function videoOut(source: ProbeReport): string[] {
  * @param source - The source's probe.
  * @returns The audio arguments.
  */
-function audioOut(source: ProbeReport): string[] {
+export function audioOut(source: ProbeReport): string[] {
   const audio = source.streams.find((stream) => stream.codecType === "audio");
   return audio === undefined || MP4_AUDIO.has(audio.codecName ?? "") ? ["-c:a", "copy"] : AAC;
 }
@@ -279,7 +294,7 @@ export function outputRefusal(probe: ProbeReport, medium: "audio" | "video"): Co
  * @throws {Error} When a param the operation needs is missing.
  */
 export function opRuns(
-  op: VideoOp,
+  op: Exclude<VideoOp, "cut">,
   params: Record<string, unknown>,
   input: string,
   output: string,
@@ -292,7 +307,7 @@ export function opRuns(
       const rect = params.rect as { x: number; y: number; w: number; h: number } | null;
       if (rect === null) return [[...head, ...videoOut(source), ...audioOut(source), ...FASTSTART, output]];
       const crop = `crop=${even(rect.w)}:${even(rect.h)}:${Math.floor(rect.x)}:${Math.floor(rect.y)}`;
-      return [[...head, "-vf", crop, ...audioOut(source), ...FASTSTART, output]];
+      return [[...head, "-vf", shown(source, crop), ...H264, ...audioOut(source), ...FASTSTART, output]];
     }
     case "speed": {
       const rate = numberOf(params, "rate");
@@ -300,7 +315,7 @@ export function opRuns(
         [
           ...head,
           "-filter:v",
-          `${EVEN},setpts=PTS/${rate.toFixed(6)}`,
+          shown(source, `${EVEN},setpts=PTS/${rate.toFixed(6)}`),
           "-filter:a",
           atempoChain(rate),
           ...H264,
@@ -310,39 +325,18 @@ export function opRuns(
         ],
       ];
     }
-    case "cut": {
-      const range = params.range as { start: number; end: number };
-      return [
-        [
-          ...QUIET,
-          "-ss",
-          range.start.toFixed(3),
-          "-to",
-          range.end.toFixed(3),
-          ...SOURCE,
-          "-i",
-          input,
-          "-vf",
-          EVEN,
-          ...H264,
-          ...AAC,
-          ...FASTSTART,
-          output,
-        ],
-      ];
-    }
     case "adjust":
-      return [[...head, "-vf", `${EVEN},${buildAdjustVideoFilter(parseAdjustValue(params.value))}`, ...H264, ...audioOut(source), ...FASTSTART, output]];
+      return [[...head, "-vf", shown(source, `${EVEN},${buildAdjustVideoFilter(parseAdjustValue(params.value))}`), ...H264, ...audioOut(source), ...FASTSTART, output]];
     case "audio_denoise":
       return [[...head, ...videoOut(source), "-af", denoiseFilter(numberOf(params, "intensity")), ...AAC, ...FASTSTART, output]];
     case "stabilize": {
       const transforms = `${workDir}/transforms.trf`;
       return [
-        [...head, "-vf", `${EVEN},vidstabdetect=shakiness=${numberOf(params, "shakiness")}:result=${transforms}`, "-f", "null", "-"],
+        [...head, "-vf", shown(source, `${EVEN},vidstabdetect=shakiness=${numberOf(params, "shakiness")}:result=${transforms}`), "-f", "null", "-"],
         [
           ...head,
           "-vf",
-          `${EVEN},vidstabtransform=smoothing=${numberOf(params, "smoothing")}:input=${transforms}`,
+          shown(source, `${EVEN},vidstabtransform=smoothing=${numberOf(params, "smoothing")}:input=${transforms}`),
           ...H264,
           ...audioOut(source),
           ...FASTSTART,
@@ -353,7 +347,7 @@ export function opRuns(
     case "hdr": {
       const transfer = TRANSFER[params.transfer as keyof typeof TRANSFER];
       if (transfer === undefined) throw new Error("transfer is not pq or hlg");
-      const filter = hdrFilter(transfer, source);
+      const filter = shown(source, hdrFilter(transfer, source));
       return [
         [
           ...head,
@@ -395,7 +389,7 @@ function denoiseFilter(intensity: number): string {
 
 /** One program and its arguments. */
 export interface Command {
-  readonly program: "ffmpeg" | "sox";
+  readonly program: "ffmpeg" | "ffprobe" | "sox";
   readonly args: string[];
 }
 
@@ -850,5 +844,50 @@ export function opSteps(
     return op === "join" ? joinVideoSteps(params, clips, output) : joinAudioSteps(params, clips, output);
   }
   if (AUDIO_OPS.has(op)) return audioSteps(op as AudioOp, params, input, output, source);
-  return opRuns(op as VideoOp, params, input, output, workDir, source).map((args) => ({ kind: "run", program: "ffmpeg", args }));
+  if (op === "cut") return cutSteps(params, input, output, source);
+  return opRuns(op as Exclude<VideoOp, "cut">, params, input, output, workDir, source).map((args) => ({ kind: "run", program: "ffmpeg", args }));
+}
+
+/**
+ * Cut the range the panel set, on the source's timeline from the file's start as FFmpeg counts it (its format start time
+ * added). The mov demuxer of an MP4 with B-frames and no edit list can land an input seek on a keyframe presented after
+ * the cut's start, so the steps read the start time, probe where the seek lands and move it back until it lands at or
+ * before the start (`seekBeforeLanding`); the cut itself then drops the frames between the seek and the start.
+ * @param params - The cut's params: `range` in seconds.
+ * @param input - The local copy of the source.
+ * @param output - The file the cut writes.
+ * @param source - The source's probe: its picture as shown.
+ * @returns The measuring step that starts the chain.
+ * @throws {never} Building the steps cannot fail.
+ */
+function cutSteps(params: Record<string, unknown>, input: string, output: string, source: ProbeReport): RunStep[] {
+  const range = params.range as { start: number; end: number };
+  const [fromUs, toUs] = [range.start, range.end].map((seconds) => BigInt(seconds.toFixed(3).replace(".", "")) * 1000n) as [bigint, bigint];
+  // ffprobe writes its answer to stderr, which is what a measuring step hands on.
+  const answer = (args: string[]): string[] => [...args, "-o", "pipe:2"];
+  const landing = (targetUs: bigint, seekUs: bigint, lastDtsUs: bigint | null): RunStep => ({
+    kind: "measure",
+    program: "ffprobe",
+    args: answer(seekLandingArgs(input, seekUs, "own-file")),
+    then: (stderr) => {
+      const next = seekBeforeLanding(targetUs, seekUs, stderr, lastDtsUs);
+      if (next !== null) return [landing(targetUs, next.seekUs, next.dtsUs)];
+      return [{
+        kind: "run",
+        program: "ffmpeg",
+        args: [...QUIET, "-seek_timestamp", "1", "-ss", ffmpegSeconds(seekUs), ...SOURCE, ...landingDemuxer(stderr), "-i", input,
+          ...(seekUs < targetUs ? ["-ss", ffmpegSeconds(targetUs - seekUs)] : []), "-t", ffmpegSeconds(toUs - fromUs),
+          "-vf", shown(source, EVEN), ...H264, ...AAC, ...FASTSTART, output],
+      }];
+    },
+  });
+  return [{
+    kind: "measure",
+    program: "ffprobe",
+    args: answer(["-v", "error", ...SOURCE, "-show_entries", "format=start_time", "-of", "csv=p=0", input]),
+    then: (stderr) => {
+      const targetUs = fromUs + (readMicroseconds(stderr) ?? 0n);
+      return [landing(targetUs, targetUs, null)];
+    },
+  }];
 }

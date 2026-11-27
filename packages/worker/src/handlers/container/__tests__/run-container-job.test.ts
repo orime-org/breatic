@@ -72,7 +72,7 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
 }));
 
 import { logger } from "@breatic/core";
-import { UploadHttpError } from "@breatic/shared";
+import { DEFAULT_TIMEOUT_MS, UploadHttpError } from "@breatic/shared";
 import { miniToolById, type MiniToolSpec } from "@breatic/shared/mini-tools";
 
 import { ContainerJobFailed, runContainerJob } from "@worker/handlers/container/run-container-job.js";
@@ -267,6 +267,23 @@ describe("runContainerJob", () => {
     const [result] = await runContainerJob(CUT, "cut", INPUT);
 
     expect(result).toMatchObject({ outputs: [{ url: "https://cdn/out.mp4" }] });
+  });
+
+  // Reading what ingest holds starts no new work, so a read started 1 ms before the report window ends is not cut at it.
+  it("files a job that ended when its read starts 1 ms before the report window ends and takes 5 ms", async () => {
+    h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: DEADLINE, outputs: [OUT] };
+    h.now.value = DEADLINE + 2 * 1000 - 1;
+    // As the real transport: a read that outlasts its bound is aborted with the bound's DeadlinePassed.
+    h.readMiniToolJob.mockImplementationOnce(async (_base: string, _secret: string, _class: string, _id: string, bound?: { timeoutMs: number }) => {
+      h.now.value += 5;
+      if (5 > (bound?.timeoutMs ?? DEFAULT_TIMEOUT_MS)) throw new DeadlinePassed();
+      return { state: "done", outputs: [MEASURED], usage: USAGE };
+    });
+
+    const [result] = await runContainerJob(CUT, "cut", INPUT);
+
+    expect(result).toMatchObject({ outputs: [{ url: "https://cdn/out.mp4" }] });
+    expect(h.submitMiniToolJob).not.toHaveBeenCalled();
   });
 
   // A retried attempt after a failed step tells the row what the job said, not a generic cause.

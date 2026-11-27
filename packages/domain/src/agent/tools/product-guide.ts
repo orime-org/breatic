@@ -118,6 +118,16 @@ function quoted(message: string): string {
 }
 
 /**
+ * How many segments one split run makes in this deployment.
+ * @returns The clause with its leading separator, empty where the deployment offers no split.
+ * @throws {Error} When `config/mini-tools.yaml` cannot be read.
+ */
+function splitLimit(): string {
+  const split = getMiniToolsConfig().executions["video.split"];
+  return split === undefined ? "" : `; one run makes up to ${String(split.max_outputs)} segments, and with more the panel says the limit in red and Run says it instead of running`;
+}
+
+/**
  * Where pasted content lands in the document, one sentence per rule. Each id
  * has a paste beside the same sentence in the web examples
  * (`packages/web/src/spaces/document/__tests__/document-paste-guide.test.ts`),
@@ -677,7 +687,12 @@ export function renderProductGuide(): string {
       `in smaller text, ${quoted(t("canvas.nodePlaceholder.rightClickHint"))}: double-click it to pick a file. An ` +
       `empty text node shows its icon, ${quoted(t("canvas.nodePlaceholder.text"))} and the same smaller line; ` +
       "double-clicking it, or the text of a text node that has some, lets you type (an empty one then shows " +
-      `${quoted(t("canvas.textNode.editorPlaceholder"))}); Esc or clicking elsewhere ends typing. From the ` +
+      `${quoted(t("canvas.textNode.editorPlaceholder"))}); Esc or clicking elsewhere ends typing. Pointing at a text ` +
+      `node shows ${quoted(t("canvas.textFullscreen.edit"))} (two arrows pointing out to opposite corners) above its ` +
+      `top-right corner, ${quoted(t("canvas.textFullscreen.view"))} on a locked node or for someone who may only view: ` +
+      "it opens the text in a large window over the page, to read and to type in, with " +
+      `${quoted(t("canvas.textFullscreen.readOnly"))} after the title when the text cannot be changed; ` +
+      `${quoted(t("canvas.textFullscreen.exit"))} at the window's top right, Esc or clicking outside it closes it. From the ` +
       "keyboard, Tab moves onto a node, and Enter there only selects it, except on a text node, where it starts " +
       "typing. On an empty picture, video or sound node, press Tab once more to reach its " +
       `${quoted(t("canvas.nodePlaceholder.image"))} line, and Enter or Space there opens the file picker. To replace ` +
@@ -708,7 +723,10 @@ export function renderProductGuide(): string {
       "dark backdrop, a video going on from where it was, and an X at the top right of the screen, Escape or " +
       "a click on the dark area closes it. The large preview that pops up on hovering a small picture or video " +
       "anywhere (a generate panel slot, an @ reference, node history, a chat attachment) has the same button " +
-      "at its top-right corner.",
+      "at its top-right corner. Hovering a video node's player also shows a camera button at the end of its controls; " +
+      `its menu offers ${quoted(t("canvas.miniTool.videoUI.first"))}, ${quoted(t("canvas.miniTool.videoUI.last"))} and ` +
+      `${quoted(t("canvas.miniTool.videoUI.current"))}, and choosing one opens ${quoted(t("canvas.miniTool.video.extract-frames.label"))} ` +
+      "on that node with that frame chosen.",
     "Every picture, video, sound and text node shows its name just above its top-left corner, after a type " +
     "icon. A node the user makes is named Text, Image, Audio or Video in every language, and a node placed " +
       "from a proposal card has the name the card showed. A copied node or group is named COPY- followed by the " +
@@ -893,7 +911,12 @@ export function renderProductGuide(): string {
       "was clicked, Esc deselects the node and the panel closes with it. When the model list cannot be loaded, the panel " +
       `does not open and a message says why: ${quoted(t("canvas.generatePanel.catalogUnavailable"))}, or ` +
       `${quoted(t("canvas.generatePanel.catalogOffline"))}`,
-    `Left of the X is a button with a layout icon whose tip reads ${quoted(t("canvas.template.title"))}. It ` +
+    `Left of the X is ${quoted(t("canvas.textFullscreen.editPrompt"))} (two arrows pointing out to opposite corners), ` +
+      "shown while the panel has a prompt box: it opens the prompt box on show (the open shot, or the lyrics or style " +
+      "box) in a large window over the page, where it is typed in as in the panel, @ included, while the box in the " +
+      `panel reads ${quoted(t("canvas.textFullscreen.inProgress"))}; ${quoted(t("canvas.textFullscreen.exit"))} at the ` +
+      "window's top right, Esc or clicking outside it closes it.",
+    `Left of that is a button with a layout icon whose tip reads ${quoted(t("canvas.template.title"))}. It ` +
       "opens a list under that heading of creative goals; pointing at a goal opens the templates for it, each a " +
       `name with a line under it. ${templateMenuLine("image", "A picture node")} ${templateMenuLine("video", "A video node")} ` +
       `${templateMenuLine("audio", "A sound node")} A template whose model this ` +
@@ -991,11 +1014,15 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.task.kind.upload"))} with an up arrow, followed by the file's name; ` +
       `${quoted(t("canvas.task.kind.generate"))} with a sparkle, ${quoted(t("canvas.task.kind.understand"))}, ` +
       `or ${quoted(t("canvas.task.kind.transcribe"))} with a caption icon, each ` +
-      "followed by the model's name; or a tool's own icon and name, with nothing after it. At the line's right end is who started it, " +
+      "followed by the model's name; or a tool's own icon and name, with nothing after it. A video focus crop's row sits on the node " +
+      `whose panel made the crop and reads ${quoted(t("canvas.generatePanel.focusCropTag"))} with a crop icon, followed by the ` +
+      "source node's name. At the line's right end is who started it, " +
       `${quoted(t("canvas.task.you"))} for your own. A done row offers ` +
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
-      `hand, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
+      `hand, and ${quoted(t("canvas.task.action.clear"))}; a video tool's failed row (including one that says ` +
+      `${quoted(t("canvas.task.failure.cancelled"))}) or expired row offers only ${quoted(t("canvas.task.action.clear"))}; ` +
+      "run the tool again from its panel; any other expired one offers " +
       `${quoted(t("canvas.task.action.view"))} when a late result came, which opens the node's history at that ` +
       `result so you can restore it, and ${quoted(t("canvas.task.action.clear"))}.`,
     "Each person runs only so many tasks at once, a number that comes with the membership of the Studio's admin; " +
@@ -1261,6 +1288,54 @@ export function renderProductGuide(): string {
       "its right with every tool for that kind of node, each an icon and a name. Text, 3D and web nodes, groups and " +
       "notes have no such row. The tools are:",
     ...miniToolLines(),
+    "Video tools keep their settings when their panel is closed and reopened; undo and redo restore parameter edits. " +
+      `A saved setting that cannot be read shows ${quoted(t("canvas.miniTool.videoUI.unsupportedDraft"))} with ` +
+      `${quoted(t("canvas.miniTool.videoUI.rebuildDraft"))}. A changed source shows ` +
+      `${quoted(t("canvas.miniTool.videoUI.sourceChanged"))} with ${quoted(t("canvas.miniTool.videoUI.useCurrentSource"))}; ` +
+      "review the settings after switching to the current source. A source that cannot be read shows " +
+      `${quoted(t("canvas.miniTool.videoUI.sourceUnavailable"))}. Settings saved on an earlier version of the same video ` +
+      `keep their values and show ${quoted(t("canvas.miniTool.videoUI.videoUpdated"))} at the top of the panel with ` +
+      `${quoted(t("canvas.miniTool.videoUI.applyToVideo"))}; until it is pressed the tool cannot run or detect scenes. Pressing ` +
+      `it while a cut lies past the updated video's end shows ${quoted(t("canvas.miniTool.videoUI.settingsOutOfRange"))} and ` +
+      "marks that cut's row red; move or remove the cut, then press it again.",
+    `While a video is being prepared, its tools show ${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} and ` +
+      "cannot run yet; the node plays the original meanwhile when the browser can, and otherwise shows its cover with " +
+      `${quoted(t("canvas.miniTool.videoUI.preparingVideo"))}. The node shows a preparation failure itself too, with the same ` +
+      "words and Retry as the panel, and a prepared video whose playback cannot load shows " +
+      `${quoted(t("canvas.miniTool.videoUI.mediaError"))} with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
+      `A tool panel's heading says how many outputs a run makes, such as ${quoted(t("canvas.miniTool.videoUI.outputCount", { count: 3 }))}; ` +
+      `a time that cannot be read shows ${quoted(t("canvas.miniTool.videoUI.invalidNumber"))} and the tool cannot run until it is fixed; ` +
+      `while the connection is lost the panel says ${quoted(t("canvas.miniTool.videoUI.connectionUnavailable"))} and takes no edits. ` +
+      "If preparing fails for a reason " +
+      `that may pass, the panel shows ${quoted(t("canvas.miniTool.videoUI.preparationFailed"))}, or ` +
+      `${quoted(t("canvas.miniTool.videoUI.mediaError"))} when the prepared video cannot be shown, with ` +
+      `${quoted(t("canvas.task.action.retry"))}; Retry stays busy until the video's facts have refreshed, and ` +
+      "closing the panel does not cancel accepted work. A video longer than can be prepared shows " +
+      `${quoted(t("canvas.miniTool.videoUI.tooLongToPrepare"))} and other unusable content shows ` +
+      `${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))}, both without Retry.`,
+    `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.first"))}, ` +
+      `${quoted(t("canvas.miniTool.videoUI.last"))} and ${quoted(t("canvas.miniTool.videoUI.current"))} sit side by side in one row, ` +
+      "and, once the tool has settings for this video, stay choosable while it is being prepared; only Run waits for it. " +
+      `Current requires an actually displayed frame. Until one is available, ` +
+      `${quoted(t("canvas.miniTool.videoUI.currentFrameUnavailable"))} explains why Current cannot run; ` +
+      `the other modes can still run. ` +
+      "The current-frame mode uses the frame actually shown by the player. One preview of the selected frame fills " +
+      "the row below the modes; click it to move the player there; if it cannot be read it shows " +
+      `${quoted(t("canvas.miniTool.videoUI.mediaError"))} with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
+      `In ${quoted(t("canvas.miniTool.video.split.label"))}, ${quoted(t("canvas.miniTool.videoUI.detectScenes"))} ` +
+      `finds candidate cut points within this same tool; after a detection the button reads ${quoted(t("canvas.miniTool.videoUI.detectAgain"))}, and a detection that failed shows ` +
+      `${quoted(t("canvas.miniTool.videoUI.detectionError"))} with ${quoted(t("canvas.task.action.retry"))}, which detects again. Below the button, once the video's frames are read, each cut is a numbered ` +
+      "handle on the filmstrip: drag it, or click it and move it one frame with the arrow keys or remove it with Delete; " +
+      "clicking the strip elsewhere moves the player there. With no cuts the panel says " +
+      `${quoted(t("canvas.miniTool.videoUI.noCuts"))} A detection that finishes after the cuts were edited leaves the edit ` +
+      `as it is and says ${quoted(t("canvas.miniTool.videoUI.detectionSuperseded"))} ` +
+      "Under the strip a line counts the cut points and segments, " +
+      `${quoted(t("canvas.miniTool.videoUI.atCursor"))} adds a cut at the player cursor (greyed where one already is), each cut's ` +
+      "seconds can be edited in its own numbered row, and the bin beside a cut removes it. A bar below has one numbered " +
+      "button per segment, as wide as its share of the video; clicking one plays exactly that segment in the node's player, " +
+      `with ${quoted(t("canvas.miniTool.videoUI.stopPreview"))} beside its range while it plays. ` +
+      "The segment count reflects the complete split plan" + splitLimit() + ". " +
+      `A segment that cannot play says ${quoted(t("canvas.miniTool.videoUI.mediaError"))}.`,
     "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +
       "together. The panel is headed with the tool's name and holds that tool's settings, a box to pick a second " +
       "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +
@@ -1355,13 +1430,15 @@ export function renderProductGuide(): string {
       `With one clip the panel says ${quoted(t("canvas.miniTool.panel.joinNeedsClip"))} and the arrow stays greyed out. ` +
       `Opened on more clips than a join takes, it says how many it takes, such as ${quoted(t("canvas.miniTool.panel.joinTooMany", { n: joinCap }))}, under the row and again on pressing the arrow, until clips are taken out. The result is ` +
       "one new node to the right of the clip furthest right, connected to every clip still on the canvas. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
-      `grid split are free, the tools marked (${BILLED_BY_RUN_TIME}) in this section's list are billed that way, and the others show an ` +
-      "estimate. The X, Esc or a click on empty canvas closes the panel; in " +
+      `grid split are free, ${quoted(t("canvas.miniTool.video.extract-frames.label"))} uses no credits and its bottom line shows ` +
+      `${quoted(t("canvas.miniTool.panel.free"))}, the tools marked (${BILLED_BY_RUN_TIME}) in this section's list are billed that way, ` +
+      "and the others show an estimate. The X, Esc or a click on empty canvas closes the panel; in " +
       `${quoted(t("canvas.miniTool.image.mark.label"))}, Esc first leaves the text being typed, then lets go of ` +
       "the selected object, and only then closes the panel. While a tool that draws on the picture itself is open " +
       "(a crop box, an expand frame, the grid's lines and tiles, markup or a drawing), and during a focus crop, the " +
       "arrow keys pressed on the node and Cmd or Ctrl with C, V or D do nothing, so the node stays put and the panel " +
-      "stays open; text being typed and the controls on the node, such as a player's seek bar, keep their own keys. " +
+      "stays open; text being typed keeps its own keys. A video's player bar is hidden while a crop box is on it, " +
+      "and on every video during a focus crop. " +
       "Pressing the arrow puts the result in new nodes to " +
       "the right of the source, joined to it by a line and named after it (such as CROP- followed by its name); " +
       `${quoted(t("canvas.miniTool.image.grid.label"))} cuts only the picked tiles and lays each out at the row and ` +
@@ -1386,7 +1463,15 @@ export function renderProductGuide(): string {
       "choose the frame, and the crop is a still picture of that frame. After " +
       `${quoted(t("canvas.generatePanel.focusConfirm"))}, the crop joins the strip above the prompt as a chip ` +
       "with a crop icon before the source node's name (a spinner shows while it uploads); if it cannot be made, " +
-      `a message says so, such as ${quoted(t("canvas.generatePanel.focusExportFailed"))} If the source node ` +
+      `a message says so, such as ${quoted(t("canvas.generatePanel.focusExportFailed"))} A video crop is taken in ` +
+      "the background from the full-quality video and uses no credits: after confirming, it waits as a card in that " +
+      "strip until the frame is ready, and a message still says when it finishes into a full pool or fails, even with " +
+      "the panel closed. While the video is still being prepared, the bar shows " +
+      `${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} in place of its timeline, and neither a ratio nor the crop can be ` +
+      `chosen; if preparing fails it shows ${quoted(t("canvas.miniTool.videoUI.preparationFailed"))} (or ` +
+      `${quoted(t("canvas.miniTool.videoUI.sourceUnavailable"))} when the video could not be read) with ` +
+      `${quoted(t("canvas.task.action.retry"))}, or ${quoted(t("canvas.miniTool.videoUI.tooLongToPrepare"))} or ` +
+      `${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))} without it. If the source node ` +
       "is replaced, starts processing or is deleted while you crop it, the bar under it closes and a " +
       `message says what happened, such as ${quoted(t("canvas.generatePanel.focusSourceDeleted"))} Picking goes ` +
       "on: click a source node again. If the picture changed just as you pressed " +
@@ -1643,8 +1728,9 @@ export function renderProductGuide(): string {
       "Switching to another Space keeps uploading. Closing the Space while an upload runs uses the existing warning. " +
       "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
     "Several videos play together on one clock. " +
-      "A video still loading is noted at the top right of the preview with its track as loading, " +
-      `and a video that cannot be loaded is noted there with its track as unavailable, with ${quoted(t("timeline.retry"))}; ` +
+      `A video that cannot be loaded is noted at the top right of the preview with its track as unavailable, with ${quoted(t("timeline.retry"))}; ` +
+      `one still being prepared that the browser cannot play reads ${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} there, and one whose ` +
+      `preparation failed says why, with ${quoted(t("timeline.retry"))} when trying again can help; ` +
       "the other layers keep playing, and a retry reloads only that video, with the preview waiting for it before going on together. " +
       `While a video it needs is getting ready, small text above the position beside the play button reads ${quoted(t("timeline.transport.waiting"))}, and the slider, the menu and the buttons stay where they are. ` +
       `When the browser blocks playback with sound, playback pauses and says ${quoted(t("timeline.preview.playBlocked"))}`,

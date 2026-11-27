@@ -47,8 +47,10 @@ export interface TimelinePlayback {
   seek: (frame: number) => void;
   /** Each video layer's state, by clip id. */
   videoStates: ReadonlyMap<string, TimelineVideoLayerState>;
-  /** A video clip's element, for its layer to mount. */
+  /** A video clip's element, which the playback drives. */
   videoElement: (clipId: string) => HTMLVideoElement | undefined;
+  /** What a video clip's layer mounts in the frame: its element, or the renderer host of a selected version. */
+  videoSurface: (clipId: string) => HTMLElement | undefined;
   /** Load one video layer again; the preview waits for it like a newly visible one. */
   retryVideo: (clipId: string) => void;
   /** Each visible web-animation instance's state, by instance key. */
@@ -319,7 +321,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      */
     function advanceSeek(lane: VideoLane): void {
       const element = lane.element;
-      if (!lane.awaitingSeek || element.readyState < 1 || lane.layer.fileUrl === null) return;
+      if (!lane.awaitingSeek || element.readyState < 1) return;
       try {
         if (!lane.seekAssigned) {
           lane.seekAssigned = true;
@@ -342,7 +344,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      */
     function ready(lane: VideoLane): boolean {
       const element = lane.element;
-      if (lane.layer.state !== 'ready' || lane.layer.fileUrl === null || lane.fresh || lane.awaitingSeek) return false;
+      if (lane.fresh || lane.awaitingSeek) return false;
       if (inTail(lane)) {
         // At the file end HAVE_FUTURE_DATA is never reached (#1410 design §6.3).
         return atFileEnd(element) && (element.ended || element.readyState >= 2);
@@ -713,7 +715,8 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
     function retryVideo(clipId: string): void {
       const lane = controller.lanes().find((item) => item.clipId === clipId);
       if (lane === undefined) return;
-      if (lane.element.error) {
+      if (controller.restartRenderer(clipId)) controller.configure();
+      else if (lane.element.error) {
         try {
           lane.element.load();
           controller.configure();
@@ -802,5 +805,6 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
   const retryVideo = React.useCallback((clipId: string): void => actions.current?.retryVideo(clipId), []);
   const retryWeb = React.useCallback((key: string): void => actions.current?.retryWeb(key), []);
   const videoElement = React.useCallback((clipId: string): HTMLVideoElement | undefined => controller.element(clipId), [controller]);
-  return { ...snapshot, toggle, seek, videoStates, videoElement, retryVideo, webStates, retryWeb };
+  const videoSurface = React.useCallback((clipId: string): HTMLElement | undefined => controller.surface(clipId), [controller]);
+  return { ...snapshot, toggle, seek, videoStates, videoElement, videoSurface, retryVideo, webStates, retryWeb };
 }

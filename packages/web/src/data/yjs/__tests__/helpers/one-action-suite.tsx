@@ -270,9 +270,9 @@ const ADDRESS = { kind: 'address', url: 'https://i.example/x.jpg' } as const;
 
 // ───────────────────────── timeline (MS-11 to MS-15) ─────────────────────────
 
-const S1 = { ...SOURCE, id: '10000000-0000-4000-8000-000000000001', assetId: '20000000-0000-4000-8000-000000000001' };
-const S2 = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002', assetId: '20000000-0000-4000-8000-000000000002' };
-const S3 = { ...SOURCE, id: '10000000-0000-4000-8000-000000000003', assetId: '20000000-0000-4000-8000-000000000003' };
+const S1 = { ...SOURCE, id: '10000000-0000-4000-8000-000000000001', url: 'https://cdn.example/assets/source-1.mp4' };
+const S2 = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002', url: 'https://cdn.example/assets/source-2.mp4' };
+const S3 = { ...SOURCE, id: '10000000-0000-4000-8000-000000000003', url: 'https://cdn.example/assets/source-3.mp4' };
 
 const COMMANDS: Record<string, TimelineEditCommand> = {
   add_video: { operation: 'add_video', parameters: { source: S3, clip: clip(cid(9), MAIN, 200, 50, { sourceId: S3.id }) }, placement: ON } as TimelineEditCommand,

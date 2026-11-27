@@ -20,6 +20,8 @@
 
 // ── Database ─────────────────────────────────────────────────────
 export { db, rawPg, pingDb, closeDb, createPgClient } from "@core/db/client.js";
+export { MINI_TOOL_SETTLEMENT_QUEUE, MINI_TOOL_SETTLEMENT_JOB, MINI_TOOL_SETTLEMENT_DISCOVERY_JOB, miniToolSettlementWakeSchema, miniToolSettlementDiscoverySchema, type MiniToolSettlementWake, type MiniToolSettlementDiscovery } from "@core/infra/mini-tool-settlement.js";
+export { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, miniToolDeliveryWakeSchema, miniToolDeliveryDiscoverySchema, type MiniToolDeliveryWake, type MiniToolDeliveryDiscovery } from "@core/infra/mini-tool-delivery.js";
 export { onDatabaseWaitTimeout, type DatabaseWaitTimeout } from "@core/db/wait-timeouts.js";
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
@@ -46,7 +48,7 @@ export {
   writeSpaceEntry,
 } from "@core/db/yjs-bootstrap.js";
 export type { SpaceEntryInit, SpaceKind } from "@core/db/yjs-bootstrap.js";
-export { loadInitialSpaceType } from "@core/db/project-seed.repo.js";
+export { loadSeedFacts, type SeedFacts } from "@core/db/project-seed.repo.js";
 // Table values + Drizzle row types, also re-exported by name so server
 // modules can `import { projects } from "@breatic/core"`. `schema` (the
 // namespace, above) stays the canonical form for bulk access.
@@ -150,6 +152,7 @@ export {
 export {
   publishActivityNew,
   publishAssetPeaksReady,
+  publishVideoPresentationChanged,
   publishSceneLookSettled,
   publishProjectConnectionsClose,
   projectControlChannelPattern,

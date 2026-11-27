@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type * as React from 'react';
+import { Loader2 } from 'lucide-react';
 import type { StudioProjectSort } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -215,7 +216,9 @@ const STRETCH =
 
 /**
  * One project row. Its name opens the project the way the card does
- * ({@link ProjectOpenTarget}), stretched over the whole row.
+ * ({@link ProjectOpenTarget}), stretched over the whole row. A copy still being
+ * copied (inner#1706) shows a spinner for its thumbnail and "Copying" under its
+ * name, and opens nothing.
  * @param props - The row's project and columns.
  * @param props.project - The project.
  * @param props.columns - The time columns, in order.
@@ -232,7 +235,11 @@ function ProjectRow({ project, columns }: { project: ContainerProject; columns: 
     >
       <td className={`${CELL} w-px pr-0`}>
         <div className='aspect-video w-12 overflow-hidden rounded-content-sm bg-muted text-muted-foreground'>
-          {project.thumbnailUrl ? (
+          {project.copying ? (
+            <div className='flex h-full w-full items-center justify-center'>
+              <Loader2 className='size-4 animate-spin' aria-hidden />
+            </div>
+          ) : project.thumbnailUrl ? (
             <img src={project.thumbnailUrl} alt='' className='h-full w-full object-cover' loading='lazy' />
           ) : (
             <DefaultProjectCover />
@@ -241,7 +248,13 @@ function ProjectRow({ project, columns }: { project: ContainerProject; columns: 
       </td>
       <td className={`${CELL} w-full max-w-0 truncate`}>
         <ProjectOpenTarget project={project} className={STRETCH}>
-          {project.name}
+          {project.copying ? (
+            <>
+              {/* Two tight lines keep the row at the height of its one-line neighbours, so nothing moves when it is done. */}
+              <span className='block truncate leading-4'>{project.name}</span>
+              <span className='block truncate text-xs font-normal leading-3 text-muted-foreground'>{t('studio.container.card.copying')}</span>
+            </>
+          ) : project.name}
         </ProjectOpenTarget>
       </td>
       {columns.map((column) => (

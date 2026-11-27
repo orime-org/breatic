@@ -57,7 +57,7 @@ const NO_BALANCE = encodeTaskFailure('account_key_failed', { upstream: 'wavespee
  */
 function failedTask(): NodeTaskEntry {
   return {
-    id: 't-1', projectId: 'p-1', spaceId: 's-1', nodeId: 'n-1', kind: 'generation', action: 'generate', status: 'failed',
+    id: 't-1', taskId: null, projectId: 'p-1', spaceId: 's-1', nodeId: 'n-1', kind: 'generation', action: 'generate', status: 'failed',
     startedByUserId: 'u-1', startedAt: '2026-11-17T00:00:00.000Z', settledAt: '2026-11-17T00:01:00.000Z', budgetMs: 60_000,
     label: 'Seedream', errorMessage: NO_BALANCE, nodeHistoryId: null, content: null, coverUrl: null, mediaWidth: null,
     mediaHeight: null, duration: null, mimeType: null, size: null,
@@ -78,7 +78,7 @@ describe('a failed run on an account key', () => {
         <TaskRow
           entry={failedTask()}
           now={Date.parse('2026-11-17T00:02:00.000Z')}
-          hasRetryFile={false}
+          canRetry={false}
           readOnly={false}
           retrying={false}
           dismissing={false}
@@ -100,7 +100,7 @@ describe('a failed run on an account key', () => {
       errorMessage: NO_BALANCE, metadata: {}, mediaWidth: null, mediaHeight: null, duration: null, mimeType: null,
       size: null, createdAt: '2026-11-17T00:00:00.000Z',
     };
-    renderInProject(<NodeHistoryRow entry={entry} modality='image' isCurrent={false} isFocused={false} onRestore={() => {}} />);
+    renderInProject(<NodeHistoryRow entry={entry} projectId='p-1' modality='image' isCurrent={false} isFocused={false} onRestore={() => {}} />);
 
     expect(
       await screen.findByText('The Studio Admin\'s WaveSpeed Cloud key is out of balance. Ask the Studio Admin to top up at WaveSpeed Cloud.'),

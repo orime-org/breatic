@@ -15,6 +15,7 @@ import { AUDIO_PEAK_RATE } from "@shared/audio-peaks.js";
 import type { AgentPictureSpec } from "@shared/upload/agent-picture-types.js";
 import type { LongMediaJobRequest } from "@shared/media/long-media-job-types.js";
 
+import { shownFilters } from "@ingest/shown-picture.js";
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { ProbeReport, ProbeStream } from "@ingest/media-metadata.js";
 
@@ -41,24 +42,33 @@ export type ReadFrom = "object" | "own-file";
  * @param mediaKind - The source file's probed audio or video kind.
  * @param interval - The half-open source-time interval to encode.
  * @param profile - The encoding parameters frozen into this media job.
+ * @param seekUs - Where the input seek opens, at or before the interval's start (`seekNotPastLanding`); the frames
+ * between it and the start are decoded and dropped.
+ * @param demuxer - The demuxer options its seek probe opened the source with (`landingDemuxer`), so the decode lands
+ * where the probe judged.
  * @returns FFmpeg arguments that write one MP3 audio file or one fragmented MP4 video file to stdout.
- * @throws {RangeError} When the source-time interval is invalid.
+ * @throws {RangeError} When the source-time interval is invalid or the seek is after its start.
  */
 export function longMediaSegmentArgs(
   objectUrl: string,
   mediaKind: "audio" | "video",
   interval: { startUs: string; endUs: string },
   profile: LongMediaJobRequest["encodingProfile"],
+  seekUs: bigint = BigInt(interval.startUs),
+  demuxer: readonly string[] = [],
 ): string[] {
   const startUs = BigInt(interval.startUs);
   const durationUs = BigInt(interval.endUs) - startUs;
   if (durationUs <= 0n) throw new RangeError("A long-media segment interval must have positive duration.");
+  if (seekUs > startUs) throw new RangeError("A long-media segment's seek must not be after its start.");
   const args = [
     "-v", "error",
     "-protocol_whitelist", PROTOCOLS,
     "-seek_timestamp", "1",
-    "-ss", ffmpegSeconds(startUs),
+    "-ss", ffmpegSeconds(seekUs),
+    ...demuxer,
     "-i", objectUrl,
+    ...(seekUs < startUs ? ["-ss", ffmpegSeconds(startUs - seekUs)] : []),
     "-t", ffmpegSeconds(durationUs),
   ];
   if (mediaKind === "video") {
@@ -88,8 +98,112 @@ export function longMediaSegmentArgs(
   return args;
 }
 
-/** Format integer microseconds without converting source timestamps to floating point. */
-function ffmpegSeconds(microseconds: bigint): string {
+/**
+ * The mov demuxer's option to search a fragmented MP4 or MOV through its trailing mfra index. Without it the demuxer walks
+ * every top-level moof from the start, which over HTTP reads the file up to the seek; without an mfra it changes nothing.
+ * ffprobe accepts it for any input, ffmpeg only for an input the mov demuxer opens.
+ */
+export const MFRA: readonly string[] = ["-use_mfra_for", "pts"];
+
+/**
+ * The demuxer options ffmpeg opens an input with, by the format ffprobe named for it.
+ * @param formatName - ffprobe's `format_name`, a comma-separated list of demuxer names.
+ * @returns `MFRA` for an input the mov demuxer opens, otherwise none.
+ * @throws {never} Any name gives a list.
+ */
+export function demuxerOptions(formatName: string): readonly string[] {
+  return formatName.split(",").includes("mov") ? MFRA : [];
+}
+
+/**
+ * The demuxer options a decode opens its input with to land where a seek probe (`seekLandingArgs`) judged.
+ * @param answer - What `seekLandingArgs` printed; its format line names the demuxer.
+ * @returns The options the probe searched with, as ffmpeg takes them.
+ * @throws {never} An answer without a format line gives none.
+ */
+export function landingDemuxer(answer: string): readonly string[] {
+  const format = answer.split("\n").map((line) => /^"?([a-z0-9_]+(?:,[a-z0-9_]+)*)"?$/u.exec(line.trim())).find((match) => match !== null);
+  return format === undefined ? [] : demuxerOptions(format[1]!);
+}
+
+/**
+ * Build the ffprobe call that reads the first video packet an input seek to a source time lands on, searched as FFmpeg's
+ * own input seek searches it (an absolute stream time, as `-seek_timestamp 1`): that keyframe's presentation and decode
+ * times, and the input's format. A fragmented MP4 is searched through its trailing mfra index (`MFRA`); the decode the
+ * probe stands for opens the input with the same options (`landingDemuxer`), or the two land on different keyframes.
+ * @param objectUrl - Where the container reads the object.
+ * @param atUs - The seek time in microseconds.
+ * @param from - Whether that is a served object or the container's own file.
+ * @returns The argument list, without the program name; ffprobe prints `pts,dts` in seconds, then the format name.
+ * @throws {never} Building the list cannot fail.
+ */
+export function seekLandingArgs(objectUrl: string, atUs: bigint, from: ReadFrom = "object"): string[] {
+  return [
+    "-v", "error",
+    "-protocol_whitelist", protocolsFor(from),
+    ...MFRA,
+    "-select_streams", "v:0",
+    "-read_intervals", `${ffmpegSeconds(atUs)}%+#1`,
+    "-show_entries", "packet=pts_time,dts_time:format=format_name",
+    "-of", "csv=p=0",
+    objectUrl,
+  ];
+}
+
+/**
+ * The next input seek for a decode that must start no later than a target. The mov demuxer of an MP4 with B-frames and
+ * no edit list searches a seek time on the decode clock, which runs behind the presentation clock, so it can land on a
+ * keyframe presented after the target. Such a landing moves the seek back by that keyframe's presentation lead, below its
+ * decode time, so the next landing is an earlier keyframe.
+ * @param targetUs - The first presentation time the decode must reach, in microseconds.
+ * @param seekUs - The seek just probed.
+ * @param answer - What `seekLandingArgs` printed for it.
+ * @param lastDtsUs - The decode time of the keyframe the previous seek landed on, or null for the first probe.
+ * @returns The earlier seek and the decode time of the keyframe this one landed on; null when this seek stands: it lands
+ * at or before the target, on no video packet, or on the same keyframe as before (nothing earlier exists).
+ * @throws {never} An answer it cannot read keeps the seek.
+ */
+export function seekBeforeLanding(targetUs: bigint, seekUs: bigint, answer: string, lastDtsUs: bigint | null): { seekUs: bigint; dtsUs: bigint } | null {
+  // The answer's own line: a measuring step reads it from stderr, where an error line may come first.
+  const times = answer.split("\n").map((line) => /^(-?\d+\.\d{6}),(-?\d+\.\d{6})$/u.exec(line.trim())).find((match) => match !== null);
+  if (times === undefined) return null;
+  const [ptsUs, dtsUs] = [microsecondsOf(times[1]!), microsecondsOf(times[2]!)];
+  if (ptsUs <= targetUs || ptsUs <= dtsUs || (lastDtsUs !== null && dtsUs >= lastDtsUs)) return null;
+  return { seekUs: seekUs - (ptsUs - dtsUs), dtsUs };
+}
+
+/**
+ * The first line of an ffprobe answer that is one time in seconds with six decimals (`-show_entries format=start_time -of
+ * csv=p=0`), as integer microseconds.
+ * @param answer - What ffprobe printed.
+ * @returns The microseconds, or null when no line is such a time (`N/A`).
+ * @throws {never} An answer it cannot read gives null.
+ */
+export function readMicroseconds(answer: string): bigint | null {
+  const line = answer.split("\n").map((text) => text.trim()).find((text) => /^-?\d+\.\d{6}$/u.test(text));
+  return line === undefined ? null : microsecondsOf(line);
+}
+
+/**
+ * Read seconds printed with six decimals as integer microseconds.
+ * @param seconds - The printed time, such as `-0.080000`.
+ * @returns The microseconds.
+ * @throws {never} The caller passes only text its pattern matched.
+ */
+function microsecondsOf(seconds: string): bigint {
+  const negative = seconds.startsWith("-");
+  const [whole, fraction] = seconds.replace("-", "").split(".");
+  const value = BigInt(whole!) * 1_000_000n + BigInt(fraction!);
+  return negative ? -value : value;
+}
+
+/**
+ * Format integer microseconds without converting source timestamps to floating point.
+ * @param microseconds - The time.
+ * @returns Seconds with six decimals, as FFmpeg reads a time.
+ * @throws {never} Formatting cannot fail.
+ */
+export function ffmpegSeconds(microseconds: bigint): string {
   const sign = microseconds < 0n ? "-" : "";
   const absolute = microseconds < 0n ? -microseconds : microseconds;
   const whole = absolute / 1_000_000n;
@@ -102,7 +216,7 @@ function ffmpegSeconds(microseconds: bigint): string {
  * @param from - What it reads.
  * @returns The whitelist.
  */
-function protocolsFor(from: ReadFrom): string {
+export function protocolsFor(from: ReadFrom): string {
   return from === "object" ? PROTOCOLS : "file";
 }
 
@@ -132,7 +246,7 @@ export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[
     "-read_intervals",
     "%+#1",
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space,avg_frame_rate,r_frame_rate,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
+    "stream=index,codec_type,codec_name,width,height,sample_aspect_ratio,color_transfer,color_primaries,color_space,avg_frame_rate,r_frame_rate,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation:stream_disposition=attached_pic:stream_tags=alpha_mode:format=duration:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
     "-of",
     "json",
     objectUrl,
@@ -154,26 +268,55 @@ export const COVER_CONTENT_TYPE = "image/png";
  * way to becoming one (the earlier worker path went MJPEG then re-encoded).
  * @param objectUrl - Where the container reads the object.
  * @param from - Whether that is a served object or the container's own file.
+ * @param report - The object's probe: the decoder options it needs (`coverDecoderArgs`) and the picture it shows
+ * (`shownFilters`).
  * @returns The argument list, without the program name.
  */
-export function coverArgs(objectUrl: string, from: ReadFrom = "object"): string[] {
+export function coverArgs(objectUrl: string, from: ReadFrom = "object", report: ProbeReport = NOTHING_FOUND): string[] {
+  const shown = shownFilters(report);
   return [
     "-v",
     "error",
     "-protocol_whitelist",
     protocolsFor(from),
+    ...coverDecoderArgs(report),
     "-i",
     objectUrl,
     "-vframes",
     "1",
     "-vf",
-    COVER_SCALE,
+    shown === null ? COVER_SCALE : `${shown},${COVER_SCALE}`,
     "-f",
     "image2",
     "-vcodec",
     "png",
     "pipe:1",
   ];
+}
+
+/**
+ * The decoder options a VP9 or VP8 stream with alpha needs: FFmpeg's own vp8 and vp9 decoders skip the alpha plane, which
+ * Matroska stores in BlockAdditional (`alpha_mode` 1); libvpx reads it.
+ * @param codecName - The stream's codec.
+ * @param alphaMode - Its `alpha_mode` tag.
+ * @returns The options to put before `-i`.
+ * @throws {never} Never.
+ */
+export function alphaDecoderArgs(codecName: string | null | undefined, alphaMode: string | null | undefined): string[] {
+  if (alphaMode !== "1") return [];
+  if (codecName === "vp9") return ["-c:v", "libvpx-vp9"];
+  return codecName === "vp8" ? ["-c:v", "libvpx"] : [];
+}
+
+/**
+ * The decoder options for the video stream FFmpeg cuts a cover from: the first that is not attached art.
+ * @param report - The object's probe report.
+ * @returns The options to put before `-i`.
+ * @throws {never} Never.
+ */
+export function coverDecoderArgs(report: ProbeReport): string[] {
+  const video = report.streams.find((stream) => stream.codecType === "video" && !stream.attachedPic);
+  return video === undefined ? [] : alphaDecoderArgs(video.codecName, video.alphaMode);
 }
 
 /**
@@ -301,7 +444,9 @@ interface RawStream {
   width?: number;
   height?: number;
   disposition?: { attached_pic?: number };
+  tags?: Record<string, string>;
   side_data_list?: { rotation?: unknown }[];
+  sample_aspect_ratio?: string;
   color_transfer?: string;
   color_primaries?: string;
   color_space?: string;
@@ -409,6 +554,30 @@ function rotationOf(raw: RawStream, frames: RawFrame[]): { rotation?: number } {
 }
 
 /**
+ * A stream's `alpha_mode` tag, whatever case its key is in.
+ * @param raw - The stream.
+ * @returns The tag as a field, or nothing.
+ * @throws {never} Never.
+ */
+function alphaModeOf(raw: RawStream): { alphaMode?: string } {
+  const found = Object.entries(raw.tags ?? {}).find(([key]) => key.toLowerCase() === "alpha_mode");
+  return found === undefined ? {} : { alphaMode: found[1] };
+}
+
+/**
+ * A video stream's sample aspect ratio when it is not square; 0:1 (unknown) reads as square.
+ * @param raw - The stream.
+ * @returns The ratio as a field, or nothing.
+ * @throws {never} Never.
+ */
+function sampleAspectRatioOf(raw: RawStream): { sampleAspectRatio?: { numerator: number; denominator: number } } {
+  const ratio = raw.codec_type === "video" ? /^(\d+):(\d+)$/u.exec(raw.sample_aspect_ratio ?? "") : null;
+  if (ratio === null) return {};
+  const [numerator, denominator] = [Number(ratio[1]), Number(ratio[2])];
+  return numerator > 0 && denominator > 0 && numerator !== denominator ? { sampleAspectRatio: { numerator, denominator } } : {};
+}
+
+/**
  * Read ffprobe's JSON into the shape the container answers with.
  *
  * Output it cannot read answers as nothing found, which is what a medium with
@@ -436,7 +605,9 @@ export function readProbeOutput(stdout: string): ProbeReport {
     width: raw.width ?? null,
     height: raw.height ?? null,
     attachedPic: raw.disposition?.attached_pic === 1,
+    ...alphaModeOf(raw),
     ...rotationOf(raw, frames),
+    ...sampleAspectRatioOf(raw),
     ...(raw.color_transfer === undefined ? {} : { colorTransfer: raw.color_transfer }),
     ...(raw.color_primaries === undefined ? {} : { colorPrimaries: raw.color_primaries }),
     ...(raw.color_space === undefined ? {} : { colorSpace: raw.color_space }),

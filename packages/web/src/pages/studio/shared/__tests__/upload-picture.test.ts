@@ -31,7 +31,8 @@ const blob = new Blob(['x'], { type: 'image/jpeg' });
 
 describe('uploadPicture', () => {
   it('uploads the picture as a file of its own type and resolves the ledger row', async () => {
-    const run = upload({ fileUrl: 'u', assetId: 'asset-1', kind: 'image', width: null, height: null });
+    const run = upload({ fileUrl: 'u', assetId: 'asset-1', kind: 'image', width: null, height: null,
+      coverUrl: null, durationSeconds: null, mimeType: 'image/jpeg', sizeBytes: 1024 });
 
     const assetId = await uploadPicture(
       blob,
@@ -59,7 +60,8 @@ describe('uploadPicture', () => {
 
 describe('the upload target', () => {
   it('pairs a studio with its avatar and a project with its cover, at compile time', () => {
-    const run = upload({ fileUrl: 'u', assetId: 'a', kind: 'image', width: null, height: null });
+    const run = upload({ fileUrl: 'u', assetId: 'a', kind: 'image', width: null, height: null,
+      coverUrl: null, durationSeconds: null, mimeType: 'image/jpeg', sizeBytes: 1024 });
     // @ts-expect-error a studio uploads nothing but its avatar
     void uploadPicture(blob, { studioId: 's1', purpose: 'project_cover' }, run);
     // @ts-expect-error a studio upload must say it is the avatar

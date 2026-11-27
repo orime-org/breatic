@@ -18,7 +18,7 @@ import { applySceneCommand, createSceneHistory, readSceneDocument, type SceneCom
 
 const NAME = 'project-p1/3d-s1';
 const ID = '11111111-1111-4111-8111-111111111111';
-const IMAGE = '66666666-6666-4666-8666-666666666666';
+const IMAGE = 'https://cdn.example/assets/wood.png';
 const BASE = {
   id: ID, name: 'Figure', model: { kind: 'builtin' as const, id: 'figure' as const },
   position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number],

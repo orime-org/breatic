@@ -50,8 +50,12 @@ import {
   miniToolById,
   miniToolsFor,
   servedMiniToolsFor,
+  type MiniToolAnalysisRecord,
   type MiniToolSnapshot,
   type MiniToolSpec,
+  type VideoToolDraft,
+  type VideoToolId,
+  videoToolSourceRefSchema,
 } from '@breatic/shared/mini-tools';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
@@ -98,7 +102,10 @@ import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { ExpandFrameOverlay } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
 import { ANNOTATION_PIN_Z, FOCUS_TARGET_Z, VIEWPORT_TOP_Z } from '@web/spaces/canvas/viewport-layers';
 import { exportExpand } from '@web/spaces/canvas/mini-tool/expand-export';
-import { focusFailureMessageKey, runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
+import { focusFailureMessageKey, runFocusCrop, runVideoFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
+import { useVideoFocusCropSettlement } from '@web/spaces/canvas/focus/use-video-focus-crop-settlement';
+import { frameIndexOfMediaTime } from '@web/spaces/canvas/video-presentation/frame-grid-time';
+import { deriveVideoToolPanelState } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
 import {
   addEdge,
   addNode,
@@ -128,7 +135,7 @@ import {
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
 import { frameProposal, occupiedRects } from '@web/spaces/canvas/lib/place-flow';
-import { docName, getDoc } from '@web/data/yjs/manager';
+import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -232,12 +239,19 @@ import { downloadAsset } from '@web/lib/download';
 import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
+import { useCanvasVideoBindings } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
+import type { PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
+import { useResolvedVideoPresentation } from '@web/spaces/canvas/video-presentation/use-resolved-video-presentation';
+import { useVideoPresentationRepair } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
 import { TranscribePanelContainer } from '@web/spaces/canvas/transcribe/TranscribePanelContainer';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
+import { startPlannedVideoRun, type PlannedVideoPress } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import { toolLayerOpen, useToolLayerArrows } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import {
   startMiniToolRun,
+  type BuiltGroup,
   type MiniToolCapture,
+  type MiniToolRun,
 } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import {
   activeMiniToolSlot,
@@ -269,6 +283,7 @@ import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
 import { usePeerActivity } from '@web/spaces/canvas/use-peer-activity';
 import { fillActionOf } from '@web/spaces/canvas/node-activity';
 import { PeerActivityContext } from '@web/spaces/canvas/nodes/_shared/node-peer-activity-context';
+import type { FrameMode } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 import { useRemoteGesture } from '@web/spaces/canvas/use-remote-gesture';
 import { useGestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
@@ -298,6 +313,7 @@ import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePane
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { AnnotationPanelContainer } from '@web/spaces/canvas/annotation/AnnotationPanelContainer';
+import { TextNodeFullscreen } from '@web/spaces/canvas/nodes/TextNodeFullscreen';
 import { PIN_ORIGIN } from '@web/spaces/canvas/annotation/pin-geometry';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
@@ -727,6 +743,15 @@ function CanvasSpaceInner({
   const openEmptyImagePanel = useCanvasSession((s) => s.openEmptyImagePanel);
   const openHistoryPanel = useCanvasSession((s) => s.openHistoryPanel);
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  // The text node open full screen (inner#2115), read from the graph mirror,
+  // which culling never trims, so a node scrolled out of view keeps it.
+  const fullscreenTextNodeId = useCanvasSession((s) => s.fullscreenTextNode);
+  const fullscreenTextNode = React.useMemo(() => {
+    if (fullscreenTextNodeId === null) return null;
+    const node = flowNodes.find((n) => n.id === fullscreenTextNodeId);
+    const data = node?.data as { name?: string; locked?: boolean } | undefined;
+    return { id: fullscreenTextNodeId, exists: node !== undefined, name: data?.name, locked: data?.locked === true };
+  }, [fullscreenTextNodeId, flowNodes]);
   const panelHostId = useCanvasSession((s) => s.panelHostId);
   const panelKind = useCanvasSession((s) => s.panelKind);
   const pickSession = useCanvasSession((s) => s.pickSession);
@@ -779,6 +804,14 @@ function CanvasSpaceInner({
   const focusTarget = useCanvasSession((s) => s.focusCrop);
   const setFocusTarget = useCanvasSession((s) => s.setFocusTarget);
   const focusCropTargetId = focusTarget?.nodeId ?? null;
+  // A video focus source's presentation read (Qp), which its bar state and its press take (frames-split §5.5).
+  const focusVideoNode = nodes.find((node) => node.id === focusCropTargetId);
+  const focusVideoURL = focusVideoNode?.type === 'video' && 'content' in focusVideoNode.data && typeof focusVideoNode.data.content === 'string' ? focusVideoNode.data.content : '';
+  const focusVideo = useResolvedVideoPresentation(projectId, focusVideoURL, focusVideoURL !== '');
+  const focusVideoRead = React.useRef(focusVideo.query.data);
+  focusVideoRead.current = focusVideo.query.data;
+  // The frame a node's player last drew, which a video crop names (frames-split §5.5); bound once the bindings exist below.
+  const presentedFrameOf = React.useRef<(nodeId: string, url: string) => PresentedMediaFrame | null>(() => null);
   /**
    * Return the focus session to its PICK state (user 2026-07-17 A): drop
    * the crop target, but keep the session — the banner stays and another
@@ -953,9 +986,29 @@ function CanvasSpaceInner({
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
         return false;
       }
-      // The crop is uploaded before it is written, so the Space is asked
-      // first: one that cannot take an add uploads nothing (inner#1790).
+      // The crop is uploaded (or, for a video, cut by the backend) before it is
+      // written, so the Space is asked first: one that cannot take an add
+      // spends nothing (inner#1790).
       if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) return false;
+      if (source?.type === 'video') {
+        // A video crop is cut by the backend from the tool source (frames-split §5.5): the press names the selected
+        // version, the grid frame the player shows and the box in P.display pixels.
+        const read = focusVideoRead.current;
+        const selected = read?.sourceBinding.canonicalURL === sourceUrl ? read.presentation : null;
+        const sourceRef = read === undefined || selected === null ? null : videoToolSourceRefSchema.safeParse({ nodeId: source.id, canonicalURL: sourceUrl, mediaInfo: {
+          width: selected.display.width, height: selected.display.height,
+          duration: read.sourceBinding.mediaInfo.duration ?? selected.display.frameCount * selected.display.fps.denominator / selected.display.fps.numerator,
+          mimeType: read.sourceBinding.mediaInfo.mimeType } });
+        // The player keeps its last drawn frame from its own mount, so a video paused before the crop opened still names it.
+        const drawn = presentedFrameOf.current(source.id, sourceUrl);
+        if (selected === null || sourceRef === null || !sourceRef.success || drawn === null) {
+          toast.error(t('canvas.generatePanel.focusExportFailed'));
+          return false;
+        }
+        void runVideoFocusCrop({ projectId, spaceId, panelNodeId, source: sourceRef.data, sourceName, presentationRef: { source: { toolInputId: selected.toolInputId, planSha256: selected.planSha256 } },
+          frameIndex: frameIndexOfMediaTime(drawn.mediaTime, selected.display), crop: result.crop });
+        return true;
+      }
       // One id names the crop from here on: its local entry, its ticket, the node's uploading entry and the image
       // collab adds to the pool. The local entry lasts until the bytes are sent; the node's shows the rest.
       const cropId = newId();
@@ -1109,6 +1162,11 @@ function CanvasSpaceInner({
     },
     [setFlowNodes, setFlowEdges, rfStoreApi],
   );
+  // Opening a text node full screen selects it alone, as entering it in place
+  // does, so collaborators see who holds it.
+  React.useEffect(() => {
+    if (fullscreenTextNodeId !== null) selectOnlyNode(fullscreenTextNodeId);
+  }, [fullscreenTextNodeId, selectOnlyNode]);
   const hostSelected = React.useMemo((): boolean | null => {
     if (panelHostId == null) return null;
     const host = flowNodes.find((n) => n.id === panelHostId);
@@ -2295,7 +2353,6 @@ function CanvasSpaceInner({
     (s) => s.consumePendingNodeCreate,
   );
   const setCanvasListening = useCanvasStore((s) => s.setCanvasListening);
-  const reportProposalOutcome = useCanvasStore((s) => s.reportProposalOutcome);
   const [selectAfterCreate, setSelectAfterCreate] = React.useState<
     string[] | null
   >(null);
@@ -2726,57 +2783,81 @@ function CanvasSpaceInner({
       // A card that posted a proposal is waiting on an answer, and its button
       // stays disabled until one comes. Dropping the intent silently leaves it
       // disabled for the life of the conversation.
-      if (isProposalIntent(intent)) reportProposalOutcome('failed');
+      if (isProposalIntent(intent)) intent.settle('failed');
       consumePendingNodeCreate();
       return;
     }
     const middle = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     if (isProposalIntent(intent)) {
-      const center = screenToFlowPosition(middle);
-      try {
-        // Sized as `occupiedRects` describes, from the document and the
-        // canvas's measurements together.
-        const occupied = occupiedRects(readNodePlacements(projectId, spaceId), (id) => {
-          const measured = getInternalNode(id)?.measured;
-          return measured?.width && measured.height
-            ? { width: measured.width, height: measured.height }
-            : undefined;
-        });
-        // The card reports a refusal by the size cap itself, so no toast here.
-        const placed = placeProposalAt(intent.proposal, center, occupied, undefined, undefined, false);
-        if ('ok' in placed) {
-          reportProposalOutcome(placed);
-          consumePendingNodeCreate();
-          return;
-        }
-        const focus = whatToFocus(intent.proposal, placed);
-        // A Space opened empty and never framed still has its opening fit
-        // queued for the first nodes to arrive; the framing below is that one.
-        if (placed.bounds) clearOpeningFit();
-        if (focus.panel) {
-          // The panel that opens under one of them is framed with them once
-          // it has landed, in one move.
-          openGeneratePanel(focus.panel.nodeId, focus.panel.type);
-          showPlaced(placed, focus.panel.nodeId, PROPOSAL_FRAME_MS);
-        } else if (placed.bounds) {
-          // The camera follows what landed: centred on it, zoomed out only as
-          // far as it takes to show all of it (inner#1443 A4).
-          const zoom = rfStoreApi.getState().transform[2];
-          void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
-            duration: PROPOSAL_FRAME_MS,
-            // A straight slide, like the other framings: the default arc zooms
-            // out on the way and back in.
-            interpolate: 'linear',
+      const { proposal: posted, settle } = intent;
+      /**
+       * Place a proposal whose material already has this Project's addresses.
+       * @param proposal - The proposal.
+       */
+      const place = (proposal: CanvasProposal): void => {
+        const center = screenToFlowPosition(middle);
+        try {
+          // Sized as `occupiedRects` describes, from the document and the
+          // canvas's measurements together.
+          const occupied = occupiedRects(readNodePlacements(projectId, spaceId), (id) => {
+            const measured = getInternalNode(id)?.measured;
+            return measured?.width && measured.height
+              ? { width: measured.width, height: measured.height }
+              : undefined;
           });
+          // The card reports a refusal by the size cap itself, so no toast here.
+          const placed = placeProposalAt(proposal, center, occupied, undefined, undefined, false);
+          if ('ok' in placed) {
+            settle(placed);
+            return;
+          }
+          const focus = whatToFocus(proposal, placed);
+          // A Space opened empty and never framed still has its opening fit
+          // queued for the first nodes to arrive; the framing below is that one.
+          if (placed.bounds) clearOpeningFit();
+          if (focus.panel) {
+            // The panel that opens under one of them is framed with them once
+            // it has landed, in one move.
+            openGeneratePanel(focus.panel.nodeId, focus.panel.type);
+            showPlaced(placed, focus.panel.nodeId, PROPOSAL_FRAME_MS);
+          } else if (placed.bounds) {
+            // The camera follows what landed: centred on it, zoomed out only as
+            // far as it takes to show all of it (inner#1443 A4).
+            const zoom = rfStoreApi.getState().transform[2];
+            void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
+              duration: PROPOSAL_FRAME_MS,
+              // A straight slide, like the other framings: the default arc zooms
+              // out on the way and back in.
+              interpolate: 'linear',
+            });
+          }
+          if (focus.select.length > 0) setSelectAfterCreate(focus.select);
+          settle('placed');
+        } catch {
+          // `placeProposalAt` takes back whatever it wrote before it threw, so
+          // nothing half-placed is left behind -- but the card is still waiting,
+          // and a button that stays disabled forever is worse than one that says
+          // it did not work.
+          settle('failed');
         }
-        if (focus.select.length > 0) setSelectAfterCreate(focus.select);
-        reportProposalOutcome('placed');
-      } catch {
-        // `placeProposalAt` takes back whatever it wrote before it threw, so
-        // nothing half-placed is left behind -- but the card is still waiting,
-        // and a button that stays disabled forever is worse than one that says
-        // it did not work.
-        reportProposalOutcome('failed');
+      };
+      // The user's material joins this Project the way a paste does before the nodes are written (inner#2171 design
+      // §5.2); the write itself stays one synchronous batch, so it runs once the answer is in.
+      const materials = [...new Set(posted.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material])))];
+      if (materials.length === 0) place(posted);
+      else {
+        const name = docName.canvasSpace(projectId, spaceId);
+        void canvasApi.paste({ project_id: projectId, urls: materials, pairs: [], history: [] }).then(({ map }) => {
+          // A Space closed meanwhile is not written, as a paste is not (`pastePayload`).
+          if (!hasDoc(name)) { settle('failed'); return; }
+          place({ ...posted, nodes: posted.nodes.map((node) => {
+            const copy = node.material === undefined ? undefined : map[node.material];
+            return typeof copy === 'string' ? { ...node, material: copy } : node;
+          }) });
+        }, () => {
+          // The card says the proposal failed, once.
+          settle('failed');
+        });
       }
     } else {
       const offset = (staggerRef.current % STAGGER_WRAP) * STAGGER_STEP_PX;
@@ -2791,7 +2872,6 @@ function CanvasSpaceInner({
     screenToFlowPosition,
     createNode,
     placeProposalAt,
-    reportProposalOutcome,
     openGeneratePanel,
     projectId,
     spaceId,
@@ -4088,6 +4168,24 @@ function CanvasSpaceInner({
     },
     [readingRunOf, readOnly, nodes, t],
   );
+  /**
+   * Select and frame the output graph of the still-open mini-tool press.
+   * @param sourceId - Original host used by the existing framing owner.
+   * @param built - Complete newly created result footprints.
+   * @param group - The tool's declared output group, when present.
+   * @throws {never} Never.
+   */
+  const showMiniToolResults = React.useCallback((sourceId: string, built: Parameters<MiniToolRun['onBuilt']>[0], group?: BuiltGroup): void => {
+    if (group !== undefined) {
+      setSelectAfterCreate([group.id]);
+      frameBuilt({ ...group.position, width: group.width, height: group.height }, sourceId);
+      return;
+    }
+    setSelectAfterCreate(built.map((node) => node.id));
+    const [first, ...rest] = built.map((node) => ({ ...node.position, width: node.width, height: node.height }));
+    if (first !== undefined) frameBuilt(freshNodesBox([first, ...rest]), sourceId);
+  }, [frameBuilt]);
+
   // A mini-tool's Run (inner#888 §7.5): the snapshot was taken by the panel.
   // Whatever the press makes in the browser first (a browser tool's file, a
   // drawing tool's images), the build and the upload are one tracked
@@ -4148,18 +4246,7 @@ function CanvasSpaceInner({
         uploadImage: (file) => uploadDerivedImage(file, { projectId, spaceId }),
         setExporting: (exporting) => sessionStore.getState().setMiniToolExporting(exporting, session),
         stillOpen: () => sessionStore.getState().panelSession === session,
-        onBuilt: (built, group) => {
-          // A grouped batch is one thing to act on next: the group is what is
-          // selected and what the camera frames.
-          if (group !== undefined) {
-            setSelectAfterCreate([group.id]);
-            frameBuilt({ ...group.position, width: group.width, height: group.height }, nodeId);
-            return;
-          }
-          setSelectAfterCreate(built.map((node) => node.id));
-          const [first, ...rest] = built.map((node) => ({ ...node.position, width: node.width, height: node.height }));
-          if (first !== undefined) frameBuilt(freshNodesBox([first, ...rest]), nodeId);
-        },
+        onBuilt: (built, group) => showMiniToolResults(nodeId, built, group),
       });
       if (exportsBeforeRun(spec)) trackOperation(newId(), work);
       return work;
@@ -4172,11 +4259,12 @@ function CanvasSpaceInner({
       buffer,
       fillUpload,
       fillUploads,
-      frameBuilt,
+      showMiniToolResults,
       trackOperation,
       sessionStore,
     ],
   );
+
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];
@@ -4215,8 +4303,89 @@ function CanvasSpaceInner({
   );
 
 
+  const videoHost = miniToolDraft === null ? null : panelHostId;
+  const videoNode = nodes.find((node) => node.id === videoHost);
+  const videoSource = videoNode && 'content' in videoNode.data ? videoNode.data.content : null;
+  const videoURL = videoNode?.type === 'video' && typeof videoSource === 'string' ? videoSource : '';
+  const videoResolved = useResolvedVideoPresentation(projectId, videoURL, videoURL !== '');
+  const { repair: repairVideoSource, repairing: repairingVideoSources } = useVideoPresentationRepair(projectId);
+  /**
+   * Joins the current source recovery press; closing the tool never cancels it.
+   * @throws {never} The repair request reports its own refusal.
+   */
+  const retryVideoSource = React.useCallback((): void => { repairVideoSource(videoURL); }, [repairVideoSource, videoURL]);
+  const videoRetrying = repairingVideoSources.has(videoURL);
+  const videoFacts = React.useMemo(() => ({
+    response: videoResolved.query.data, readFailed: videoResolved.query.isError, retrying: videoRetrying, onRetry: retryVideoSource, previewSource: videoResolved.source,
+  }), [videoResolved.query.data, videoResolved.query.isError, videoResolved.source, videoRetrying, retryVideoSource]);
+  useVideoFocusCropSettlement(projectId, spaceId, nodes);
+  const retryFocusSource = React.useCallback((): void => { repairVideoSource(focusVideoURL); }, [repairVideoSource, focusVideoURL]);
+  // A video focus source follows the panel derivation (§5.5 interface states row); the node shows its selected version.
+  const focusSourceProps = React.useMemo(() => {
+    if (focusVideoURL === '') return {};
+    const response = focusVideo.query.data;
+    const retrying = repairingVideoSources.has(focusVideoURL);
+    const shown = response?.presentation?.versionId ?? null;
+    return { sourceState: deriveVideoToolPanelState({ sourceURL: focusVideoURL, presentationStatus: focusVideo.query.isError ? 'failed' : response === undefined ? 'loading' : 'ready', response,
+      resourceVersionId: shown, toolInputId: response?.presentation?.toolInputId ?? null, retrying }), sourceFailure: response?.presentation === null ? response.preparation?.failure ?? null : null,
+    sourceReadFailed: focusVideo.query.isError && response === undefined,
+    onRetrySource: retryFocusSource, retryingSource: retrying };
+  }, [focusVideoURL, focusVideo.query.data, focusVideo.query.isError, repairingVideoSources, retryFocusSource]);
+  const videoRuntime = useCanvasVideoBindings(videoHost, videoURL || null, videoFacts);
+  presentedFrameOf.current = videoRuntime.presentedFrameOf;
+
+  /**
+   * Execute the complete video draft from the current source and Canvas session.
+   * @param nodeId - The original video host.
+   * @param toolId - Its selected planned tool.
+   * @param draft - Complete press-frozen editable parameters and inputs.
+   * @param analyses - Matching accepted analysis facts.
+   * @returns The existing tracked press outcome.
+   * @throws {never} The press owns request errors and node marks.
+   */
+  const runVideoMiniTool = React.useCallback((nodeId: string, toolId: VideoToolId, draft: VideoToolDraft, analyses: readonly MiniToolAnalysisRecord[], plan?: PlannedVideoPress): Promise<unknown> => {
+    if (readOnly) return Promise.resolve();
+    const host = nodes.find((node) => node.id === nodeId);
+    const view = asContentView(host?.data);
+    if (host === undefined || host.type !== 'video' || view === undefined) return Promise.resolve();
+    const gate = evaluateNodeGate({ locked: isNodeLocked(projectId, spaceId, nodeId) });
+    if (gate !== null) { warnNodeGate(t(gate.toastKey)); return Promise.resolve(); }
+    const group = host.parentId === undefined ? undefined : nodes.find((node) => node.id === host.parentId);
+    // The run is bound to the selected version the panel shows for this host; without one it is not sent (§10.8, §7.12).
+    // A quoted press names the inputs, analysis refs and output node its quote named (§97 D27-1).
+    const presented = videoRuntime.presentations.get(nodeId);
+    const presentationRef = plan?.presentationRef ?? presented?.presentationRef;
+    if (presentationRef === undefined) return Promise.resolve();
+    const session = sessionStore.getState().panelSession;
+    return startPlannedVideoRun({
+      projectId, spaceId, userId: viewerId ?? '', toolId, draft, analyses, presentationRef, grid: presented?.grid ?? null,
+      ...(plan === undefined ? {} : { plan: { analysisRefs: plan.analysisRefs, outputNodeIds: plan.outputNodeIds } }),
+      source: { id: host.id, name: view.name, position: host.position, groupOrigin: group?.position ?? null,
+        mimeType: view.mimeType, width: draft.source.mediaInfo.width, height: draft.source.mediaInfo.height },
+      sourceExists: () => buffer.settled().some((node) => node.id === nodeId),
+      canWrite: () => !readOnly && !isNodeLocked(projectId, spaceId, nodeId),
+      stillOpen: () => sessionStore.getState().panelSession === session,
+      onBuilt: (built, outputGroup) => showMiniToolResults(nodeId, built, outputGroup),
+    });
+  }, [readOnly, nodes, projectId, spaceId, viewerId, t, sessionStore, buffer, showMiniToolResults, videoRuntime.presentations]);
+
   const actions = React.useMemo<CanvasActions>(
     () => ({
+      onVideoBinding: videoRuntime.onVideoBinding,
+      onVideoFrame: videoRuntime.onVideoFrame,
+      // The camera menu opens Extract frames the way the Tools submenu does (openToolFromMenu), with the chosen mode, which
+      // the panel applies to its draft (tools design §4 camera menu).
+      openFrameTool: readOnly ? undefined : (nodeId: string, mode: FrameMode): void => {
+        // The asset the node shows, read at the press as Download reads it (downloadableAsset).
+        const content = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId)?.get('content');
+        const spec = miniToolById('video.extract-frames');
+        if (typeof content !== 'string' || content === '' || spec === undefined) return;
+        const url = content;
+        const session = sessionStore.getState();
+        session.openMiniTool(nodeId, spec.id, { sourceContent: url, params: defaultParamsOf(spec) });
+        session.setMiniToolParam('frameMode', mode);
+        selectOnlyNode(nodeId);
+      },
       renameNode: (nodeId: string, name: string): void =>
         setNodeName(projectId, spaceId, nodeId, name),
       deleteEdge: (edgeId: string): void => {
@@ -4379,6 +4548,10 @@ function CanvasSpaceInner({
       gesture,
       t,
       commitGuardedDelete,
+      videoRuntime.onVideoBinding,
+      videoRuntime.onVideoFrame,
+      sessionStore,
+      selectOnlyNode,
     ],
   );
 
@@ -4911,12 +5084,23 @@ function CanvasSpaceInner({
               nodes={nodes}
               getLastWriteWasLocal={getLastWriteWasLocal}
               onRun={runMiniTool}
+              onRunVideo={runVideoMiniTool}
+              videoPresentation={videoRuntime.presentations}
+              videoBindings={videoRuntime.bindings}
             />
             {/* The transcribe panel (inner#856), in the same slot. */}
             <TranscribePanelContainer nodes={nodes} onRun={runTranscribe} />
             {/* An expanded annotation: the fifth panel in that same host +
               lifecycle, floating beside its pin. */}
             <AnnotationPanelContainer nodes={nodes} deletedByPeer={deletedByPeer} />
+            {fullscreenTextNode ? (
+              <TextNodeFullscreen
+                nodeId={fullscreenTextNode.id}
+                name={fullscreenTextNode.name}
+                exists={fullscreenTextNode.exists}
+                locked={fullscreenTextNode.locked}
+              />
+            ) : null}
             {/* Reset-empty-image panel: shares the host + lifecycle with Generate
               (panelHostId + panelKind), mutually exclusive, floats below its
               node via NodeToolbar. */}
@@ -4944,7 +5128,7 @@ function CanvasSpaceInner({
             />
             {/* The focus crop's bar under its node; the marquee is drawn inside
               the node by the node's own crop box (inner#888 §7.4.1). */}
-            <FocusCropControls onConfirm={onFocusCropConfirm} onBackToPick={onFocusBackToPick} />
+            <FocusCropControls onConfirm={onFocusCropConfirm} onBackToPick={onFocusBackToPick} {...focusSourceProps} />
           </ReactFlow>
           {pickForNodeId ? (
             <div

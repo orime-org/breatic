@@ -387,7 +387,7 @@ const PROPERTY_TIMEOUT = 60_000;
  * @param check - The check.
  * @returns The check, run after the turn.
  */
-function yielding<T>(check: (value: T) => boolean | void): (value: T) => Promise<boolean | void> {
+function yielding<T>(check: (value: T) => boolean | void | Promise<boolean | void>): (value: T) => Promise<boolean | void> {
   return async (value) => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     return check(value);
@@ -441,7 +441,7 @@ describe('a drag within the body', () => {
     await fc.assert(
       fc.asyncProperty(
         fc.record({ body, from: fc.nat(), to: fc.nat(), at: fc.nat() }),
-        yielding(({ body, from, to, at }) => {
+        yielding(async ({ body, from, to, at }) => {
           /**
            * Opens the body with a range selected and the drop point found.
            * @returns The editor and the drop point.
@@ -466,6 +466,8 @@ describe('a drag within the body', () => {
           }
           pastedView.dispatch(pastedView.state.tr.setSelection(TextSelection.create(pastedView.state.doc, pasted.point)));
           pasteFormats(pasted.editor, { 'blocknote/html': html, 'text/html': html, 'text/plain': 'copied' });
+          // A pasted medium of ours lands once its paste request answers, after the paste itself.
+          await new Promise((resolve) => setTimeout(resolve, 0));
           const expectedShape = shape(pasted.editor);
           unmountAll();
 

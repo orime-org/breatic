@@ -405,7 +405,7 @@ describe('H-20 timeline: undoing a deletion when full', () => {
 describe('H-21 timeline: undoing an add when full', () => {
   it('H-21 is judged on a copy as a remove and runs: the clip and its source go, and nothing else is written', () => {
     const { doc, session } = timelineAt();
-    const fresh: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000077', assetId: '20000000-0000-4000-8000-000000000077' };
+    const fresh: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000077', url: 'https://cdn.example/assets/fresh-77.mp4' };
     const added = clip(cid(40), MAIN, 96, 30, { sourceId: fresh.id });
     expect(session.edit({ operation: 'add_video', parameters: { source: fresh, clip: added }, placement: OFF }).ok).toBe(true);
     enterSize(TIMELINE, P_FULL);

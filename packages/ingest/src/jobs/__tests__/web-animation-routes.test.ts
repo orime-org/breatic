@@ -198,9 +198,7 @@ describe("POST /jobs for WebAnimationContainer", () => {
 
   it("answers 503 when the container could not start, so the worker submits again later", async () => {
     const { namespace } = standIn({
-      submit: async () => {
-        throw Object.assign(new Error("the container could not start"), { name: "JobStartFailed" });
-      },
+      submit: async () => ({ kind: "start_failed", reason: "the container could not start" }),
     });
     const res = await submit(configured(namespace));
 

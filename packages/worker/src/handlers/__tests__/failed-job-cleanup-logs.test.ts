@@ -14,6 +14,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type * as coreModule from "@breatic/core";
 
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockActivityInsert = vi.hoisted(() => vi.fn());
@@ -22,7 +23,8 @@ const mockError = vi.hoisted(() => vi.fn());
 const mockGetTask = vi.hoisted(() => vi.fn());
 const mockWarn = vi.hoisted(() => vi.fn());
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...await importOriginal<typeof coreModule>(),
   getStreamRedis: vi.fn(() => ({})),
   projectActivitiesRepo: {
     insertGenerationFailedIfAbsent: mockActivityInsert,

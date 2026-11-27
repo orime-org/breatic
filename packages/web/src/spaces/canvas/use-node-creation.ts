@@ -447,7 +447,7 @@ export function useNodeCreation(
       offset: { dx: number; dy: number },
       options: PastePayloadOptions = {},
     ): Promise<string[] | null> => {
-      const cloned = cloneForPaste(payload, userId, offset, options);
+      const cloned = cloneForPaste(payload, userId, offset, { ...options, targetProjectId: projectId });
       const name = docName.canvasSpace(projectId, spaceId);
       // Asked before the server is, so a paste into a Space that cannot take
       // an add costs no request (inner#1790).
@@ -758,7 +758,7 @@ function stepClones(
     const group = groupNow(node.parentId);
     if (group !== undefined && !group.locked) return node;
     // A clone keeps an existing Group's id only when that Group is in externalParentAbs.
-    const parent = group?.position ?? (externalParentAbs.get(node.parentId) as { x: number; y: number });
+    const parent = group?.position ?? externalParentAbs.get(node.parentId)!;
     const { parentId: _left, ...rest } = node;
     return { ...rest, position: { x: parent.x + node.position.x, y: parent.y + node.position.y } };
   });

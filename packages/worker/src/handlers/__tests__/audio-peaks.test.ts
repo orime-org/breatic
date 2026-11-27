@@ -27,7 +27,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     // The announcement to the referencing Projects is covered with a real
     // database in integration-tests (asset-peaks-ready); here the row is gone.
-    assetRepo: { ...actual.assetRepo, findById: vi.fn(async () => null), listProjectsReferencingAsset: vi.fn(async () => []) },
+    assetRepo: { ...actual.assetRepo, findById: vi.fn(async () => null), listProjectsReferencingStorageKey: vi.fn(async () => []) },
   };
 });
 

@@ -65,6 +65,8 @@ vi.mock("@worker/handlers/understand-slots.js", () => ({
   },
 }));
 vi.mock("@breatic/core", () => ({
+  // The video mini-tool delivery jobs dispatch routes before any task; these cases run none of them.
+  MINI_TOOL_DELIVERY_JOB: "deliver-mini-tool-results", MINI_TOOL_DELIVERY_DISCOVERY_JOB: "discover-mini-tool-deliveries",
   // Product analytics (inner#1442) runs the job under its consent and reports
   // milestones; neither is what these cases are about.
   runWithConsent: (_consent: unknown, fn: () => unknown) => fn(),

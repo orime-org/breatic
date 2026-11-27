@@ -45,7 +45,9 @@ type ViewKey = KeysOf<NodeView>;
  * what the canvas view carries, and what lives only in the shared map
  * (`body`, and the single `prompt` of nodes older than one prompt per mode).
  */
-type FieldKey = keyof CanvasNodeFields['data'] | ViewKey | 'body' | 'prompt';
+// Accepted-run metadata uses dynamic UUID keys. Like other task metadata it
+// follows the `other` fallback; it is never an Agent content/reference field.
+type FieldKey = Exclude<keyof CanvasNodeFields['data'] | ViewKey | 'body' | 'prompt', `miniToolAnalysis:${string}`>;
 
 /** Every field a node is handed over with. A key added to a node and not named here fails the typecheck. */
 export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
@@ -81,6 +83,11 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   musicVocal: 'reference',
   soundVideo: 'reference',
   focusImages: 'each',
+  // Which video focus crops collab handled, task state rather than content (frames-split §5.5).
+  focusCropOutcomes: 'other',
+  miniToolAssetUrls: 'reference',
+  'miniToolDraft:video.extract-frames': 'other',
+  'miniToolDraft:video.split': 'other',
   replies: 'each',
   attachments: 'each',
   createdAt: 'other',
@@ -91,6 +98,7 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   taskCounts: 'other',
   focusUploads: 'other',
   taskResultEventId: 'other',
+  miniToolResultOrigin: 'other',
   // Which template node it was placed as: part of who the node is.
   templateNode: 'identity',
   width: 'other',

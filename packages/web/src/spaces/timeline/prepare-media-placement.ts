@@ -3,7 +3,7 @@
 
 import type * as Y from 'yjs';
 import type { ProjectRegisteredAsset } from '@breatic/shared';
-import { durationToFrames } from '@breatic/shared';
+import { assetNameFromUrl, durationToFrames } from '@breatic/shared';
 import { readTimelineDocument } from '@web/data/yjs/timeline-document';
 import { TIMELINE_DEFAULT_PLACEMENT, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
@@ -17,6 +17,8 @@ export interface TimelineMediaPlacementInput {
   canWrite: boolean;
   placement: TimelineEditPlacement;
   newTrackId?: string;
+  /** The selected version's grid length (frames-split §7.14 Tv); it wins over the registered duration. */
+  presentedDurationSeconds?: number;
   decodedDurationSeconds?: number;
 }
 
@@ -35,7 +37,8 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
   if (!input.canWrite) return { ok: false, reason: 'readonly' };
   const asset = input.asset;
   if (asset === null || asset.kind !== 'video') return { ok: false, reason: 'source_unavailable' };
-  const duration = asset.durationSeconds === null ? input.decodedDurationSeconds : asset.durationSeconds;
+  const registered = input.presentedDurationSeconds === undefined && asset.durationSeconds !== null;
+  const duration = input.presentedDurationSeconds ?? (asset.durationSeconds === null ? input.decodedDurationSeconds : asset.durationSeconds);
   if (duration === undefined || !Number.isFinite(duration) || duration <= 0) return { ok: false, reason: 'metadata_unavailable' };
   const current = readTimelineDocument(doc);
   let extentFrames: number;
@@ -47,9 +50,12 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
   const command: TimelineEditCommand = {
     operation: 'add_video',
     parameters: {
+      // The picked list item's address and media facts, as a canvas node stores them (inner#2171 design §4).
       source: {
-        id: input.sourceId, kind: 'video', assetId: asset.assetId, timebase: current.settings.fps,
-        extentFrames, durationSeconds: String(duration), durationOrigin: asset.durationSeconds === null ? 'decoded' : 'registered',
+        id: input.sourceId, kind: 'video', url: asset.fileUrl, coverUrl: asset.coverUrl,
+        name: timelineSourceName(timelineVideoName(asset)), mimeType: asset.mimeType, width: asset.width, height: asset.height,
+        timebase: current.settings.fps, extentFrames, durationSeconds: String(duration),
+        durationOrigin: registered ? 'registered' : 'decoded',
       },
       clip: {
         id: input.clipId, kind: 'video', trackId: input.trackId, sourceId: input.sourceId,
@@ -61,4 +67,27 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
     placement: input.placement,
   };
   return { ok: true, command };
+}
+
+/**
+ * What a Project video is called in the Timeline, in its list and on its clip alike: its display name, else the file
+ * name its address ends in.
+ * @param asset - The listed video.
+ * @param asset.displayName - Its display name, which may be missing or empty.
+ * @param asset.fileUrl - Its address.
+ * @returns The name, or null when neither gives one.
+ * @throws {never} Never.
+ */
+export function timelineVideoName(asset: { displayName: string | null; fileUrl: string }): string | null {
+  return asset.displayName || assetNameFromUrl(asset.fileUrl);
+}
+
+/**
+ * The name a Timeline video source or upload carries: within the schema's 255 characters, `video` when there is none.
+ * @param name - The display name, file name or name read off the address.
+ * @returns The name to store.
+ * @throws {never} Never.
+ */
+export function timelineSourceName(name: string | null): string {
+  return (name ?? '').slice(0, 255) || 'video';
 }

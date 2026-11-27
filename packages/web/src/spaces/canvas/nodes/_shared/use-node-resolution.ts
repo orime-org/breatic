@@ -20,6 +20,8 @@ import type { NodeResolution } from '@web/spaces/canvas/nodes/_shared/NodeResolu
  * @param content - The current media content URL (undefined when the node is empty).
  * @param width - The width on the node's data, when the ledger measured one.
  * @param height - The height on the node's data.
+ * @param display - The selected version's display geometry (P.display), which wins when there is one: the badge shows the
+ *   source's resolution, never the played file's (frames-split §7.8).
  * @returns The resolution to show (undefined until one is known) and the
  *   setter the media element's load handler reports into.
  */
@@ -27,6 +29,7 @@ export function useNodeResolution(
   content: string | undefined,
   width?: number,
   height?: number,
+  display?: { width: number; height: number } | null,
 ): {
   resolution: NodeResolution | undefined;
   setResolution: (resolution: NodeResolution) => void;
@@ -61,5 +64,6 @@ export function useNodeResolution(
   // A node that holds nothing has no picture to give a size of, even when it
   // was built knowing the size its result will have (inner#1303 §6.7).
   if (!content) return { resolution: undefined, setResolution: setMeasured };
-  return { resolution: known ?? measured, setResolution: setMeasured };
+  const shown = display == null ? undefined : { width: display.width, height: display.height };
+  return { resolution: shown ?? known ?? measured, setResolution: setMeasured };
 }

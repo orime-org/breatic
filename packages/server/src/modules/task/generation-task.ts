@@ -164,9 +164,10 @@ export async function holdRowedRun<T>(opts: {
 
 /**
  * Start a run whose result nodes are already on the canvas and whose credits
- * {@link holdRowedRun} already holds: open their rows, queue the job and keep
- * its id. The hold comes before any row, so a refusal opens none (inner#1968,
- * design 3.10 U9).
+ * its admission already holds ({@link holdRowedRun}, or a planned or analysis
+ * mini-tool's own admission): open their rows, queue the job and keep its id.
+ * The hold comes before any row, so a refusal opens none (inner#1968, design
+ * 3.10 U9).
  *
  * Once a row is open, any failure settles both accounts of the run — the task
  * and its rows — each on its own, so neither settlement takes the other down:
@@ -184,6 +185,8 @@ export async function holdRowedRun<T>(opts: {
  * @param opts.enqueue - Queues the job, past the point of no return.
  * @param opts.logTag - Prefix of this lane's log events.
  * @param opts.logContext - Extra fields on the failure log.
+ * @param opts.settleFailure - An optional lane-specific task/hold transaction;
+ *   completed skips failure cleanup, failed settles the opened node rows.
  * @returns `"pending"` once queued, `"failed"` when it failed after a row opened.
  * @throws {Error} The failure itself, when no row opened to carry it.
  */
@@ -198,6 +201,7 @@ export async function startRowedRun(opts: {
   enqueue: () => Promise<{ id?: string | undefined }>;
   logTag: string;
   logContext?: Record<string, unknown>;
+  settleFailure?: (reason: TaskFailureReason) => Promise<"completed" | "failed">;
 }): Promise<"pending" | "failed"> {
   const { taskId, projectId, spaceId } = opts;
   let rows: OpenedTaskRow[] = [];
@@ -215,7 +219,27 @@ export async function startRowedRun(opts: {
     await recordJobId(taskId, job.id, projectId, opts.logTag);
     return "pending";
   } catch (err) {
-    await settleUnqueuedRun(taskId, projectId, "internal", () => failOpenedTasks(projectId, spaceId, rows, "internal"), opts.logTag);
+    const reason: TaskFailureReason = "internal";
+    if (opts.settleFailure !== undefined) {
+      try {
+        if (await opts.settleFailure(reason) === "completed") {
+          logger.error({ err, ctx: { taskId, projectId, ...opts.logContext } }, `${opts.logTag}_acknowledgement_failed_after_completion`);
+          return "pending";
+        }
+      } catch (settleErr) {
+        logger.error({ err, ctx: { taskId, projectId } }, `${opts.logTag}_admission_failed`);
+        logger.error({ err: settleErr, ctx: { taskId, projectId } }, `${opts.logTag}_failure_transaction_failed`);
+        throw new AggregateError([err, settleErr], "Run admission and failure transaction failed");
+      }
+      // The failure transaction released the hold and failed the task; only the rows remain.
+      try {
+        await failOpenedTasks(projectId, spaceId, rows, reason);
+      } catch (settleErr) {
+        logger.error({ err: settleErr, taskId, projectId }, `${opts.logTag}_run_settle_failed`);
+      }
+    } else {
+      await settleUnqueuedRun(taskId, projectId, reason, () => failOpenedTasks(projectId, spaceId, rows, reason), opts.logTag);
+    }
     logger.error({ err, taskId, projectId, ...opts.logContext }, `${opts.logTag}_run_failed`);
     // An open row is the answer — it holds the cause and the node shows it.
     // With none, opening it is what failed, and the rejection carries the cause.

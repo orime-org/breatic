@@ -12,8 +12,8 @@
  */
 
 import type { Env } from "@ingest/index.js";
+import type { PresentationStateTestObject } from '@ingest/__tests__/helpers/presentation-state-object.js';
 
 declare module "cloudflare:test" {
-  // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- giving ProvidedEnv our shape is the whole declaration; it adds nothing of its own
-  interface ProvidedEnv extends Env {}
+  interface ProvidedEnv extends Env { PRESENTATION_STATE_TEST: DurableObjectNamespace<PresentationStateTestObject> }
 }

@@ -4,11 +4,14 @@
 import * as React from 'react';
 
 import { offsetWithin, type BoxSize } from '@web/spaces/canvas/crop/crop-geometry';
-import { intrinsicSize, isCropSource, MEDIA_SELECTOR, originalSrc, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
+import { cropMediaOf, intrinsicSize, MEDIA_SELECTOR, originalSrc, type CropMedia, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
 
 /** Where the shown media is in the node, and what it is. */
 export interface MediaGeometry {
+  /** The element the size and clock come from. */
   readonly el: CropSourceEl;
+  /** The element on screen, where the box is measured: `el` itself except for a transparent video's canvas. */
+  readonly shown: HTMLElement;
   readonly at: { x: number; y: number };
   readonly box: BoxSize;
   readonly natural: BoxSize | null;
@@ -23,18 +26,20 @@ export interface MediaGeometry {
  */
 function readGeometry(wrapper: HTMLElement | null): MediaGeometry | null {
   if (wrapper === null) return null;
-  const el = wrapper.querySelector(MEDIA_SELECTOR);
-  if (!isCropSource(el)) return null;
-  const at = offsetWithin(el, wrapper);
-  const box = { width: el.offsetWidth, height: el.offsetHeight };
+  const media = cropMediaOf(wrapper.querySelector(MEDIA_SELECTOR));
+  if (media === null) return null;
+  const { shown, source } = media;
+  const at = offsetWithin(shown, wrapper);
+  const box = { width: shown.offsetWidth, height: shown.offsetHeight };
   if (at === null || box.width <= 0 || box.height <= 0) return null;
-  const size = intrinsicSize(el);
+  const size = intrinsicSize(source);
   return {
-    el,
+    el: source,
+    shown,
     at,
     box,
     natural: size.width > 0 && size.height > 0 ? size : null,
-    src: originalSrc(el),
+    src: originalSrc(shown),
   };
 }
 
@@ -48,6 +53,7 @@ function sameGeometry(a: MediaGeometry | null, b: MediaGeometry | null): boolean
   if (a === null || b === null) return a === b;
   return (
     a.el === b.el &&
+    a.shown === b.shown &&
     a.src === b.src &&
     a.at.x === b.at.x &&
     a.at.y === b.at.y &&
@@ -64,46 +70,54 @@ function sameGeometry(a: MediaGeometry | null, b: MediaGeometry | null): boolean
  * the media resizes, or when it finishes loading.
  * @param root - The node's outer wrapper.
  * @param active - Whether anything on this node needs it.
+ * @param display - The size the source is cut in: the selected version's display (P.display), or for a video with none
+ *   its registered size; with one, never the playing element's `videoWidth`/`videoHeight` (frames-split §7.8 geometry reads).
  * @returns The current reading, or null.
  */
-export function useMediaGeometry(root: HTMLElement | null, active: boolean): MediaGeometry | null {
+export function useMediaGeometry(root: HTMLElement | null, active: boolean, display?: { width: number; height: number } | null): MediaGeometry | null {
   const [geometry, setGeometry] = React.useState<MediaGeometry | null>(null);
   React.useLayoutEffect(() => {
     if (!active || root === null) {
       setGeometry(null);
       return;
     }
-    let watched: CropSourceEl | null = null;
+    let watched: CropMedia | null = null;
     const sizes = new ResizeObserver(() => refresh());
-    /** Re-read the media and watch whichever element is there now. */
+    /**
+     * Stop watching the media watched so far.
+     * @param media - The media.
+     */
+    const unwatch = (media: CropMedia): void => {
+      sizes.unobserve(media.shown);
+      media.source.removeEventListener('load', refresh);
+      media.source.removeEventListener('loadedmetadata', refresh);
+    };
+    /** Re-read the media and watch whichever element is there now: its size on screen, its source's loads. */
     const refresh = (): void => {
       const next = readGeometry(root);
-      const el = root.querySelector(MEDIA_SELECTOR);
-      const media = isCropSource(el) ? el : null;
-      if (media !== watched) {
-        if (watched !== null) {
-          sizes.unobserve(watched);
-          watched.removeEventListener('load', refresh);
-          watched.removeEventListener('loadedmetadata', refresh);
-        }
+      const media = cropMediaOf(root.querySelector(MEDIA_SELECTOR));
+      if (media?.shown !== watched?.shown || media?.source !== watched?.source) {
+        if (watched !== null) unwatch(watched);
         watched = media;
         if (watched !== null) {
-          sizes.observe(watched);
-          watched.addEventListener('load', refresh);
-          watched.addEventListener('loadedmetadata', refresh);
+          sizes.observe(watched.shown);
+          watched.source.addEventListener('load', refresh);
+          watched.source.addEventListener('loadedmetadata', refresh);
         }
       }
       setGeometry((prev) => (sameGeometry(prev, next) ? prev : next));
     };
     const dom = new MutationObserver(refresh);
-    dom.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+    dom.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'data-canonical-video-display'] });
     refresh();
     return () => {
       dom.disconnect();
       sizes.disconnect();
-      watched?.removeEventListener('load', refresh);
-      watched?.removeEventListener('loadedmetadata', refresh);
+      if (watched !== null) unwatch(watched);
     };
   }, [active, root]);
-  return geometry;
+  const displayWidth = display?.width;
+  const displayHeight = display?.height;
+  return React.useMemo(() => geometry === null || displayWidth === undefined || displayHeight === undefined ? geometry
+    : { ...geometry, natural: { width: displayWidth, height: displayHeight } }, [geometry, displayWidth, displayHeight]);
 }

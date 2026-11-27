@@ -15,7 +15,7 @@ import { z } from "zod";
 import type { UntilDeadline } from "@shared/http/deadline.js";
 import { containerUsageSchema, type ContainerUsage } from "@shared/upload/container-usage.js";
 
-import { CONTAINER_FAILURES, CONTAINER_OPS, type ContainerFailure, type ContainerOp } from "@shared/mini-tools/types.js";
+import { CONTAINER_FAILURES, CONTAINER_OPS, MINI_TOOL_JOB_MAX_OUTPUTS, type ContainerFailure, type ContainerOp } from "@shared/mini-tools/types.js";
 import {
   askWorker,
   ingestMeasurements,
@@ -55,8 +55,8 @@ export type MiniToolJobReport =
   | { state: "done"; outputs: (IngestMeasurements & { storageKey: string })[]; usage: ContainerUsage }
   | { state: "failed"; reason: ContainerFailure; usage: ContainerUsage | null };
 
-/** The most outputs one container job may write; every container tool's result count stays within it. */
-export const MINI_TOOL_JOB_MAX_OUTPUTS = 8;
+// Declared beside the container ops so zod-free code the media container bundles can read it too.
+export { MINI_TOOL_JOB_MAX_OUTPUTS };
 
 /**
  * The most inputs one container job may read after its first (inner#1825):
@@ -71,6 +71,7 @@ export const MINI_TOOL_JOB_MAX_EXTRA_INPUTS = 19;
  * object and nothing more.
  */
 export const miniToolJobRequestSchema = z.object({
+  schemaVersion: z.never().optional(),
   jobId: z.string().min(1).max(200),
   containerClass: z.string().min(1).max(100),
   deadlineAt: z.number().int().positive(),
