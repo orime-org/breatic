@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * Stored Timeline clips become frame offsets on load (#1502): before #1502 a clip's transform held canvas-pixel
- * offsets, and a version 1 document may still hold them, as may a document an old page wrote to after it was
- * converted. Converting stores what reading already shows, so no layer moves, and marks the document version 2 so an
- * old page refuses it instead of listing its clips as damaged.
+ * A stored Timeline is brought to the current version on load (`upgradeTimelineDocument`): pixel-offset clips become
+ * frame offsets (#1502), tracks lose their kind and placeholders without a kind name video (inner#1709). A version 1
+ * or 2 document may still hold these, as may a document an old page wrote to after it was upgraded. Upgrading stores
+ * what reading already shows, so nothing moves, and the new version makes an old page refuse the document instead of
+ * listing its clips as damaged.
  */
 
 import * as Y from "yjs";

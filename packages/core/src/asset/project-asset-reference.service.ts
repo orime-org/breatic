@@ -304,7 +304,7 @@ export async function getTimelineLimits(projectId: string, userId: string): Prom
 }
 
 /**
- * Read one page of a Project's videos, or of its images by `kind`, at PostgreSQL cursor precision.
+ * Read one page of a Project's videos, images or sounds by `kind`, at PostgreSQL cursor precision.
  * @param input - The current member, Project and page boundary.
  * @returns The current page and next cursor.
  * @throws {ForbiddenError} When current Project access is absent.
