@@ -14,9 +14,6 @@ import {
   timelineFontFilesMatch,
 } from "../text.js";
 
-/** The families `faces.json` registers in font set v3, as the export container's font set holds them. */
-const V3_FACE_FAMILIES = ["Inter", "Noto Sans JP", "Noto Sans KR", "Noto Sans SC", "Noto Sans TC", "Noto Serif SC"];
-
 const faces = [
   { family: "Inter", file: "inter-latin-wght-normal", unicodeRange: "U+0000-00FF,U+0131", weight: "100 900" },
   { family: "Inter", file: "inter-vietnamese-wght-normal", unicodeRange: "U+0102-0103,U+0110-0111" },
@@ -30,10 +27,6 @@ const glyphs = [
 describe("TIMELINE_TEXT_FONT_FAMILIES (design §2.3)", () => {
   it("lists Inter, then SC, TC, JP and KR, the order of the page's own font stack", () => {
     expect([...TIMELINE_TEXT_FONT_FAMILIES]).toEqual(["Inter", "Noto Sans SC", "Noto Sans TC", "Noto Sans JP", "Noto Sans KR"]);
-  });
-
-  it("names only families the font set registers", () => {
-    for (const family of TIMELINE_TEXT_FONT_FAMILIES) expect(V3_FACE_FAMILIES).toContain(family);
   });
 });
 

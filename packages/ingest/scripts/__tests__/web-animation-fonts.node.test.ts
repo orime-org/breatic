@@ -22,6 +22,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { TIMELINE_TEXT_FONT_FAMILIES, TimelineFontFacesSchema, TimelineFontGlyphsSchema, timelineFontFilesMatch } from "@breatic/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 interface Face {
@@ -42,6 +43,8 @@ interface Fontkit {
 }
 
 const PKG = resolve(__dirname, "../..");
+/** The font set the Timeline preview reads, as `config/timeline.yaml` names it. */
+const FONT_SET_VERSION = /font_set_version:\s*(\d+)/.exec(readFileSync(resolve(PKG, "../../config/timeline.yaml"), "utf8"))?.[1];
 const SCRIPT = resolve(__dirname, "../web-animation-fonts.mjs");
 
 /**
@@ -264,5 +267,21 @@ describe("the font reader", () => {
   it("is fontkit 2.0.4, pinned as a devDependency of this package", () => {
     const pkg = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8")) as { devDependencies: Record<string, string> };
     expect(pkg.devDependencies.fontkit).toBe("2.0.4");
+  });
+});
+
+describe("what the Timeline preview reads (inner#1709 design §2.3, §5.3)", () => {
+  it("parses every version's faces.json and glyphs.json with the shared schemas, the two files agreeing", () => {
+    for (const version of versions) {
+      const faces = TimelineFontFacesSchema.parse(facesOf(version));
+      const glyphs = TimelineFontGlyphsSchema.parse(glyphsOf(version));
+      expect(timelineFontFilesMatch(faces, glyphs), version).toBe(true);
+    }
+  });
+
+  it("registers in the configured version every family of the preview's font stack", () => {
+    expect(FONT_SET_VERSION).toBeDefined();
+    const families = new Set(facesOf(`v${String(FONT_SET_VERSION)}`).map((face) => face.family));
+    for (const family of TIMELINE_TEXT_FONT_FAMILIES) expect(families, family).toContain(family);
   });
 });
