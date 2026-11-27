@@ -231,7 +231,7 @@ const DRAMA = ['scene-plate', 'drama-single-scene', 'short-drama-reversal', 'emo
 const DRAMA_VIDEOS = DRAMA.filter((id) => id !== 'scene-plate');
 
 /** The text nodes the templates give (inner#1824, CAP-3), by template. */
-const TEXT_NODES: Record<string, string[]> = { 'song-with-lyrics': ['lyrics'], 'short-drama-episode': ['script'] };
+const TEXT_NODES: Record<string, string[]> = { 'song-with-lyrics': ['lyrics'], 'short-drama-episode': ['script'], 'comic-drama-episode': ['script'] };
 
 const FIGHT = ['fight-duel-one-take', 'fight-exchange-short', 'fight-duel-locked', 'hero-orbit-reveal', 'bullet-time-moment', 'impact-frame-hit'];
 
@@ -270,6 +270,12 @@ const MV_IMAGES = ['mv-style-sheet', 'mv-performer-sheet', 'mv-full'];
 
 /** The music video templates a video panel lists. */
 const MV_VIDEOS = ['beat-synced-music-clip', 'music-first-mv', 'mv-chorus-performance'];
+
+/** The comic drama templates (inner#2090), in registry order. */
+const COMIC_DRAMA = ['comic-drama-cast-sheet', 'comic-drama-episode', 'narrated-motion-comic', 'comic-drama-voice-line'];
+
+/** The comic drama templates a video panel lists. */
+const COMIC_DRAMA_VIDEOS = COMIC_DRAMA.filter((id) => id !== 'comic-drama-cast-sheet');
 
 /** The e-commerce ad templates (inner#1811), in registry order. */
 const ECOMMERCE = [
@@ -350,6 +356,7 @@ const CATALOG = new Map(
 interface CatalogModel {
   mode: string | string[];
   params: Record<string, ParamDescriptor>;
+  takes_prompt?: boolean;
 }
 
 /** Every model of the catalog, by name, as `config/models` declares them. */
@@ -380,9 +387,19 @@ function expectEveryString(template: GenerationTemplate): void {
     ...template.inputs.map((input) => `input.${input.key}.note`),
     ...template.steps.map((step) => `step.${step}`),
   ];
+  // A model that reads no prompt draws no prompt box (inner#2090): its prompt holds only the notes on what to pick, or nothing.
+  const unread = new Set(
+    generateNodes(template)
+      .filter((node) => MODELS.get(node.model)?.takes_prompt === false)
+      .map((node) => (node.key === template.anchor ? 'prompt' : `node.${node.key}.prompt`)),
+  );
   for (const locale of LOCALES) {
     for (const key of keys) {
       const text = raw(locale, textKey(template, key));
+      if (unread.has(key)) {
+        expect(typeof text === 'string' && /^(\(💡[^)]*\))*$/u.test(text), `${template.id} ${locale} ${key}`).toBe(true);
+        continue;
+      }
       expect(typeof text === 'string' && text.length > 0, `${template.id} ${locale} ${key}`).toBe(true);
     }
     for (const key of names) {
@@ -415,6 +432,7 @@ describe('generation templates', () => {
       'flash-photo-dump-grid',
       ...POSTERS,
       'film-style-still',
+      'comic-drama-cast-sheet',
     ]);
     expect(templatesFor('video').map((t) => t.id)).toEqual([
       'single-view-refs-scene',
@@ -439,6 +457,7 @@ describe('generation templates', () => {
       ...SPEED,
       'clip-ambience-foley',
       ...VIDEO_REMIX,
+      ...COMIC_DRAMA_VIDEOS,
     ]);
     // inner#1825 changes this contract: audio had no template until the sound goal.
     expect(templatesFor('audio').map((t) => t.id)).toEqual(['song-with-lyrics', 'style-sound-bed', ...SOUND_AUDIO]);
@@ -459,6 +478,7 @@ describe('generation templates', () => {
      * @param aspect - Its ratio.
      * @returns The anchor's settings.
      */
+    const COMIC_VOICE = 'A young man in his early twenties, low and cold, clipped and unhurried, speaking close to the microphone';
     const t2v = (duration: number, aspect = '9:16'): Record<string, Pick<TemplateGenerateNode, 'type' | 'mode' | 'model' | 'params' | 'shots'>> => ({
       result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: aspect, duration, generate_audio: true } },
     });
@@ -625,7 +645,7 @@ describe('generation templates', () => {
         'left-voice': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
         'right-voice': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
       },
-      'talking-own-voice': { result: { type: 'video', mode: 'talking_head', model: 'seedance-2.5-talking-avatar', params: {} } },
+      'talking-own-voice': { result: { type: 'video', mode: 'talking_head', model: 'omnihuman-1.5', params: {} } },
       'product-hero-still': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '1:1', resolution: '4k' } } },
       'product-hero-motion': {
         result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 5, generate_audio: false } },
@@ -657,6 +677,22 @@ describe('generation templates', () => {
       'impact-frame-hit': t2v(10, '16:9'),
       'reference-video-remix': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '9:16', duration: 10 } } },
       'seamless-bridge': t2v(5, '16:9'),
+      'comic-drama-cast-sheet': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } } },
+      'comic-drama-episode': {
+        ...t2v(15),
+        'scene-2': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        'scene-3': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+      },
+      'narrated-motion-comic': {
+        result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '9:16', duration: 15 } },
+        panels: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+        narration: { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
+      },
+      'comic-drama-voice-line': {
+        result: { type: 'video', mode: 'talking_head', model: 'omnihuman-1.5', params: {} },
+        line: { type: 'audio', mode: 'voice_clone', model: 'minimax-voice-clone', params: {} },
+        sample: { type: 'audio', mode: 'tts', model: 'qwen3-tts-voice-design', params: { voice_description: COMIC_VOICE } },
+      },
       'cinematic-15s-arc': t2v(15, '16:9'),
       'landscape-3-shot': {
         result: {
@@ -833,7 +869,7 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'drama', 'fight', 'animation', 'music-video', 'ecommerce', 'product-showcase', 'promo', 'food', 'spaces', 'fashion', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'drama', 'fight', 'animation', 'music-video', 'ecommerce', 'product-showcase', 'promo', 'food', 'spaces', 'fashion', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix', 'comic-drama']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
@@ -856,6 +892,7 @@ describe('creative goals and triggers', () => {
       ...Object.fromEntries(SPEED.map((id) => [id, 'speed'])),
       ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
       ...Object.fromEntries(VIDEO_REMIX.map((id) => [id, 'video-remix'])),
+      ...Object.fromEntries(COMIC_DRAMA.map((id) => [id, 'comic-drama'])),
       ...Object.fromEntries(['storyboard-grid-25', ...COMICS].map((id) => [id, 'comics-storyboards'])),
       'costume-sheet': 'character',
       'character-bible': 'character',
@@ -910,6 +947,7 @@ describe('creative goals and triggers', () => {
       ['social-hooks', ['fisheye-clone-pov', 'flash-photo-dump-grid']],
       ['posters', POSTERS],
       ['film-styles', ['film-style-still']],
+      ['comic-drama', ['comic-drama-cast-sheet']],
     ]);
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
@@ -931,6 +969,7 @@ describe('creative goals and triggers', () => {
       ['speed', SPEED],
       ['sound', ['clip-ambience-foley']],
       ['video-remix', VIDEO_REMIX],
+      ['comic-drama', COMIC_DRAMA_VIDEOS],
     ]);
     expect(templateGoalsFor('audio').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['music-video', ['song-with-lyrics']],
@@ -1122,8 +1161,8 @@ describe('optional template inputs (inner#1811, CAP-9)', () => {
   const optionalInputs = (): string[] =>
     GENERATION_TEMPLATES.flatMap((template) => template.inputs.filter((input) => input.optional === true).map((input) => `${template.id}.${input.key}`));
 
-  it('marks the setting of the nine-panel storyboard and the person of the product ad and of the pet selfie vlog optional, and no other input', () => {
-    expect(optionalInputs()).toEqual(['storyboard-sheet-9.setting', 'product-ad-15s.person', 'pet-selfie-vlog.person']);
+  it('marks the setting of the nine-panel storyboard, the person of the product ad and of the pet selfie vlog and the partner of the comic drama cast sheet optional, and no other input', () => {
+    expect(optionalInputs()).toEqual(['storyboard-sheet-9.setting', 'product-ad-15s.person', 'pet-selfie-vlog.person', 'comic-drama-cast-sheet.partner']);
   });
 
   it('feeds the pet selfie vlog an optional person after its pet', () => {
@@ -1860,5 +1899,46 @@ describe('music video templates (inner#1826)', () => {
     );
     expect(full.inputs).toEqual([{ key: 'performer', type: 'image' }]);
     expect(full.steps).toEqual(['trim', 'more', 'join']);
+  });
+});
+
+describe('comic drama templates (inner#2090)', () => {
+  /**
+   * A comic drama template by id, failing the test when it is not registered.
+   * @param id - The id.
+   * @returns The template.
+   */
+  const comic = (id: string): GenerationTemplate => {
+    const template = byId(id);
+    if (!template) throw new Error(`template ${id} is not registered`);
+    return template;
+  };
+
+  it('names the comic drama goal in all five languages', () => {
+    const NAMES: Record<string, string> = { en: 'Comic dramas', 'zh-CN': '漫剧', 'zh-TW': '漫劇', ja: 'マンガドラマ', ko: '만화 드라마' };
+    for (const locale of LOCALES) expect(raw(locale, 'canvas.template.goal.comic-drama'), locale).toBe(NAMES[locale]);
+  });
+
+  it('feeds the series\' cast sheet into every scene of an episode and into the motion comic\'s panels', () => {
+    expect(comic('comic-drama-episode').inputs).toEqual([{ key: 'cast', type: 'image', feeds: ['result', 'scene-2', 'scene-3'] }]);
+    expect(comic('comic-drama-episode').steps).toEqual(['more', 'join']);
+    expect(comic('narrated-motion-comic').inputs).toEqual([{ key: 'cast', type: 'image', feeds: ['panels'] }]);
+  });
+
+  it('gives the motion comic\'s H3 video the panels and the narration and no reference video, so the narration plays as its sound', () => {
+    const motion = comic('narrated-motion-comic');
+    expect(motion.edges).toEqual([
+      { from: 'panels', to: 'result', into: 'pool' },
+      { from: 'narration', to: 'result', into: 'pool' },
+    ]);
+  });
+
+  it('clones the designed voice sample into the line and drives the character\'s picture with the line', () => {
+    const voice = comic('comic-drama-voice-line');
+    expect(voice.edges).toEqual([
+      { from: 'sample', to: 'line', into: 'audio' },
+      { from: 'line', to: 'result', into: 'audio' },
+    ]);
+    expect(voice.inputs).toEqual([{ key: 'character', type: 'image', into: 'image' }]);
   });
 });

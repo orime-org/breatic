@@ -10,6 +10,7 @@ import { parseTimelineFrame, timelineClipIntervalValid, timelineSourceOverflow }
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
+import { Progress } from '@web/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -191,10 +192,7 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
         <span data-testid='timeline-clip-upload' className={cn('min-w-0 break-words text-xs', upload.failed ? 'text-status-error-foreground' : 'text-muted-foreground')}>{upload.text}</span>
         {upload.onRetry !== null && <Button data-testid='timeline-upload-retry' variant='outline' size='compact' onClick={upload.onRetry}>{t('timeline.retry')}</Button>}
       </span>}
-      {upload !== null && upload.progress !== null && <span data-testid='timeline-upload-progress' role='progressbar' aria-valuenow={Math.round(upload.progress * 100)}
-        aria-valuemin={0} aria-valuemax={100} className='h-1 w-full overflow-hidden rounded-full bg-muted'>
-        <span className='block h-full bg-primary' style={{ width: `${Math.round(upload.progress * 100)}%` }} />
-      </span>}
+      {upload !== null && upload.progress !== null && <Progress data-testid='timeline-upload-progress' value={Math.round(upload.progress * 100)} indicatorClassName='bg-primary' />}
       {conflict && <span className='flex min-w-0 gap-1 text-status-error-foreground'>
         <span className='shrink-0'>{t('timeline.conflict')}</span>
         {reason !== null && <><span className='shrink-0'>·</span><span className='min-w-0 truncate'>{t(`timeline.conflictReason.${reason}`)}</span></>}

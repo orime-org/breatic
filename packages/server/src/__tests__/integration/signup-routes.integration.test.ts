@@ -108,7 +108,14 @@ describe("GET /auth/options", () => {
   it("tells the page that sign-up needs a code", async () => {
     const res = await app.request("/api/v1/auth/options");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ data: { emailVerification: true, referralEnabled: expect.any(Boolean) } });
+    expect(await res.json()).toEqual({
+      data: {
+        emailVerification: true,
+        referralEnabled: expect.any(Boolean),
+        desktopAppScheme: "ai.breatic.desktop",
+        desktopAppName: "Breatic",
+      },
+    });
   });
 });
 

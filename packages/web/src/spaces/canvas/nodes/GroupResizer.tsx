@@ -49,7 +49,7 @@ interface GroupResizerProps {
  * opposite edge is anchored). Each control's min is the native ReactFlow clamp's
  * lever, which subtracts overshoot from pointer travel every frame → a true
  * hard-stop that is fast-drag-safe by construction. Styling (transparent line +
- * mode-aware corner squares + enlarged hit area) is inherited from the
+ * mode-aware round corner knobs + enlarged hit area) is inherited from the
  * `.react-flow__resize-control` rules in index.css.
  * @param root0 - Component props.
  * @param root0.bounds - Per-control minimum sizes from `groupResizeBounds`.

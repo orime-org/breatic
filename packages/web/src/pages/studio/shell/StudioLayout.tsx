@@ -13,6 +13,7 @@ import {
   defaultCreateStudioId,
 } from '@web/pages/studio/container/dialogs/studio-create';
 import { useCreateProject } from '@web/pages/studio/container/dialogs/use-create-project';
+import { DownloadPanelAnchor } from '@web/features/desktop-downloads/DownloadPanelAnchor';
 import { StudioRail } from '@web/pages/studio/rail/StudioRail';
 import { StudioRailDrawer } from '@web/pages/studio/rail/StudioRailDrawer';
 import { StudioTopBar } from '@web/pages/studio/shell/StudioTopBar';
@@ -77,7 +78,8 @@ export default function StudioLayout(): React.JSX.Element {
           onCreateProject={() => setCreateOpen(true)}
           onCreateStudio={() => setCreateStudioOpen(true)}
         />
-        <main className='min-w-0 flex-1 overflow-hidden'>
+        <main className='relative min-w-0 flex-1 overflow-hidden'>
+          <DownloadPanelAnchor />
           <Outlet
             context={
               {
