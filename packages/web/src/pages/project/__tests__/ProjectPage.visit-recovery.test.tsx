@@ -58,7 +58,7 @@ type Recovery = typeof RECOVERIES[number];
 const project: ProjectDetail = {
   id: PROJECT, name: 'Recovery Project', description: null, thumbnailUrl: null,
   createdAt: '', updatedAt: '', studioId: '00000000-0000-4000-8000-000000000021',
-  createdByUserId: ACCOUNT, myRole: 'owner', deletedAt: null, archivedAt: null, canRestore: false, canManageMeta: true, canLeave: false,
+  createdByUserId: ACCOUNT, myRole: 'owner', deletedAt: null, archivedAt: null, canRestore: false, canManageMeta: true, canLeave: false, copying: false,
 };
 
 /** Preserve the actual receipt identity and full precision server instant. @throws {never} Never. */

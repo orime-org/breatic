@@ -10,7 +10,8 @@
       "rate_limited": "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요",
       "payload_too_large": "요청 내용이 {limit}을(를) 초과합니다. 프롬프트나 참조한 텍스트를 줄여 주세요.",
       "transfer_invalid": "업로드한 내용을 사용할 수 없습니다. 다시 시도해 주세요.",
-      "internal": "내부 서버 오류"
+      "internal": "내부 서버 오류",
+      "project_copying": "이 Project는 복사 중이라 아직 복사할 수 없습니다."
     },
     "credit": {
       "not_studio_admin": "크레딧은 본인이 관리하는 Studio에만 지정할 수 있습니다.",
@@ -3609,6 +3610,10 @@
       "title": "진행 중인 작업이 있습니다. 새로고침할까요?",
       "refresh": "새로고침하기",
       "failed": "새로고침하지 못했습니다. 다시 시도해 주세요."
+    },
+    "copying": {
+      "title": "이 Project는 복사 중입니다. 완료되면 Studio에서 여세요.",
+      "backToStudio": "Studio로 돌아가기"
     }
   },
   "common": {
@@ -4601,7 +4606,8 @@
         "openedAt": "{time}에 열람",
         "editedAt": "{time}에 수정",
         "archivedAt": "{time}에 보관",
-        "neverOpened": "열지 않음"
+        "neverOpened": "열지 않음",
+        "copying": "복사 중"
       },
       "projects": {
         "new": "새 Project",

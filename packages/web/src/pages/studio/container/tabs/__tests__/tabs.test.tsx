@@ -39,6 +39,7 @@ const STUDIO_VISIBLE: ContainerProject = {
   canArchive: false,
   canRestore: false,
   canLeave: false,
+  copying: false,
 };
 const NOT_JOINED: ContainerProject = {
   id: 'b',
@@ -55,6 +56,7 @@ const NOT_JOINED: ContainerProject = {
   canArchive: false,
   canRestore: false,
   canLeave: false,
+  copying: false,
 };
 
 

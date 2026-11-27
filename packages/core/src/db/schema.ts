@@ -292,6 +292,10 @@ export const projects = pgTable(
     archivedByUserId: uuid("archived_by_user_id").references(() => users.id, {
       onDelete: "restrict",
     }),
+    // Copy status (0138, inner#1706): the duplicate request writes the source, collab writes the completion once the
+    // documents are copied. A source with no completion means the copy is still being copied and does not open.
+    duplicatedFromId: uuid("duplicated_from_id").references((): AnyPgColumn => projects.id, { onDelete: "restrict" }),
+    duplicateCompletedAt: timestamp("duplicate_completed_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [index("projects_studio_id_idx").on(table.studioId, table.deletedAt)],

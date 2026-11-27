@@ -48,7 +48,7 @@ export {
   writeSpaceEntry,
 } from "@core/db/yjs-bootstrap.js";
 export type { SpaceEntryInit, SpaceKind } from "@core/db/yjs-bootstrap.js";
-export { loadInitialSpaceType } from "@core/db/project-seed.repo.js";
+export { loadSeedFacts, type SeedFacts } from "@core/db/project-seed.repo.js";
 // Table values + Drizzle row types, also re-exported by name so server
 // modules can `import { projects } from "@breatic/core"`. `schema` (the
 // namespace, above) stays the canonical form for bulk access.

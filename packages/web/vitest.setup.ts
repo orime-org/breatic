@@ -136,6 +136,14 @@ afterEach(() => {
   // Query stops reading the page's visibility, and a later file that hides
   // and shows the tab sees no change. Undefined hands it back to visibility.
   focusManager.setFocused(undefined);
+  // The tab's visibility is the same kind of state: a test steers it by
+  // putting its own `visibilityState` and `hidden` on the one shared
+  // document, and one left at hidden hands every later file a hidden tab.
+  // Code that syncs only a visible tab (`chatLive`) then never syncs, and a
+  // file far away fails on a stream that never opens (inner#2168). Deleting
+  // them hands back jsdom's own, which reads visible.
+  delete (document as { visibilityState?: unknown }).visibilityState;
+  delete (document as { hidden?: unknown }).hidden;
   // A canvas's render buffer, session and text editors are kept by Space id
   // for as long as the tab is open, so they outlive an unmount the way the
   // online state does: every test renders a fresh canvas, and a later one

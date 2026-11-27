@@ -35,6 +35,8 @@ export interface ProjectDetail extends ProjectSummary {
   canRestore: boolean;
   /** Whether the caller may leave it: an editor or a viewer, on a live project. */
   canLeave: boolean;
+  /** A copy still being copied (inner#1706): the page shows that and opens nothing. */
+  copying: boolean;
 }
 
 /**

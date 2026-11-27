@@ -156,9 +156,6 @@ afterEach(() => {
   unmount = undefined;
   client.clear();
   clearRunningTurns();
-  // Own properties over the prototype's getters; deleting them restores jsdom's.
-  delete (document as { visibilityState?: unknown }).visibilityState;
-  delete (document as { hidden?: unknown }).hidden;
   vi.useRealTimers();
 });
 
