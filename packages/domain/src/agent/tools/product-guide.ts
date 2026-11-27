@@ -1560,9 +1560,10 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
     "",
     "## Timeline spaces",
-    `The central preview sits above the toolbar and the tracks. ${quoted(t("timeline.play"))} and ` +
-      `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
-      "At the right end of that play bar a menu shows the frame's aspect ratio and size, such as 16:9 · 1920×1080, and offers 16:9, 9:16, 1:1, 4:3, 4:5, 2:3 and 21:9; " +
+    "The central preview sits above the play bar, the toolbar and the tracks. Directly below the preview a slider across the whole width selects its integer frame. " +
+      `Below that slider, ${quoted(t("timeline.play"))} and ${quoted(t("timeline.pause"))} at the left control playback, followed by the current time and the total length. ` +
+      "At the right end of that row a menu shows the frame's aspect ratio and size, such as 16:9 · 1920×1080, and offers 16:9, 9:16, 1:1, 4:3, 4:5, 2:3 and 21:9; " +
+      "when the editor is narrow the row narrows in steps: the menu shows only the ratio, such as 16:9, then the play button shows only its icon with its name on hover, then only the current time shows. " +
       "a new Timeline starts at 16:9. Choosing one changes the frame for everyone in the Space and is one undo step: the black preview frame takes that shape within the preview area, " +
       "and each layer keeps its place relative to the frame, its scale and its rotation. A Timeline whose frame is not one of these sizes shows its size in the menu with no ratio checked. " +
       "A Viewer sees the menu disabled. " +
@@ -1599,7 +1600,9 @@ export function renderProductGuide(): string {
       `then scissors, ${quoted(t("timeline.edit.split"))} (splits the selected clip at the playhead), two sheets, ` +
       `${quoted(t("timeline.edit.duplicate"))} (places a copy right after it) and a bin, ${quoted(t("timeline.edit.delete"))}, which with no clip selected say to select one first; ` +
       `then three switches that look pressed while on, a magnet, ${quoted(t("timeline.edit.magnet"))}, an arrow to a line, ${quoted(t("timeline.edit.snap"))} and a chain link, ` +
-      `${quoted(t("timeline.edit.linkage"))}; and at the right end the ${quoted(t("timeline.edit.zoom"))} slider, named on hover too. The switches are yours and are kept for your account in this browser. ` +
+      `${quoted(t("timeline.edit.linkage"))}; and at the right end the ${quoted(t("timeline.edit.zoom"))} slider, named on hover too. ` +
+      `When the toolbar is too narrow, its rightmost controls move in order into a menu behind ${quoted(t("timeline.edit.more"))}, a button with three dots at its end, ` +
+      `where each shows its icon, name and shortcut, the switches as ticked rows and the zoom as a slider row; they come back to the toolbar as it widens. The switches are yours and are kept for your account in this browser. ` +
       `A Viewer sees ${quoted(t("timeline.addMedia"))} and the editing buttons faded, and no ${quoted(t("timeline.edit.addText"))}. ` +
       `With ${quoted(t("timeline.edit.magnet"))} on, clips on ${quoted(t("timeline.mainTrack"))} play end to end: a dropped clip is inserted ` +
       "and later clips move along, a deleted or trimmed clip closes its gap, and the start frame there is read only " +

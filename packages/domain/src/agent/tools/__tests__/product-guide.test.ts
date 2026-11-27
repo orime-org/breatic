@@ -916,9 +916,12 @@ describe("the guide's source", () => {
 describe("what the guide says about each surface", () => {
   it("names the Timeline toolbar's icon buttons in the order the toolbar shows them (inner#1709)", () => {
     const source = webSource("spaces/timeline/TimelineSpace.tsx");
-    const start = source.indexOf("role='toolbar'");
-    const bar = source.slice(source.indexOf("\n", start), source.indexOf("<TimelineTrackArea", start));
-    const keys = [...bar.matchAll(/label=\{t\('([\w.]+)'\)\}/g)].map((match) => match[1] as string);
+    // The entries in toolbar order: the buttons name themselves; the zoom slider is named by `zoomLabel`.
+    const start = source.indexOf("const toolbarEntries");
+    const entries = source.slice(start, source.indexOf("}, [t, readOnly", start));
+    const zoomKey = /zoomLabel = t\('([\w.]+)'\)/.exec(entries)?.[1];
+    const listed = entries.slice(entries.indexOf("return ["));
+    const keys = [...listed.matchAll(/label: t\('([\w.]+)'\)|<TooltipContent>\{zoomLabel\}/g)].map((match) => (match[1] ?? zoomKey) as string);
     expect(keys).toEqual([
       "timeline.addMedia", "timeline.webAnimation.add", "timeline.edit.addText", "timeline.edit.undo", "timeline.edit.redo",
       "timeline.edit.split", "timeline.edit.duplicate", "timeline.edit.delete", "timeline.edit.magnet", "timeline.edit.snap",
