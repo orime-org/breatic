@@ -768,6 +768,12 @@ describe("Version 3: tracks without kind, placeholders naming their kind, image,
     });
   });
 
+  it("still lists a text clip with an in-point as damaged, since no landing writes text", () => {
+    const doc = seededDoc();
+    doc.transact(() => attachTimelineRecord(doc.getMap("clips"), textClip.id, { ...textClip, sourceInFrame: 5 }), "peer");
+    expect(readTimelineContent(doc).damaged).toEqual({ clips: [textClip.id] });
+  });
+
   it("reads a landed clip a merge left with its placeholder's upload as the clip alone", () => {
     const doc = seededDoc();
     doc.transact(() => {
