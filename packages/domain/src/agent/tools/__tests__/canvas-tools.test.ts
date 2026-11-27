@@ -486,13 +486,13 @@ describe("what the rendered answer tells the model", () => {
   });
 
   // A model that takes shots in the mode writes its words in the prompt on a
-  // single-shot node and in each shot on a node with shots, so a node it @s is
-  // @'d in whichever of them the node carries.
-  it("says a node wired into a model that takes shots is @'d in the prompt, or in each shot on a node with shots", async () => {
+  // single-shot node and in its shots on a node with shots, so a node it @s is
+  // @'d in the prompt or in the shot that speaks of it.
+  it("says a node wired into a model that takes shots is @'d in the prompt, or in a shot on a node with shots", async () => {
     const said = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" }));
     const line = said.split("\n- ").find((l) => l.includes("(kling-video-o3-4k-image-to-video)")) ?? "";
     expect(line).toMatch(/Takes shots here:/);
-    expect(line).toMatch(/elements: [^\n]*then a mention of it in the prompt, or each shot on a node with shots\./);
+    expect(line).toMatch(/elements: [^\n]*then a mention of it in the prompt, or a shot on a node with shots\./);
   });
 
   it("says a node wired into the pool is mentioned in the prompt where the model takes no shots", async () => {

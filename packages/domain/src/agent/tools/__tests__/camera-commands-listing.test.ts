@@ -63,7 +63,7 @@ describe("camera commands in the model listing", () => {
 
   it("says the commands go in the prompt or each shot where the model takes shots, and in the prompt where it takes none", async () => {
     for (const [mode, name] of [["t2v", "minimax-h3-text-to-video"], ["i2v", "minimax-h3-image-to-video"], ["ref", "minimax-h3-reference-to-video"]] as const) {
-      expect(await lineOf(mode, name), `${name} in ${mode}`).toMatch(/written into the prompt, or each shot on a node with shots:/);
+      expect(await lineOf(mode, name), `${name} in ${mode}`).toMatch(/written into the prompt, or a shot on a node with shots:/);
     }
     expect(await lineOf("first_last", "minimax-h3-image-to-video")).toMatch(/written into the prompt:/);
   });

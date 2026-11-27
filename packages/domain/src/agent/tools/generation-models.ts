@@ -176,7 +176,7 @@ function renderStoryboard(model: PricedModelInfo): string {
  * @returns Where the words go.
  */
 function wordsBox(model: PricedModelInfo): string {
-  return model.storyboard ? "the prompt, or each shot on a node with shots" : "the prompt";
+  return model.storyboard ? "the prompt, or a shot on a node with shots" : "the prompt";
 }
 
 /**
