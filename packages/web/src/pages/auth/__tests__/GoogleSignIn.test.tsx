@@ -164,6 +164,16 @@ describe('the Google sign-in form', () => {
     expect(recorder.posts).toHaveLength(1);
   });
 
+  it('draws the waiting spinner in the 18px slot of the G mark it replaces', async () => {
+    const user = userEvent.setup();
+    renderAt('/login');
+    const button = await googleButton();
+    expect(button.querySelector('svg')).toHaveClass('size-[18px]');
+    await user.click(button);
+    await waitFor(() => expect(button.querySelector('svg')).toHaveClass('animate-spin'));
+    expect(button.querySelector('svg')).toHaveClass('size-[18px]');
+  });
+
   it.each(['/login', '/register'])('shows no Google button on %s when the server has no Google sign-in', async (entry) => {
     vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false, googleSignIn: false } as never);
     renderAt(entry);
