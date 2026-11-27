@@ -887,6 +887,25 @@ describe('sound through Web Audio (design §5.2, §7.4, §7.5)', () => {
 });
 
 describe('media that cannot be read (design §6.6, acceptance 7)', () => {
+  it('drops a picture\'s read failure with its layer once the playhead leaves, and reads the file again when it comes back (design §6.6, §7.4)', async () => {
+    seed([{ ...VIDEO, durationFrames: 300 }, IMAGE]);
+    decodeOutcome = 'reject';
+    show();
+    const clip = await screen.findByTestId('timeline-clip-' + IMAGE.id);
+    await waitFor(() => expect(clip).toHaveTextContent('图片读取失败'));
+    seekForward(200);
+    await waitFor(() => expect(layerOf(IMAGE.id)).toBe(null));
+    expect(clip).not.toHaveTextContent('读取失败');
+    fireEvent.click(clip);
+    expect(within(screen.getByTestId('timeline-side-panel')).queryByTestId('timeline-media-retry')).toBe(null);
+    decodeOutcome = 'resolve';
+    const seek = screen.getAllByRole('slider')[0]!;
+    seek.focus();
+    for (let step = 0; step < 200; step += 1) fireEvent.keyDown(seek, { key: 'ArrowLeft' });
+    await waitFor(() => expect(layerOf(IMAGE.id)).not.toBe(null));
+    await waitFor(() => expect(screen.getByTestId('timeline-clip-' + IMAGE.id)).not.toHaveTextContent('读取失败'));
+  });
+
   it('says a sound could not be read, on the clip, in its properties and in the preview, and retries only that layer', async () => {
     seed([AUDIO, IMAGE]);
     show();

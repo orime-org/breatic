@@ -23,7 +23,8 @@ interface TimelineImageLayerProps {
   box: React.CSSProperties | null;
   z: number;
   shown: boolean;
-  onState: (clipId: string, state: TimelineImageState, size: { width: number; height: number } | null) => void;
+  /** Receives its state, and null when the layer goes away, which ends its state as a media lane's removal does. */
+  onState: (clipId: string, state: TimelineImageState | null, size: { width: number; height: number } | null) => void;
 }
 
 /**
@@ -34,7 +35,7 @@ interface TimelineImageLayerProps {
  * @param props.box - Its placed box.
  * @param props.z - Its stacking order.
  * @param props.shown - Whether it is visible now; a premounted picture waits hidden.
- * @param props.onState - Receives its state.
+ * @param props.onState - Receives its state, and null when it goes away.
  * @returns The image.
  * @throws {never} Never.
  */
@@ -50,7 +51,10 @@ export const TimelineImageLayer = React.memo(function TimelineImageLayer({ clipI
     }, () => {
       if (current) onState(clipId, 'failed', null);
     });
-    return () => { current = false; };
+    return () => {
+      current = false;
+      onState(clipId, null, null);
+    };
   }, [clipId, src, onState]);
   const style = React.useMemo((): React.CSSProperties => ({
     ...box, position: 'absolute', objectFit: 'contain', pointerEvents: 'none', zIndex: z, visibility: shown && box !== null ? undefined : 'hidden',

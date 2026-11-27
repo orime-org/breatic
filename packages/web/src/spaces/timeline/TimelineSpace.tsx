@@ -370,11 +370,17 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
   // The layer set keeps its identity while its content is unchanged, so playing on does not resync the elements.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the specs change only when their signature does.
   const videoLayers = React.useMemo(() => videoSpecs, [videoSignature]);
-  // Pictures: each reports its decode and decoded size; a retry mounts it again (design §5.1, §6.6).
+  // Pictures: each mounted layer reports its decode and decoded size, and its state ends with it (design §5.1, §6.6, §7.4).
   const [imageStates, setImageStates] = React.useState(NO_IMAGE_STATES);
   const [imageAttempts, setImageAttempts] = React.useState<ReadonlyMap<string, number>>(() => new Map());
-  const reportImage = React.useCallback((clipId: string, state: TimelineImageState, size: { width: number; height: number } | null): void => setImageStates((current) => {
+  const reportImage = React.useCallback((clipId: string, state: TimelineImageState | null, size: { width: number; height: number } | null): void => setImageStates((current) => {
     const before = current.get(clipId);
+    if (state === null) {
+      if (before === undefined) return current;
+      const next = new Map(current);
+      next.delete(clipId);
+      return next;
+    }
     if (before?.state === state && (size === null || (before.size?.width === size.width && before.size.height === size.height))) return current;
     return new Map(current).set(clipId, { state, size: size ?? before?.size ?? null });
   }), []);
