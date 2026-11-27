@@ -687,7 +687,7 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
     if (focusTarget !== null) await announceFocusImageFailed(focusTarget);
     return { status: "stale", ...sideEffects };
   }
-  if (spaceTarget !== null) await announceSpaceUploadAsset(spaceTarget, asset);
+  if (spaceTarget !== null) await announceSpaceUploadAsset(spaceTarget, asset, coverUrl);
   if (focusTarget !== null) await announceFocusImage(focusTarget, asset);
   const history = await recordRegisteredUploadHistory(grant, asset, coverUrl);
   const countsPublishFailed = await announceSuccess(grant, resultOf(asset, coverUrl), history.entryId);

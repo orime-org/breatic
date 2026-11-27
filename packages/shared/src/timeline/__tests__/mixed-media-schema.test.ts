@@ -23,15 +23,17 @@ const VIDEO_SOURCE = "10000000-0000-4000-8000-000000000001";
 const IMAGE_SOURCE = "10000000-0000-4000-8000-000000000002";
 const AUDIO_SOURCE = "10000000-0000-4000-8000-000000000003";
 const MISSING_SOURCE = "10000000-0000-4000-8000-0000000000ff";
-const ASSET = "20000000-0000-4000-8000-000000000001";
 const UPLOAD = "b0000000-0000-4000-8000-000000000001";
 
 const videoSource = {
-  id: VIDEO_SOURCE, kind: "video" as const, assetId: ASSET, timebase: fps, extentFrames: 48, durationSeconds: "2",
-  durationOrigin: "registered" as const,
+  id: VIDEO_SOURCE, kind: "video" as const, url: "https://cdn.example/a.mp4", coverUrl: null, name: "a.mp4", mimeType: "video/mp4",
+  width: 1920, height: 1080, timebase: fps, extentFrames: 48, durationSeconds: "2", durationOrigin: "registered" as const,
 };
-const imageSource = { id: IMAGE_SOURCE, kind: "image" as const, assetId: ASSET, width: 800, height: 600 };
-const audioSource = { ...videoSource, id: AUDIO_SOURCE, kind: "audio" as const, extentFrames: 60, durationSeconds: "2.5" };
+const imageSource = { id: IMAGE_SOURCE, kind: "image" as const, url: "https://cdn.example/a.png", name: "a.png", mimeType: "image/png", width: 800, height: 600 };
+const audioSource = {
+  id: AUDIO_SOURCE, kind: "audio" as const, url: "https://cdn.example/a.mp3", name: "a.mp3", mimeType: "audio/mpeg",
+  timebase: fps, extentFrames: 60, durationSeconds: "2.5", durationOrigin: "registered" as const,
+};
 
 const placement = {
   trackId: "visual-1", startFrame: 0, sourceInFrame: 0, durationFrames: 48, rate: { num: 1, den: 1 }, gain: 1,
@@ -106,7 +108,13 @@ describe("sources are a union of video, image and audio (design §2.2)", () => {
     ["only the height null", { height: null }],
     ["a duration, which a picture has none of", { durationSeconds: "2" }],
     ["a timebase", { timebase: fps }],
-    ["an embedded URL", { fileUrl: "https://cdn.example/a.png" }],
+    ["an asset id, which inner#2171 replaced by the address", { assetId: "20000000-0000-4000-8000-000000000001" }],
+    ["an address that is not a URL", { url: "beach.png" }],
+    ["no address", { url: undefined }],
+    ["an empty name", { name: "" }],
+    ["a name of 256 characters", { name: "a".repeat(256) }],
+    ["a type that is not a picture", { mimeType: "video/mp4" }],
+    ["a cover, which a picture has none of", { coverUrl: null }],
   ])("refuses an image source with %s", (_case, fields) => {
     expect(TimelineImageSourceSchema.safeParse({ ...imageSource, ...fields }).success).toBe(false);
     expect(TimelineSourceSchema.safeParse({ ...imageSource, ...fields }).success).toBe(false);
@@ -115,6 +123,16 @@ describe("sources are a union of video, image and audio (design §2.2)", () => {
   it("accepts an audio source measured like a video, alone and through the union", () => {
     expect(TimelineAudioSourceSchema.parse(audioSource)).toEqual(audioSource);
     expect(TimelineSourceSchema.parse(audioSource)).toEqual(audioSource);
+  });
+
+  it.each([
+    ["an asset id, which inner#2171 replaced by the address", { assetId: "20000000-0000-4000-8000-000000000001" }],
+    ["an address that is not a URL", { url: "song.mp3" }],
+    ["a type that is not a sound", { mimeType: "video/mp4" }],
+    ["a cover or a size, which a sound has none of", { coverUrl: null, width: 1, height: 1 }],
+  ])("refuses an audio source with %s", (_case, fields) => {
+    expect(TimelineAudioSourceSchema.safeParse({ ...audioSource, ...fields }).success).toBe(false);
+    expect(TimelineSourceSchema.safeParse({ ...audioSource, ...fields }).success).toBe(false);
   });
 
   it("refuses an audio source whose duration does not conform to its extent", () => {

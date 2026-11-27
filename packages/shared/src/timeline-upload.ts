@@ -22,10 +22,13 @@ import {
 import { durationToFrames, timelineSourceRoom, timelineUploadExtent } from "@shared/timeline/time.js";
 import type { TaskFailureReason } from "@shared/types/task-failure.js";
 
-/** What registration measured for a finished Timeline upload. */
+/** A finished Timeline upload: its stored address and what registration measured (inner#2171). */
 export interface TimelineUploadResult {
-  assetId: string;
   kind: "video" | "image" | "audio";
+  url: string;
+  /** The video's cover; null for a picture or a sound. */
+  coverUrl: string | null;
+  mimeType: string;
   durationSeconds: number | null;
   width: number | null;
   height: number | null;
@@ -60,7 +63,8 @@ const UNCONVERTIBLE = { state: "failed", failure: "failed", retryable: false } a
 
 /**
  * The source a registered upload is measured by, or undefined when none can be made: a video or sound needs a
- * duration, the registered one or else the one the browser read.
+ * duration, the registered one or else the one the browser read. It is stored by its address and named after the file
+ * the user picked, as an upload of the canvas or a Document is (inner#2171).
  * @param document - The Timeline.
  * @param placeholders - The upload's placeholders.
  * @param result - What registration measured.
@@ -70,11 +74,10 @@ const UNCONVERTIBLE = { state: "failed", failure: "failed", retryable: false } a
 function sourceOf(document: TimelineDocumentV1, placeholders: readonly TimelineUploadClip[], result: TimelineUploadResult): TimelineSource | undefined {
   // uuid directly, not ids.ts: a module both entries reach joins the Yjs chunk, and web calls newId from every page.
   const id = uuidv4();
-  if (result.kind === "image") {
-    const measured = result.width !== null && result.height !== null;
-    const source = { id, kind: "image", assetId: result.assetId, width: measured ? result.width : null, height: measured ? result.height : null };
-    return TimelineSourceSchema.safeParse(source).data;
-  }
+  const stored = { id, url: result.url, name: placeholders[0]?.upload.name, mimeType: result.mimeType };
+  const measured = result.width !== null && result.height !== null;
+  const size = { width: measured ? result.width : null, height: measured ? result.height : null };
+  if (result.kind === "image") return TimelineSourceSchema.safeParse({ ...stored, kind: "image", ...size }).data;
   const duration = result.durationSeconds ?? placeholders.map((clip) => clip.upload.durationSeconds).find((seconds) => seconds !== null);
   if (duration === undefined || duration === null) return undefined;
   const fps = document.settings.fps;
@@ -85,10 +88,8 @@ function sourceOf(document: TimelineDocumentV1, placeholders: readonly TimelineU
     // A duration that cannot be counted in frames cannot be placed; the placeholder is marked failed.
     return undefined;
   }
-  const source = {
-    id, kind: result.kind, assetId: result.assetId, timebase: fps, extentFrames, durationSeconds: String(duration),
-    durationOrigin: result.durationSeconds === null ? "decoded" : "registered",
-  };
+  const extent = { timebase: fps, extentFrames, durationSeconds: String(duration), durationOrigin: result.durationSeconds === null ? "decoded" : "registered" };
+  const source = result.kind === "video" ? { ...stored, kind: "video", coverUrl: result.coverUrl, ...size, ...extent } : { ...stored, kind: "audio", ...extent };
   return TimelineSourceSchema.safeParse(source).data;
 }
 

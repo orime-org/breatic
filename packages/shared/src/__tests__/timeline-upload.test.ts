@@ -22,7 +22,11 @@ const UPLOAD = "b0000000-0000-4000-8000-000000000001";
 const OTHER_UPLOAD = "b0000000-0000-4000-8000-000000000002";
 const PLACEHOLDER = "60000000-0000-4000-8000-000000000001";
 const SECOND_PLACEHOLDER = "60000000-0000-4000-8000-000000000002";
-const ASSET = "20000000-0000-4000-8000-000000000001";
+/** Where the registered upload is stored, by kind (inner#2171). */
+const VIDEO_URL = "https://cdn.example/beach.mp4";
+const COVER_URL = "https://cdn.example/beach.jpg";
+const IMAGE_URL = "https://cdn.example/beach.png";
+const AUDIO_URL = "https://cdn.example/song.mp3";
 const transform = { frameX: 0.1, frameY: -0.1, scaleX: 0.5, scaleY: 0.5, rotation: 15 };
 
 const placement = {
@@ -48,9 +52,9 @@ const audioPlaceholder = {
 type Placeholder = typeof videoPlaceholder | typeof imagePlaceholder | typeof audioPlaceholder;
 type UploadResult = NonNullable<TimelineUploadEvent["result"]>;
 
-const VIDEO_RESULT: UploadResult = { assetId: ASSET, kind: "video", durationSeconds: 4, width: 1920, height: 1080 };
-const IMAGE_RESULT: UploadResult = { assetId: ASSET, kind: "image", durationSeconds: null, width: 800, height: 600 };
-const AUDIO_RESULT: UploadResult = { assetId: ASSET, kind: "audio", durationSeconds: 4, width: null, height: null };
+const VIDEO_RESULT: UploadResult = { kind: "video", url: VIDEO_URL, coverUrl: COVER_URL, mimeType: "video/mp4", durationSeconds: 4, width: 1920, height: 1080 };
+const IMAGE_RESULT: UploadResult = { kind: "image", url: IMAGE_URL, coverUrl: null, mimeType: "image/png", durationSeconds: null, width: 800, height: 600 };
+const AUDIO_RESULT: UploadResult = { kind: "audio", url: AUDIO_URL, coverUrl: null, mimeType: "audio/mpeg", durationSeconds: 4, width: null, height: null };
 
 const docs: Y.Doc[] = [];
 
@@ -182,7 +186,7 @@ describe("completed (design §4.3 conversion table, §7.1)", () => {
     expect(sources).toHaveLength(1);
     const source = sources[0]!;
     expect(source).toEqual({
-      id: source.id, kind: "video", assetId: ASSET, timebase: settings.fps, extentFrames: 96, durationSeconds: "4",
+      id: source.id, kind: "video", url: VIDEO_URL, coverUrl: COVER_URL, name: "beach.mp4", mimeType: "video/mp4", width: 1920, height: 1080, timebase: settings.fps, extentFrames: 96, durationSeconds: "4",
       durationOrigin: "registered",
     });
     expect(document.clips[PLACEHOLDER]).toEqual({ ...placementOf(videoPlaceholder), kind: "video", sourceId: source.id, durationFrames: 96 });
@@ -233,7 +237,7 @@ describe("completed (design §4.3 conversion table, §7.1)", () => {
     const document = read(doc);
     const source = Object.values(document.sources)[0]!;
     expect(source).toEqual({
-      id: source.id, kind: "video", assetId: ASSET, timebase: settings.fps, extentFrames: 60, durationSeconds: "2.5",
+      id: source.id, kind: "video", url: VIDEO_URL, coverUrl: COVER_URL, name: "beach.mp4", mimeType: "video/mp4", width: 1920, height: 1080, timebase: settings.fps, extentFrames: 60, durationSeconds: "2.5",
       durationOrigin: "decoded",
     });
     expect(document.clips[PLACEHOLDER]).toEqual({ ...placementOf(videoPlaceholder), kind: "video", sourceId: source.id });
@@ -244,7 +248,7 @@ describe("completed (design §4.3 conversion table, §7.1)", () => {
     applyTimelineUpload(doc, completed(IMAGE_RESULT));
     const document = read(doc);
     const source = Object.values(document.sources)[0]!;
-    expect(source).toEqual({ id: source.id, kind: "image", assetId: ASSET, width: 800, height: 600 });
+    expect(source).toEqual({ id: source.id, kind: "image", url: IMAGE_URL, name: "beach.png", mimeType: "image/png", width: 800, height: 600 });
     expect(document.clips[PLACEHOLDER]).toEqual({ ...placementOf(imagePlaceholder), kind: "image", sourceId: source.id, sourceInFrame: 0, durationFrames: 120 });
   });
 
@@ -252,7 +256,7 @@ describe("completed (design §4.3 conversion table, §7.1)", () => {
     const doc = timeline(imagePlaceholder);
     applyTimelineUpload(doc, completed({ ...IMAGE_RESULT, width: null, height: null }));
     const source = Object.values(read(doc).sources)[0]!;
-    expect(source).toEqual({ id: source.id, kind: "image", assetId: ASSET, width: null, height: null });
+    expect(source).toEqual({ id: source.id, kind: "image", url: IMAGE_URL, name: "beach.png", mimeType: "image/png", width: null, height: null });
   });
 
   it("turns an audio placeholder into an audio clip and writes an audio source", () => {
@@ -261,7 +265,7 @@ describe("completed (design §4.3 conversion table, §7.1)", () => {
     const document = read(doc);
     const source = Object.values(document.sources)[0]!;
     expect(source).toEqual({
-      id: source.id, kind: "audio", assetId: ASSET, timebase: settings.fps, extentFrames: 96, durationSeconds: "4",
+      id: source.id, kind: "audio", url: AUDIO_URL, name: "song.mp3", mimeType: "audio/mpeg", timebase: settings.fps, extentFrames: 96, durationSeconds: "4",
       durationOrigin: "registered",
     });
     expect(document.clips[PLACEHOLDER]).toEqual({ ...placementOf(audioPlaceholder), kind: "audio", sourceId: source.id, durationFrames: 96 });
@@ -294,7 +298,7 @@ describe("completed (design §4.3 conversion table, §7.1)", () => {
     const document = read(doc);
     const source = Object.values(document.sources)[0]!;
     expect(source).toEqual({
-      id: source.id, kind: "video", assetId: ASSET, timebase: settings.fps, extentFrames: 48, durationSeconds: "2",
+      id: source.id, kind: "video", url: VIDEO_URL, coverUrl: COVER_URL, name: "beach.png", mimeType: "video/mp4", width: 1920, height: 1080, timebase: settings.fps, extentFrames: 48, durationSeconds: "2",
       durationOrigin: "registered",
     });
     expect(document.clips[PLACEHOLDER]).toEqual({ ...placementOf(imagePlaceholder), kind: "video", sourceId: source.id, durationFrames: 48 });
@@ -423,7 +427,7 @@ describe("failed (design §4.3, §7.1)", () => {
  */
 function comparable(doc: Y.Doc): unknown {
   const document = read(doc);
-  const key = (id: string): string => `asset:${document.sources[id]?.assetId ?? id}`;
+  const key = (id: string): string => `source:${document.sources[id]?.url ?? id}`;
   return {
     ...document,
     sources: Object.fromEntries(Object.values(document.sources).map((source) => [key(source.id), { ...source, id: key(source.id) }])),

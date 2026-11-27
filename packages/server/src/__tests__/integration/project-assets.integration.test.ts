@@ -244,7 +244,7 @@ describe("Project registered media HTTP reads", () => {
 
   it("gives web a new picture's and text clip's length, a new text clip's size and where the text fonts are read (inner#1709 design §3.4, §5.3)", async () => {
     const fixture = await seedFixture();
-    const [, , limitsPath] = readPaths(fixture.projectId, randomUUID());
+    const [, limitsPath] = readPaths(fixture.projectId);
     const limits = await readData<Record<string, unknown>>(limitsPath!, fixture.cookie);
     // The approved values pin each key; toEqual against config alone would accept a key missing on both sides.
     expect(limits["media"]).toEqual({ imageDurationSeconds: 5, textDurationSeconds: 5, textSize: 0.06 });
@@ -401,7 +401,7 @@ describe("Project registered media HTTP reads", () => {
       coverUrl: null, width: null, height: null, durationSeconds: 3.5,
       mimeType: "audio/mpeg", sizeBytes: 8192,
     };
-    const [listPath] = readPaths(fixture.projectId, audio.id);
+    const [listPath] = readPaths(fixture.projectId);
     expect(await readData<ProjectAssetPage>(`${listPath}?kind=audio`, fixture.cookie)).toEqual({ items: [expected], nextCursor: null });
     // The other kinds' lists stay without the sound.
     expect((await readData<ProjectAssetPage>(`${listPath}?kind=video`, fixture.cookie)).items.map((item) => item.assetId)).toEqual([video.id]);

@@ -638,8 +638,9 @@ describe("Version 3: tracks without kind, placeholders naming their kind, image,
     upload: { uploadId: UPLOAD, name: "beach.mp4", durationSeconds: 2.5 },
   };
   const { sourceId: _sourceId, ...placeholderWithoutKind } = placeholder;
-  const imageSource = { id: "10000000-0000-4000-8000-000000000002", kind: "image" as const, assetId: source.assetId, width: 800, height: 600 };
-  const audioSource = { ...source, id: "10000000-0000-4000-8000-000000000003", kind: "audio" as const };
+  const imageSource = { id: "10000000-0000-4000-8000-000000000002", kind: "image" as const, url: "https://cdn.example.com/assets/still.png", name: "still.png", mimeType: "image/png", width: 800, height: 600 };
+  const { coverUrl: _cover, width: _width, height: _height, ...soundFields } = source;
+  const audioSource = { ...soundFields, id: "10000000-0000-4000-8000-000000000003", kind: "audio" as const, url: "https://cdn.example.com/assets/song.mp3", name: "song.mp3", mimeType: "audio/mpeg" };
   const imageClip = { ...clip, id: "30000000-0000-4000-8000-000000000012", kind: "image" as const, sourceId: imageSource.id, durationFrames: 120 };
   const audioClip = { ...clip, id: "30000000-0000-4000-8000-000000000013", kind: "audio" as const, sourceId: audioSource.id, sourceInFrame: 12, durationFrames: 36 };
   const { sourceId: _textSource, ...textPlacement } = clip;

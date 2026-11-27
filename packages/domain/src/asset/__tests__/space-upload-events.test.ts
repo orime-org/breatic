@@ -79,7 +79,7 @@ describe("which Space placeholder a grant names (inner#1709 design §4.1)", () =
 describe("a Document block's upload (breatic#1574)", () => {
   it("hands the block a picture, a video or a sound with its address and size", async () => {
     await announceSpaceUploadAsset(DOCUMENT, {
-      id: ASSET_ID, kind: "image", fileUrl: "https://cdn/a.png", width: 8, height: 6, durationSeconds: null,
+      id: ASSET_ID, kind: "image", fileUrl: "https://cdn/a.png", mimeType: "image/png", width: 8, height: 6, durationSeconds: null,
     });
     expect(published()).toEqual([{
       type: "document-upload", docName: "project-p/document-s", uploadId: "u1", state: "completed",
@@ -89,7 +89,7 @@ describe("a Document block's upload (breatic#1574)", () => {
 
   it("fails the block when the upload resolved to something that is not a medium", async () => {
     await announceSpaceUploadAsset(DOCUMENT, {
-      id: ASSET_ID, kind: "document", fileUrl: "https://cdn/a.pdf", width: null, height: null, durationSeconds: null,
+      id: ASSET_ID, kind: "document", fileUrl: "https://cdn/a.pdf", mimeType: "application/pdf", width: null, height: null, durationSeconds: null,
     });
     expect(published()).toEqual([{
       type: "document-upload", docName: "project-p/document-s", uploadId: "u1", state: "failed", reason: "unsupported_type",
@@ -117,38 +117,38 @@ describe("a Timeline upload clip's upload (inner#1709 design §4.2)", () => {
     expect(published()).toEqual([{ type: "timeline-upload", docName: "project-p/timeline-s", uploadId: "u1", state: "processing" }]);
   });
 
-  it("hands the clip a registered video with its asset, length and size", async () => {
+  it("hands the clip a registered video by its address, cover, type, length and size (inner#2171)", async () => {
     await announceSpaceUploadAsset(TIMELINE, {
-      id: ASSET_ID, kind: "video", fileUrl: "https://cdn/a.mp4", width: 1280, height: 720, durationSeconds: 7.375,
-    });
+      id: ASSET_ID, kind: "video", fileUrl: "https://cdn/a.mp4", mimeType: "video/mp4", width: 1280, height: 720, durationSeconds: 7.375,
+    }, "https://cdn/a.jpg");
     expect(published()).toEqual([{
       type: "timeline-upload", docName: "project-p/timeline-s", uploadId: "u1", state: "completed",
-      result: { assetId: ASSET_ID, kind: "video", durationSeconds: 7.375, width: 1280, height: 720 },
+      result: { kind: "video", url: "https://cdn/a.mp4", coverUrl: "https://cdn/a.jpg", mimeType: "video/mp4", durationSeconds: 7.375, width: 1280, height: 720 },
     }]);
   });
 
   it("hands the clip a registered picture with no length, and a sound with no size", async () => {
     await announceSpaceUploadAsset(TIMELINE, {
-      id: ASSET_ID, kind: "image", fileUrl: "https://cdn/a.png", width: 8, height: 6, durationSeconds: null,
+      id: ASSET_ID, kind: "image", fileUrl: "https://cdn/a.png", mimeType: "image/png", width: 8, height: 6, durationSeconds: null,
     });
     await announceSpaceUploadAsset(TIMELINE, {
-      id: ASSET_ID, kind: "audio", fileUrl: "https://cdn/a.mp3", width: null, height: null, durationSeconds: 3.5,
+      id: ASSET_ID, kind: "audio", fileUrl: "https://cdn/a.mp3", mimeType: "audio/mpeg", width: null, height: null, durationSeconds: 3.5,
     });
     expect(published()).toEqual([
       {
         type: "timeline-upload", docName: "project-p/timeline-s", uploadId: "u1", state: "completed",
-        result: { assetId: ASSET_ID, kind: "image", durationSeconds: null, width: 8, height: 6 },
+        result: { kind: "image", url: "https://cdn/a.png", coverUrl: null, mimeType: "image/png", durationSeconds: null, width: 8, height: 6 },
       },
       {
         type: "timeline-upload", docName: "project-p/timeline-s", uploadId: "u1", state: "completed",
-        result: { assetId: ASSET_ID, kind: "audio", durationSeconds: 3.5, width: null, height: null },
+        result: { kind: "audio", url: "https://cdn/a.mp3", coverUrl: null, mimeType: "audio/mpeg", durationSeconds: 3.5, width: null, height: null },
       },
     ]);
   });
 
   it("fails the clip with unsupported_type when the upload resolved to something that is not a video, a picture or a sound", async () => {
     await announceSpaceUploadAsset(TIMELINE, {
-      id: ASSET_ID, kind: "document", fileUrl: "https://cdn/a.pdf", width: null, height: null, durationSeconds: null,
+      id: ASSET_ID, kind: "document", fileUrl: "https://cdn/a.pdf", mimeType: "application/pdf", width: null, height: null, durationSeconds: null,
     });
     expect(published()).toEqual([{
       type: "timeline-upload", docName: "project-p/timeline-s", uploadId: "u1", state: "failed", reason: "unsupported_type",

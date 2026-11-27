@@ -35,7 +35,7 @@ export interface SpaceUploadDestination {
 }
 
 /** The registered asset fields an announcement reads. */
-type AnnouncedAsset = Pick<StudioAssetEntity, "id" | "fileUrl" | "width" | "height" | "durationSeconds"> & { kind: string };
+type AnnouncedAsset = Pick<StudioAssetEntity, "id" | "fileUrl" | "mimeType" | "width" | "height" | "durationSeconds"> & { kind: string };
 
 // An asset's kind names the block or clip it lands as; the same three for both Space types.
 const MEDIA_KINDS: ReadonlySet<string> = new Set(DOCUMENT_MEDIA_BLOCK_TYPES);
@@ -57,7 +57,7 @@ export function spaceUploadTargetOf(
 /** One event's state and what goes with it, before the destination names its type and document. */
 type Announcement =
   | { state: "processing" }
-  | { state: "completed"; asset: AnnouncedAsset }
+  | { state: "completed"; asset: AnnouncedAsset; coverUrl: string | null }
   | { state: "failed"; reason?: TaskFailureReason };
 
 /**
@@ -68,7 +68,7 @@ type Announcement =
  * @throws {Error} When the stream rejects the entry.
  */
 async function publish(to: SpaceUploadDestination, what: Announcement): Promise<void> {
-  const { asset, ...fields } = what.state === "completed" ? what : { ...what, asset: null };
+  const { asset, coverUrl, ...fields } = what.state === "completed" ? what : { ...what, asset: null, coverUrl: null };
   if (to.target === "document") {
     await publishSpaceUploadEvent(getStreamRedis(), {
       type: "document-upload",
@@ -90,10 +90,13 @@ async function publish(to: SpaceUploadDestination, what: Announcement): Promise<
     uploadId: to.uploadId,
     ...fields,
     ...(asset !== null && {
+      // Its address and media facts, as the upload's own result carries them (inner#2171, `settledUploadStatus`).
       result: {
-        assetId: asset.id,
         // Only a medium is announced as completed (`announceSpaceUploadAsset`).
         kind: asset.kind as TimelineUploadResult["kind"],
+        url: asset.fileUrl,
+        coverUrl,
+        mimeType: asset.mimeType,
         durationSeconds: asset.durationSeconds,
         width: asset.width,
         height: asset.height,
@@ -117,15 +120,16 @@ export async function announceSpaceUploadProcessing(to: SpaceUploadDestination):
  * Hand the placeholder the asset its upload resolved to; an asset that is not a picture, a video or a sound fails it.
  * @param to - The placeholder.
  * @param asset - The registered asset.
+ * @param coverUrl - The video's cover address the caller read with `findCoverUrlOf`, or null.
  * @returns Nothing.
  * @throws {Error} When publishing fails.
  */
-export async function announceSpaceUploadAsset(to: SpaceUploadDestination, asset: AnnouncedAsset): Promise<void> {
+export async function announceSpaceUploadAsset(to: SpaceUploadDestination, asset: AnnouncedAsset, coverUrl: string | null = null): Promise<void> {
   if (!MEDIA_KINDS.has(asset.kind)) {
     await publish(to, { state: "failed", reason: "unsupported_type" });
     return;
   }
-  await publish(to, { state: "completed", asset });
+  await publish(to, { state: "completed", asset, coverUrl });
 }
 
 /**

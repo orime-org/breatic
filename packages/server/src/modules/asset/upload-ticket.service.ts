@@ -309,6 +309,7 @@ async function prepareUpload(
   if (dedupHit) {
     if (recordUserAction) await accountActivityRepo.recordActivity({ userId, projectId: projectId ?? null, kind: "project_action" });
     logger.info({ hash: item.client_hash, userId, studioId, projectId }, "upload_ticket_dedup_hit");
+    const coverUrl = await assetRepo.findCoverUrlOf({ id: dedupHit.assetId, kind: dedupHit.kind });
     // No bytes move, but the node now shows something it did not show before:
     // a task row is opened and settled in the same pass, pointing at the
     // node's history row for this content (written now, or the one the node
@@ -340,9 +341,10 @@ async function prepareUpload(
       await announceSpaceUploadAsset(
         { target: item.upload_target, projectId, spaceId: item.space_id, uploadId: item.upload_id },
         {
-          id: dedupHit.assetId, kind: dedupHit.kind, fileUrl: dedupHit.fileUrl,
+          id: dedupHit.assetId, kind: dedupHit.kind, fileUrl: dedupHit.fileUrl, mimeType: dedupHit.mimeType,
           width: dedupHit.width, height: dedupHit.height, durationSeconds: dedupHit.durationSeconds,
         },
+        coverUrl,
       );
     }
     // A focus crop already in the studio goes straight to its pool; a lost announcement fails the request.
@@ -361,7 +363,6 @@ async function prepareUpload(
       });
       await publishSpaceTasksQuietly(projectId, item.space_id);
     }
-    const coverUrl = await assetRepo.findCoverUrlOf({ id: dedupHit.assetId, kind: dedupHit.kind });
     return {
       kind: "alreadyExists",
       assetId: dedupHit.assetId,
