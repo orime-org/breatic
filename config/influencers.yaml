@@ -1,0 +1,6 @@
+# Influencer sites, `<label>.partner.<COOKIE_DOMAIN>` (inner#2157). Each one is
+# a row in the influencers table, registered through the internal API.
+
+# How long server and collab keep the registered hosts in memory before reading
+# the table again; a newly registered site is trusted at most this long after.
+trusted_hosts_cache_seconds: 60

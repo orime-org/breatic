@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  env: { ALLOWED_ORIGINS: "https://app.example.com" },
+  isTrustedFrontendOrigin: async (origin: string) => origin === "https://app.example.com",
 }));
 
 const { corsMiddleware } = await import("@server/middleware/cors.js");

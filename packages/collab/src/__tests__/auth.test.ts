@@ -71,7 +71,7 @@ const {
 vi.mock("@breatic/core", async (importOriginal) => ({
   listedContentDocNames: (await importOriginal<typeof CoreModule>()).listedContentDocNames,
   sessionId: (await importOriginal<typeof CoreModule>()).sessionId,
-  env: { ALLOWED_ORIGINS: "https://app.example.com" },
+  isTrustedFrontendOrigin: async (origin: string) => origin === "https://app.example.com",
   getSession: getSessionMock,
   projectAuthService: { loadProjectRole: loadProjectRoleMock },
   sessionCookieName: () => "breatic_session",

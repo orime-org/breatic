@@ -86,7 +86,7 @@ This guide assumes one local instance. Required free ports are `5432`, `6379`, `
 ```json
 [
   {
-    "AllowedOrigins": ["http://localhost:8000"],
+    "AllowedOrigins": ["*"],
     "AllowedMethods": ["GET", "HEAD"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag"],
@@ -330,6 +330,6 @@ Infrastructure logs: `docker compose logs --tail=100 postgres redis`. For applic
 
 ## Google sign-in (optional)
 
-Create a Google OAuth **Web application** client and register the frontend origin (scheme, hostname and port, without a path) in Authorized JavaScript origins; development normally uses `http://localhost:8000`. Set `GOOGLE_CLIENT_ID` in `.env` and use the same ID for the frontend build and backend runtime. The official button returns an ID token through a popup callback; the backend verifies it and issues the session cookie. No client secret or backend redirect URI is required. An empty ID hides the button.
+Create a Google OAuth **Web application** client and add one **Authorized redirect URI** per deployment: `<first ALLOWED_ORIGINS item>/api/v1/auth/google/callback` when `COOKIE_DOMAIN` is set, otherwise `<origin>/api/v1/auth/google/callback` for each origin that offers Google sign-in (when the API has its own host, `API_PUBLIC_URL` takes the place of `<origin>/api/v1`). Development registers `http://localhost:8000/api/v1/auth/google/callback`. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`; the server reads both, and the sign-in and sign-up pages show the button only when both are set.
 
-Restart both development processes after changing the ID. For Docker, rebuild the frontend, for example `docker build -f Dockerfile.web --build-arg GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com -t breatic-web:google .`, and point the Compose web service at that image. Runtime container variables cannot change an existing frontend build. The browser must reach Google's SDK and account pages; email sign-in remains available when Google is unreachable. Plain HTTP LAN IPs do not meet Google's Web origin requirements; use an allowed localhost or HTTPS origin.
+Sign-in is a full-page redirect through the server, so changing these values needs a server restart and no frontend rebuild. Google does not accept a bare IP address as a redirect URI (localhost excepted); use localhost or an HTTPS host name. Email sign-in remains available when Google is unreachable.

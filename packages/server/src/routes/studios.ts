@@ -21,7 +21,7 @@
  */
 
 import { Hono } from "hono";
-import { frontendOrigin, validate, logger, NotFoundError, ValidationError } from "@breatic/core";
+import { frontendOriginFor, validate, logger, NotFoundError, ValidationError } from "@breatic/core";
 import { z } from "zod";
 import { getActiveLocale, SPEND_LIMIT_MAX_CREDITS, t } from "@breatic/shared";
 import { createTeamStudioSchema, emailSchema, updateStudioSchema } from "@breatic/shared";
@@ -324,7 +324,7 @@ studio.post(
       user.id,
       body.email,
       body.role,
-      frontendOrigin(c.req.header("Origin")),
+      await frontendOriginFor(c.req.header("Origin")),
     );
     return c.json({ data: { ok: true, pendingSignup: result.pendingSignup } }, 201);
   },
@@ -468,7 +468,7 @@ studio.post(
       slug,
       user.id,
       body.toUserId,
-      frontendOrigin(c.req.header("Origin")),
+      await frontendOriginFor(c.req.header("Origin")),
     );
     return c.json({ data: { ok: true } }, 201);
   },

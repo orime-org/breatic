@@ -113,6 +113,8 @@ export interface AuthOptions {
   emailVerification: boolean;
   /** The referral code field exists; only while this deployment takes payments. */
   referralEnabled: boolean;
+  /** Google sign-in is offered: the server has its client id and secret (inner#2157). */
+  googleSignIn: boolean;
   /** The scheme this deployment's desktop app receives sign-in codes on. */
   desktopAppScheme: string;
   /** The desktop app's name, as the sign-in confirmation shows it. */
@@ -125,12 +127,6 @@ interface LoginResponse {
 
 /** A finished sign-up's answer, saying when the referral code it carried was not used. */
 interface SignupVerifiedResponse extends LoginResponse {
-  referral?: SignupReferralOutcome;
-}
-
-/** A Google sign-in's answer: `created` when it made the account (inner#1442 §4.9). */
-interface GoogleLoginResponse extends LoginResponse {
-  created: boolean;
   referral?: SignupReferralOutcome;
 }
 
@@ -176,9 +172,6 @@ export const authApi = {
   },
   login(body: { email: string; password: string }) {
     return apiPost<LoginResponse>('/auth/login', body);
-  },
-  google(body: { credential: string; attribution?: Attribution | null } & SignupReferralFields) {
-    return apiPost<GoogleLoginResponse>('/auth/google', body);
   },
   // The browser side of the desktop client's sign-in (inner#2041): a one-time code bound to the client's challenge.
   desktopHandoff(body: { challenge: string }) {

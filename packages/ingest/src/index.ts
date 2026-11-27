@@ -37,6 +37,7 @@ import {
   type PreviewOutcome,
   type UploadTicketPayload,
   TRANSFER_MEDIA_TYPE,
+  originMatches,
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
 import { fromOurBackend } from "@ingest/backend-secret.js";
@@ -1345,8 +1346,10 @@ function allowedOrigin(request: Request, env: Env): string | null {
   const origin = request.headers.get("origin");
   if (origin === null) return null;
   // Absent when that is the very setting missing; nothing is then allowed.
+  // An entry may be `https://*.<domain>`, admitting one label below it: every
+  // influencer site is let in at once, since parts are authorised by ticket.
   const allowed = (env.ALLOWED_ORIGINS ?? "").split(",").map((o) => o.trim());
-  return allowed.includes(origin) ? origin : null;
+  return originMatches(origin, allowed) ? origin : null;
 }
 
 /**

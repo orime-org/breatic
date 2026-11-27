@@ -28,7 +28,7 @@
 
 import type { Context } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
-import { env, sessionCookieName } from "@breatic/core";
+import { cookieDomainHost, env, hostOnlySessionCookieName, sessionCookieName } from "@breatic/core";
 
 // `sessionCookieName()` is the single source of truth in
 // `@breatic/core` (session-store), shared with collab's onAuthenticate
@@ -54,7 +54,7 @@ function baseOptions(): {
   maxAge: number;
   domain?: string;
 } {
-  const domain = env.COOKIE_DOMAIN.trim();
+  const domain = cookieDomainHost();
   return {
     httpOnly: true,
     secure: env.ENV !== "dev",
@@ -80,7 +80,20 @@ export function setSessionCookie(c: Context, token: string): void {
  * @returns The session token from the cookie, or `undefined` when the cookie is absent.
  */
 export function readSessionCookie(c: Context): string | undefined {
+  expireHostOnlySession(c);
   return getCookie(c, sessionCookieName());
+}
+
+/**
+ * With site-wide sign-in on, a host-only credential from before the switch
+ * is no longer accepted; tell the browser to drop it (inner#2157). Its name
+ * differs from the site-wide one, so it never shadows the shared credential.
+ * @param c - The Hono request context.
+ */
+function expireHostOnlySession(c: Context): void {
+  if (cookieDomainHost() === "") return;
+  const old = hostOnlySessionCookieName();
+  if (getCookie(c, old) !== undefined) deleteCookie(c, old, { path: "/" });
 }
 
 /**
@@ -90,7 +103,7 @@ export function readSessionCookie(c: Context): string | undefined {
  * @param c - The Hono request context whose response clears the session cookie.
  */
 export function clearSessionCookie(c: Context): void {
-  const domain = env.COOKIE_DOMAIN.trim();
+  const domain = cookieDomainHost();
   deleteCookie(c, sessionCookieName(), {
     path: "/",
     ...(domain ? { domain } : {}),
@@ -110,6 +123,16 @@ const SIGNUP_TICKET_PATH = "/api/v1/auth/register";
  */
 export function signupTicketCookieName(): string {
   return `breatic_signup_${env.REDIS_KEY_PREFIX}`;
+}
+
+/**
+ * Name of the cookie that ties a Google sign-in in flight to the browser that
+ * began it (inner#2157). Prefixed like the session cookie so stacks on one
+ * host do not overwrite each other's sign-in.
+ * @returns The cookie name.
+ */
+export function googleBindCookieName(): string {
+  return `breatic_google_bind_${env.REDIS_KEY_PREFIX}`;
 }
 
 /**

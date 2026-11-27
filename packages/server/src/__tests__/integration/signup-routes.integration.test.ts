@@ -112,6 +112,7 @@ describe("GET /auth/options", () => {
       data: {
         emailVerification: true,
         referralEnabled: expect.any(Boolean),
+        googleSignIn: expect.any(Boolean),
         desktopAppScheme: "ai.breatic.desktop",
         desktopAppName: "Breatic",
       },

@@ -214,12 +214,19 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
-export const googleAuthSchema = z.object({
-  credential: z.string().min(1),
-  attribution: attributionField,
+/**
+ * The form the sign-in and sign-up pages post to start a full-page Google
+ * sign-in (inner#2157). Every field is form text: `attribution` is the
+ * campaign source as JSON, `locale` the page's language.
+ */
+export const googleBeginSchema = z.object({
+  page: z.enum(["login", "register"]),
+  next: z.string().max(2048).optional(),
+  locale: z.string().max(35).optional(),
+  attribution: z.string().max(8192).optional(),
   ...signupReferralFields,
 });
-export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
+export type GoogleBeginInput = z.infer<typeof googleBeginSchema>;
 
 const base64Url32 = z.string().regex(BASE64URL_32_BYTES);
 

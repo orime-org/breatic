@@ -97,7 +97,7 @@ describe("forwarded endpoints", () => {
       expect.objectContaining({
         path: `/v1/users/${userId}/payment/checkout?locale=en`,
         idempotencyKey: key,
-        body: { ...body, checkoutSnapshot: { consent: expect.any(Object), click: null } },
+        body: { ...body, checkoutSnapshot: { consent: expect.any(Object), click: null, influencer: "official" } },
       }),
     ]);
   });
