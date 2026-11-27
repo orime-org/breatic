@@ -24,8 +24,10 @@
  *   - `project:restored`   → close the project's connections, so members
  *                            re-authenticate and come back writable.
  *
- * A command is acknowledged once the close request is published; a copy, a
- * completion write or a publish that throws leaves it for a retry. A copy that
+ * A command is acknowledged once the close request is published, or at once
+ * when its copy is already completed (nothing is copied or closed then); a
+ * completion read, a copy, a completion write or a publish that throws leaves
+ * it for a retry. A copy that
  * ran before its completion could be recorded runs again with the same result
  * (`ON CONFLICT DO NOTHING` on content, the source's meta over the copy's).
  */

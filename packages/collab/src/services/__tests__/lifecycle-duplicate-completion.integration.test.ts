@@ -7,9 +7,9 @@
  * Until collab has copied the source's documents, the copy's Project row says it is still being copied and no page
  * opens it. After the copy collab records the completion on the row; a command delivered again after that copies
  * nothing, so it can never overwrite what the user has since done in the copy. A command that copied but did not get
- * to record the completion copies again with the same result and then records it. Until the completion is recorded,
- * collab refuses to load the copy's meta document, so nothing seeds a default Space over the copy whatever client
- * connects (inner#1557). Real business and Yjs databases.
+ * to record the completion copies again with the same result and then records it. While the copy has no stored meta
+ * document and its completion is not recorded, collab refuses to load that document, so nothing seeds a default Space
+ * over the copy whatever client connects (inner#1557). Real business and Yjs databases.
  */
 
 import { beforeAll, describe, expect, it } from "vitest";

@@ -21,7 +21,7 @@ export const STUDIO_PAGE_POLL_DEFAULT_MS = 2000;
 
 /**
  * How many Projects one Studio page poll may ask about while they are being copied (inner#1706): as many as uploads,
- * one request's worth; a page with more asks about them in turn.
+ * one request's worth; a page with more asks about the first ones, and each copy that finishes makes room for the next.
  */
 export const COPYING_POLL_MAX_IDS = 100;
 
