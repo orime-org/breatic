@@ -108,6 +108,14 @@ describe('audibleTimelineClipsAt (inner#1709 design §2.4)', () => {
     expect(audibleIds(document, 110)).toEqual([]);
   });
 
+  it('gives each frame of a track to its one later-starting clip, whatever the kinds: a sound over a video hides it, a picture over a sound silences it', () => {
+    const covered = view([clip(cid(1), V2, 0, 100), audioClip(cid(2), V2, 50, 100), audioClip(cid(3), V3, 0, 100), imageClip(cid(4), V3, 50, 100)]);
+    expect(visibleIds(covered, 20)).toEqual([cid(1)]);
+    expect(audibleIds(covered, 20)).toEqual([cid(1), cid(3)].sort());
+    expect(visibleIds(covered, 60)).toEqual([cid(4)]);
+    expect(audibleIds(covered, 60)).toEqual([cid(2)]);
+  });
+
   it('hears only the later-starting of two overlapping video or sound clips on one track', () => {
     const document = view([audioClip(cid(2), V2, 0, 100), clip(cid(1), V2, 30, 20)]);
     expect(audibleIds(document, 29)).toEqual([cid(2)]);
@@ -180,11 +188,12 @@ describe('nextTimelinePlaybackBoundary', () => {
       });
       const document = mixedTimeline(clips, [track(MAIN, 0), track(V2, 1), track(V3, v3Order)], [SOURCE, IMAGE, AUDIO]);
       const end = 110;
-      // Reference model, independent of the code under test: per track, the latest-starting covering clip.
+      // Reference model, independent of the code under test: per track the latest-starting covering clip of any kind,
+      // kept only if it is drawn or heard (design §2.4).
       const top = (at: number, keep: (item: MediaClip) => boolean): string[] => layers.flatMap((trackId) => {
-        const covering = clips.filter((item) => keep(item) && item.trackId === trackId && item.startFrame <= at && at < item.startFrame + item.durationFrames);
+        const covering = clips.filter((item) => item.trackId === trackId && item.startFrame <= at && at < item.startFrame + item.durationFrames);
         const latest = covering.sort((a, b) => b.startFrame - a.startFrame)[0];
-        return latest === undefined ? [] : [latest.id];
+        return latest === undefined || !keep(latest) ? [] : [latest.id];
       }).sort();
       const drawn = (at: number): string[] => top(at, (item) => item.kind !== 'audio');
       const heard = (at: number): string[] => top(at, (item) => item.kind === 'video' || item.kind === 'audio');

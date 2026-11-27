@@ -37,18 +37,19 @@ function isHeard(clip: TimelineClip): boolean {
 }
 
 /**
- * Per track, the one clip that `keep` admits at a frame, bottom-up by track rank.
+ * Per track, the one clip that plays at a frame, kept when `keep` admits it, bottom-up by track rank (inner#1709
+ * design §2.4): a later-starting clip covers the clips under it whatever their kinds.
  * @param document - The view document.
  * @param frame - The Timeline frame.
- * @param keep - Which clips take part.
+ * @param keep - Whether the playing clip is drawn or heard.
  * @returns The picked clips, bottom-up.
  * @throws {never} Never.
  */
 function pickedAt(document: TimelineDocumentV1, frame: number, keep: (clip: TimelineClip) => boolean): TimelineClip[] {
   const rank = timelineTrackRank(document.tracks);
   return [...rank.keys()].flatMap((trackId) => {
-    const clip = pickTimelineClipAt(document.clips, trackId, frame, keep);
-    return clip === undefined ? [] : [clip];
+    const clip = pickTimelineClipAt(document.clips, trackId, frame);
+    return clip === undefined || !keep(clip) ? [] : [clip];
   }).sort(timelineStackOrder(rank));
 }
 
@@ -92,15 +93,13 @@ export function nextTimelinePlaybackBoundary(document: TimelineDocumentV1, frame
   const clips = Object.values(document.clips).filter((clip) => rank.has(clip.trackId));
   let next = endFrame;
   for (const clip of clips) if (clip.startFrame > frame) next = Math.min(next, clip.startFrame);
-  for (const keep of [isDrawnTimelineClip, isHeard]) {
-    for (const trackId of rank.keys()) {
-      const playing = pickTimelineClipAt(document.clips, trackId, frame, keep);
-      if (playing === undefined) continue;
-      const end = playing.startFrame + playing.durationFrames;
-      const ending = playing.kind === 'web-animation' || playing.kind === 'image' || playing.kind === 'text';
-      const uncovers = clips.some((other) => other.trackId === trackId && keep(other) && other.startFrame <= frame && other.startFrame + other.durationFrames > end);
-      if (ending || uncovers) next = Math.min(next, end);
-    }
+  for (const trackId of rank.keys()) {
+    const playing = pickTimelineClipAt(document.clips, trackId, frame);
+    if (playing === undefined) continue;
+    const end = playing.startFrame + playing.durationFrames;
+    const ending = playing.kind === 'web-animation' || playing.kind === 'image' || playing.kind === 'text';
+    const uncovers = clips.some((other) => other.trackId === trackId && other.startFrame <= frame && other.startFrame + other.durationFrames > end);
+    if (ending || uncovers) next = Math.min(next, end);
   }
   return next;
 }

@@ -124,17 +124,6 @@ function sameStates(a: ReadonlyMap<string, string>, b: ReadonlyMap<string, strin
 }
 
 /**
- * Whether a clip plays sound: a video or a sound (inner#1709).
- * @param clip - The clip.
- * @param clip.kind - Its kind.
- * @returns Whether it has a media lane.
- * @throws {never} Never.
- */
-function heard(clip: { kind: string }): boolean {
-  return clip.kind === 'video' || clip.kind === 'audio';
-}
-
-/**
  * Drive the preview over every visible video, sound, picture, text and web-animation copy on one clock (#1410 design
  * §6, inner#1709). The clock is
  * an anchor plus `performance.now()`; each video lane is steered or hard-synced to it by the rules ported from the
@@ -274,8 +263,8 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       const { clip } = found;
       if (position.current < clip.startFrame) return 'premount';
       if (position.current >= clip.startFrame + clip.durationFrames) return 'gone';
-      // A clip covered by a later one on its track is not heard there (inner#1709).
-      return pickTimelineClipAt(document.clips, clip.trackId, position.current, heard)?.id === clip.id ? 'visible' : 'gone';
+      // A clip covered by a later one of any kind on its track is neither drawn nor heard there (inner#1709 design §2.4).
+      return pickTimelineClipAt(document.clips, clip.trackId, position.current)?.id === clip.id ? 'visible' : 'gone';
     }
 
     /**

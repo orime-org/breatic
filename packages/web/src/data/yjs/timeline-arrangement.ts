@@ -115,16 +115,13 @@ function playedFrames(clip: TimelineClip, extent: TimelineSourceExtent, fps: Tim
  * @param clips - The view's clips.
  * @param trackId - The track.
  * @param frame - The Timeline frame.
- * @param keep - Which clips take part; every clip by default.
  * @returns The clip, or undefined when none covers the frame.
  * @throws {never} Never.
  */
-export function pickTimelineClipAt(
-  clips: Readonly<Record<string, TimelineClip>>, trackId: string, frame: number, keep: (clip: TimelineClip) => boolean = () => true,
-): TimelineClip | undefined {
+export function pickTimelineClipAt(clips: Readonly<Record<string, TimelineClip>>, trackId: string, frame: number): TimelineClip | undefined {
   let picked: TimelineClip | undefined;
   for (const clip of Object.values(clips)) {
-    if (clip.trackId !== trackId || frame < clip.startFrame || frame >= clip.startFrame + clip.durationFrames || !keep(clip)) continue;
+    if (clip.trackId !== trackId || frame < clip.startFrame || frame >= clip.startFrame + clip.durationFrames) continue;
     if (picked === undefined || clip.startFrame > picked.startFrame || (clip.startFrame === picked.startFrame && compareTimelineIds(clip.id, picked.id) < 0)) picked = clip;
   }
   return picked;

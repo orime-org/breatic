@@ -1938,6 +1938,25 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(b.play).toHaveBeenCalledTimes(0);
   });
 
+  it('pauses a playing video once a later-starting picture on its track covers it, whatever the kinds (inner#1709 design §2.4)', async () => {
+    const picture = {
+      ...CLIP, id: '30000000-0000-4000-8000-000000000021', kind: 'image', sourceId: '20000000-0000-4000-8000-000000000021', startFrame: 24, durationFrames: 48,
+    } as unknown as TimelineVideoClip;
+    const pictureSource = {
+      id: '20000000-0000-4000-8000-000000000021', kind: 'image', url: 'https://cdn.test/picture.png', name: 'picture.png', mimeType: 'image/png', width: 1920, height: 1080,
+    } as unknown as TimelineVideoSource;
+    const media = mediaFixture();
+    const hook = renderPlayback(media, { document: timelineDocument([CLIP, picture], [SOURCE, pictureSource]) });
+    act(() => hook.result.current.toggle());
+    await settle();
+    const pauses = media.pause.mock.calls.length;
+    // The boundary at frame 24 is reached at 1000 ms and observed at 1010 ms.
+    tick(1010);
+    expect(hook.result.current.frame).toBe(24);
+    expect(media.pause.mock.calls.length).toBeGreaterThan(pauses);
+    expect(media.facts.paused).toBe(true);
+  });
+
   it('seeks a premounted lane to its in-point ahead of its start and keeps it paused', () => {
     const later = { ...LANE_B, startFrame: 36, sourceInFrame: 48, durationFrames: 48 };
     const { hook, b } = twoLanes({}, {}, later);
