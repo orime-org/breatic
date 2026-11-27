@@ -1114,7 +1114,7 @@ describe('expandTemplate on registered templates with shots and slots (inner#181
   it('writes the quick tip anchor as five shots of three seconds and no prompt, each @ing the subject, its note on top of the first shot only', () => {
     const result = expandTemplate(registered('vertical-15s-quick-tip'), FRESH);
     const anchor = result.rewritten.get(0);
-    expect(anchor).toMatchObject({ mode: 'multi_shot', model: 'seedance-2.5-text-to-video' });
+    expect(anchor).toMatchObject({ mode: 'ref', model: 'seedance-2.5-text-to-video' });
     expect(anchor).not.toHaveProperty('prompt');
     const shots = anchor?.shots ?? [];
     expect(shots.map((shot) => shot.duration)).toEqual([3, 3, 3, 3, 3]);

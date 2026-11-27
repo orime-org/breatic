@@ -21,7 +21,7 @@ import {
   type TemplateTextNode,
 } from '@shared/canvas/generation-templates.js';
 import { templateMarkTargets, templateSkeleton } from '@shared/canvas/template-expansion.js';
-import { storyboardSpec, MULTI_SHOT_MODE } from '@shared/storyboard.js';
+import { storyboardSpec } from '@shared/storyboard.js';
 import type { ParamDescriptor } from '@shared/types/model-catalog.js';
 import { PANEL_EDITOR_PARAM } from '@shared/types/generate-panel.js';
 import { TEMPLATE_GUIDE_KEY } from '@shared/types/canvas-proposal.js';
@@ -509,10 +509,10 @@ describe('generation templates', () => {
       'dish-hero-still': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '4:5' } } },
       'app-launch-promo': t2v(15),
       'brand-origin-film': {
-        result: { type: 'video', mode: 'multi_shot', model: T2V, params: { aspect_ratio: '16:9', duration: 20, generate_audio: true }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
+        result: { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: '16:9', duration: 20, generate_audio: true }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
       },
       'launch-story-3-beat': {
-        result: { type: 'video', mode: 'multi_shot', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 12 }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
+        result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 12 }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
         score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
       },
       'promo-film-assembled': {
@@ -536,7 +536,7 @@ describe('generation templates', () => {
       },
       'before-after-reveal': { result: { type: 'video', mode: 'first_last', model: I2V, params: { duration: 6, generate_audio: true } } },
       'listing-walkthrough-15s': {
-        result: { type: 'video', mode: 'multi_shot', model: T2V, params: { aspect_ratio: '16:9', duration: 15, generate_audio: true }, shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }] },
+        result: { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: '16:9', duration: 15, generate_audio: true }, shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }] },
       },
       'property-full-tour': {
         result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 10 } },
@@ -604,7 +604,7 @@ describe('generation templates', () => {
       'comic-panels-to-shots': {
         result: {
           type: 'video',
-          mode: 'multi_shot',
+          mode: 'ref',
           model: T2V,
           params: { aspect_ratio: '16:9', duration: 12, generate_audio: true },
           shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
@@ -627,7 +627,7 @@ describe('generation templates', () => {
       'anime-opening-15s': {
         result: {
           type: 'video',
-          mode: 'multi_shot',
+          mode: 'ref',
           model: T2V,
           params: { aspect_ratio: '16:9', duration: 15, generate_audio: true },
           shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
@@ -697,7 +697,7 @@ describe('generation templates', () => {
       'landscape-3-shot': {
         result: {
           type: 'video',
-          mode: 'multi_shot',
+          mode: 't2v',
           model: 'gemini-omni-1.1-flash-text-to-video',
           params: { aspect_ratio: '16:9', duration: 9 },
           shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
@@ -707,7 +707,7 @@ describe('generation templates', () => {
       'trailer-beat-3-shot': {
         result: {
           type: 'video',
-          mode: 'multi_shot',
+          mode: 'ref',
           model: T2V,
           params: { aspect_ratio: '21:9', duration: 12, generate_audio: true },
           shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }],
@@ -716,7 +716,7 @@ describe('generation templates', () => {
       'transformation-6-shot': {
         result: {
           type: 'video',
-          mode: 'multi_shot',
+          mode: 'ref',
           model: T2V,
           params: { aspect_ratio: '16:9', duration: 15, generate_audio: true },
           shots: [{ seconds: 3 }, { seconds: 2 }, { seconds: 2 }, { seconds: 3 }, { seconds: 3 }, { seconds: 2 }],
@@ -733,7 +733,7 @@ describe('generation templates', () => {
       'vertical-15s-quick-tip': {
         result: {
           type: 'video',
-          mode: 'multi_shot',
+          mode: 'ref',
           model: T2V,
           params: { aspect_ratio: '9:16', duration: 15, generate_audio: true },
           shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
@@ -1278,7 +1278,7 @@ describe('social hook templates (inner#1816)', () => {
     // (web `video-slots.ts`). `image` is the First frame button only in the
     // modes that draw it (web `video-mode-options.ts`); image animation and
     // talking head draw a character image slot there instead.
-    const FIRST_FRAME_MODES = ['i2v', 'first_last', 'multi_shot'];
+    const FIRST_FRAME_MODES = ['i2v', 'first_last'];
     const labelKeyOf = (node: TemplateGenerateNode, into: string | undefined): string | undefined => {
       if (node.type !== 'video') return undefined;
       if (into === 'end_image') return 'canvas.generatePanel.endFrame';
@@ -1335,10 +1335,12 @@ describe('social hook templates (inner#1816)', () => {
 });
 
 describe('template shot lists (inner#1816, CAP-2)', () => {
-  it('gives a generate node shots exactly when it runs in the multi_shot mode', () => {
+  it('gives a generate node shots only where its model takes shots in its mode', () => {
     for (const template of GENERATION_TEMPLATES) {
       for (const node of generateNodes(template)) {
-        expect(node.shots !== undefined, `${template.id} ${node.key}`).toBe(node.mode === MULTI_SHOT_MODE);
+        if (node.shots === undefined) continue;
+        const params = CATALOG.get(node.model);
+        expect(params && storyboardSpec(params, node.mode), `${template.id} ${node.key}: ${node.model} takes shots in ${node.mode}`).toBeDefined();
       }
     }
   });

@@ -154,26 +154,29 @@ function renderDialogue(model: PricedModelInfo): string {
 }
 
 /**
- * What the multi-shot mode asks of a proposal on this model, in that mode.
+ * What multi-shot asks of a proposal on this model in this mode (inner#2192):
+ * a node with shots writes the video shot by shot, one without is a single
+ * shot from its prompt.
  * @param model - The model to describe.
- * @returns A sentence to append to its line, or the empty string outside the multi-shot mode.
+ * @returns A sentence to append to its line, or the empty string where it takes no shots.
  */
 function renderStoryboard(model: PricedModelInfo): string {
   const board = model.storyboard;
   if (!board) return "";
   const chars = board.maxChars !== undefined ? `, each at most ${board.maxChars} characters` : "";
   const total = board.totalParam !== undefined ? `, whole seconds adding up to ${board.totalParam}` : "";
-  return ` Give shots (at most ${board.maxShots} shots${chars}${total}), each written out, and leave prompt out.`;
+  const auto = board.autoParam === undefined ? "" : ` Or set params ${board.autoParam}: true with a prompt and no shots to let it plan the shots itself.`;
+  return ` Takes shots here: to write the video shot by shot, give shots (at most ${board.maxShots} shots${chars}${total}), each written out, and leave prompt out; with no shots it is one shot from the prompt.${auto}`;
 }
 
 /**
  * Where this model's words are written, and so where a mention of a node
- * wired into it goes: in the multi-shot mode each shot holds its own words.
+ * wired into it goes: on a node with shots each shot holds its own words.
  * @param model - The model.
- * @returns "a shot" or "the prompt".
+ * @returns Where the words go.
  */
 function wordsBox(model: PricedModelInfo): string {
-  return model.storyboard ? "a shot" : "the prompt";
+  return model.storyboard ? "the prompt, or each shot on a node with shots" : "the prompt";
 }
 
 /**

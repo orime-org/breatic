@@ -12,7 +12,7 @@ export const LAUNCH_STORY_3_BEAT: GenerationTemplate = {
       key: "result",
       role: "generate",
       type: "video",
-      mode: "multi_shot",
+      mode: "ref",
       model: "minimax-h3-reference-to-video",
       params: { aspect_ratio: "16:9", duration: 12 },
       shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }],

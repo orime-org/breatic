@@ -32,9 +32,9 @@ const HOW_TO_SEND =
   "an empty one is wired with into that slot. A resource node lands holding the template's file: send it with no material. " +
   "Leave out the mode and model you keep; while you keep them, a value you write in a node's params wins over the template's. Send each generate node's prompt as its own, rewritten in the language " +
   "the user writes in with their story or detail in it: fill every tweak segment with words before you send it: from what the user said, or, for one their words leave open, after asking them, making takes first, or choosing, as your working rules say. A template's tweak segment is never sent as it is. " +
-  "A node sent in multi_shot sends shots and no prompt, their durations adding up to the node's duration: the one you " +
+  "A template node with shots is written out shot by shot: send it shots and no prompt, their durations adding up to the node's duration: the one you " +
   "write in its params, else the template's while the node keeps the template's mode and model; on another mode or model, write one. " +
-  "A node sent in any other mode sends a prompt, a template's shots written as one. " +
+  "On a mode or model that takes no shots, send a prompt instead, the template's shots written as one. " +
   "A template node with lines is a dialogue: send it lines, one per turn, each { speaker, prompt } with the speaker the template gives and only the words said, " +
   "no name or colon in front, and no prompt. " +
   "A template's written text node (a script, lyrics) is sent as a written text node with { id, key }, its words as its prompt: " +

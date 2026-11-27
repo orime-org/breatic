@@ -182,12 +182,18 @@ describe("facts the catalog carries that change what to propose", () => {
   it.each([
     ["i2v", "Seedance 2.5"],
     ["first_last", "Seedance 2.5"],
-    ["multi_shot", "Seedance 2.5 Image-to-Video"],
   ])("offers Seedance 2.5 image-to-video in %s, under the name the picker shows", (mode, shown) => {
     const answer = modelsForMode("video", mode);
     if (!answer.available) throw new Error(`${mode} has models`);
     const seedance = answer.models.find((model) => model.name === "seedance-2.5-image-to-video");
     expect(seedance?.displayName).toBe(shown);
+  });
+
+  it.each(["t2v", "ref"])("offers Seedance 2.5 text-to-video in %s as Seedance 2.5", (mode) => {
+    const answer = modelsForMode("video", mode);
+    if (!answer.available) throw new Error(`${mode} has models`);
+    const seedance = answer.models.find((model) => model.name === "seedance-2.5-text-to-video");
+    expect(seedance?.displayName).toBe("Seedance 2.5");
   });
 
   it("carries the name the picker shows beside the name a node stores", () => {

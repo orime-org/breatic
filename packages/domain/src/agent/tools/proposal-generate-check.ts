@@ -115,13 +115,16 @@ export function takesPromptHere(node: ProposalNode, chosen: ModelInfo): boolean 
 function checkSettings(node: ProposalNode, chosen: ModelInfo, at: NodeLabel): ProposalVerdict {
   const values = checkParams(chosen, node, at);
   if (!values.ok) return values;
-  // Defined in the multi-shot mode alone, for a model that takes shots there.
+  // Defined for a model that takes shots in the node's mode; a node carrying
+  // shots is a multi-shot node (inner#2192).
   const board = chosen.storyboard;
   if (node.shots !== undefined && board === undefined) {
-    return refuse("shots-outside-multishot", `Shots belong to the multi_shot mode, and "${node.name}" runs "${node.mode ?? ""}".`, fixOn(at, "leave shots out."));
+    return refuse("shots-not-taken", `"${chosen.name}" takes no shots in "${node.mode ?? ""}".`, fixOn(at, "leave shots out."));
   }
-  if (board !== undefined && node.shots === undefined) {
-    return refuse("multishot-no-shots", "In the multi_shot mode the shots are what is generated.", fixOn(at, "give shots, each with its own prompt and seconds."));
+  // Writing the shots out and letting the model plan them are two choices of
+  // the same Shots control, sent through the same upstream field.
+  if (node.shots !== undefined && board?.autoParam !== undefined && node.params?.[board.autoParam] === true) {
+    return refuse("shots-with-auto", `${board.autoParam} lets "${chosen.name}" plan the shots itself, and this node writes its shots out.`);
   }
   // The multi-shot run sends the shots in place of the main prompt, so marks
   // in a main prompt beside them would be counted and priced but never sent.
@@ -374,7 +377,7 @@ function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelIn
     case "prompt-too-long": {
       const written = [...extractPromptText(sent)].length;
       const holding = scripts.map((n) => `"${n.name}"`);
-      return refuse("prompt-too-long", `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}${board === undefined ? "" : " with the shots written into it"}${holding.length > 0 ? `, counting the words in ${holding.join(", ")}` : ""}.`);
+      return refuse("prompt-too-long", `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}${board === undefined || node.shots === undefined ? "" : " with the shots written into it"}${holding.length > 0 ? `, counting the words in ${holding.join(", ")}` : ""}.`);
     }
     default:
       return null;
@@ -397,7 +400,7 @@ function sentPrompt(proposal: CanvasProposal, node: ProposalNode, chosen: ModelI
   const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt, refWords), duration: shot.duration }));
   const sent = onDialogueSide(node)
     ? proposalDialogueText(node, (segments) => promptTextOf(segments, refWords))
-    : board === undefined
+    : board === undefined || node.shots === undefined
       ? promptTextOf(node.prompt ?? [], refWords)
       : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
   return { sent, shots };
@@ -463,7 +466,8 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
     const target = proposal.nodes[at];
     return target?.type === "text" ? [target] : [];
   });
-  const shotCap = board?.maxChars;
+  // Only a node writing its shots out holds a shot to the shot's cap.
+  const shotCap = node.shots === undefined ? undefined : board?.maxChars;
   const long = shotCap === undefined ? undefined : scripts.find((n) => [...extractPromptText(promptPlainText(n.prompt ?? []))].length > shotCap);
   if (long) {
     return refuse("script-too-long-for-shot", `"${long.name}" is longer than the ${String(shotCap)} characters "${chosen.name}" takes for one shot, so @'ing it into a shot is refused at Generate.`);

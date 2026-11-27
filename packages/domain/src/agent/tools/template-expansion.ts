@@ -17,7 +17,6 @@
 import {
   GENERATION_TEMPLATES,
   markedSegments,
-  MULTI_SHOT_MODE,
   t,
   templateMarkTargets,
   templateNodeDefaults,
@@ -53,7 +52,7 @@ export type TemplateExpansion = { ok: true; node: ProposalNode } | Refusal;
 export type SentWords = { name: "shots" | "lines" | "prompt"; mentions: string; write: string; placed: string };
 
 /**
- * The words a generate node takes as it is sent: shots in multi_shot, lines on
+ * The words a generate node takes as it is sent: shots on a node that carries them, lines on
  * the dialogue side of a model whose speakers stand in for its voice
  * (inner#1825 design 8.5), a prompt otherwise, whatever form the template's
  * own words have.
@@ -61,8 +60,8 @@ export type SentWords = { name: "shots" | "lines" | "prompt"; mentions: string; 
  * @returns How refusals and fixes name those words.
  * @throws {never} Never.
  */
-export function sentWords(node: Pick<ProposalNode, "mode" | "model" | "params">): SentWords {
-  if (node.mode === MULTI_SHOT_MODE) return { name: "shots", mentions: "the shots @", write: "write the shots.", placed: " in a shot" };
+export function sentWords(node: Pick<ProposalNode, "mode" | "model" | "params" | "shots">): SentWords {
+  if (node.shots !== undefined) return { name: "shots", mentions: "the shots @", write: "write the shots.", placed: " in a shot" };
   if (onDialogueSide(node)) return { name: "lines", mentions: "the lines @", write: "write the lines.", placed: " in a line" };
   return { name: "prompt", mentions: "the prompt @s", write: "write a prompt.", placed: "" };
 }
@@ -183,7 +182,7 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     // The pool is the template's own model's; a node settling another model
     // is told how its nodes go in once it has a prompt to check.
     const keeps = own?.role === "generate" && filled.mode === own.mode && filled.model === own.model;
-    const words = sentWords(filled);
+    const words = sentWords({ ...filled, ...(keeps && own?.role === "generate" && own.shots !== undefined ? { shots: [] } : {}) });
     const pool = keeps ? ` Each node ${words.mentions} goes into the pool. ${poolSentence(rest.name)}` : "";
     const form = own?.role !== "generate" ? "prompt" : own.shots !== undefined ? "shots" : own.lines !== undefined ? "lines" : "prompt";
     const styled = template.styles !== undefined && own?.role === "generate" && own.styleWords !== undefined

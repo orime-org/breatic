@@ -706,11 +706,12 @@ export {
 } from "@shared/relight-terms.js";
 export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {
-  MULTI_SHOT_MODE,
+  effectiveShots,
+  MULTI_SHOT_MAX_SHOTS,
   storyboardSend,
   storyboardSpec,
 } from "@shared/storyboard.js";
-export type { StoryboardSend, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
+export type { ShotsChoice, StoryboardSend, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
 export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
 export { formatCredits } from "@shared/format-credits.js";
 export { ceilToCreditCent } from "@shared/credit-cent.js";

@@ -69,7 +69,7 @@ function placedElsewhere(chosen: ModelInfo, node: ProposalNode, key: string, inf
   const leaveOut = fixOn(at, `leave "${key}" out of params.`);
   if (info.fromStoryboard === true) {
     return chosen.storyboard === undefined
-      ? refuse("param-storyboard-other-mode", `"${key}" is set by shots, which only the multi_shot mode takes.`, leaveOut)
+      ? refuse("param-storyboard-other-mode", `"${key}" is set by shots, and "${chosen.name}" takes no shots in "${node.mode ?? ""}".`, leaveOut)
       : refuse("param-storyboard", `"${key}" is set by the node's shots.`, leaveOut);
   }
   // Asked before anything that tells the agent how the user fills a

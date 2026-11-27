@@ -8,7 +8,7 @@ export const COMIC_PAGE_TO_MOTION: GenerationTemplate = {
   id: "comic-page-to-motion",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "16:9", duration: 10, generate_audio: true } },
+    { key: "result", role: "generate", type: "video", mode: "ref", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "16:9", duration: 10, generate_audio: true } },
   ],
   edges: [],
   inputs: [{ key: "page", type: "image" }],
