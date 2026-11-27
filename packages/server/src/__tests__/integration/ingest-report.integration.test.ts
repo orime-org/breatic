@@ -592,13 +592,14 @@ describe("a Timeline upload clip's upload (inner#1709 design §4.1, §4.2)", () 
 
     await report(completed(key, { width: 8, height: 6 }));
 
-    const [grant] = await sql<{ asset_id: string }[]>`SELECT asset_id FROM upload_grants WHERE storage_key = ${key}`;
+    // The clip receives the registered address and media facts (inner#2171).
+    const [asset] = await sql<{ file_url: string; mime_type: string }[]>`SELECT file_url, mime_type FROM studio_assets WHERE storage_key = ${key}`;
     const { timeline, document } = docsOf(seed);
     expect((await spaceEventsFor("timeline-upload", timeline)).filter((e) => e.uploadId === uploadId)).toEqual([
       { type: "timeline-upload", docName: timeline, uploadId, state: "processing" },
       {
         type: "timeline-upload", docName: timeline, uploadId, state: "completed",
-        result: { assetId: grant!.asset_id, kind: "image", durationSeconds: null, width: 8, height: 6 },
+        result: { kind: "image", url: asset!.file_url, coverUrl: null, mimeType: asset!.mime_type, durationSeconds: null, width: 8, height: 6 },
       },
     ]);
     expect(await spaceEventsFor("document-upload", document)).toEqual([]);
@@ -624,7 +625,7 @@ describe("a Timeline upload clip's upload (inner#1709 design §4.1, §4.2)", () 
     const sha = crypto.randomBytes(32).toString("hex");
     const first = await mintTicket(seed);
     await report(completed(first, { sha256: sha, width: 8, height: 6 }));
-    const [held] = await sql<{ asset_id: string }[]>`SELECT asset_id FROM upload_grants WHERE storage_key = ${first}`;
+    const [stored] = await sql<{ file_url: string; mime_type: string }[]>`SELECT file_url, mime_type FROM studio_assets WHERE storage_key = ${first}`;
     const uploadId = crypto.randomUUID();
 
     const res = await askTicket(seed.cookie, {
@@ -636,7 +637,7 @@ describe("a Timeline upload clip's upload (inner#1709 design §4.1, §4.2)", () 
     const { timeline, document } = docsOf(seed);
     expect((await spaceEventsFor("timeline-upload", timeline)).filter((e) => e.uploadId === uploadId)).toEqual([{
       type: "timeline-upload", docName: timeline, uploadId, state: "completed",
-      result: { assetId: held!.asset_id, kind: "image", durationSeconds: null, width: 8, height: 6 },
+      result: { kind: "image", url: stored!.file_url, coverUrl: null, mimeType: stored!.mime_type, durationSeconds: null, width: 8, height: 6 },
     }]);
     expect((await spaceEventsFor("document-upload", document)).filter((e) => e.uploadId === uploadId)).toEqual([]);
   });
