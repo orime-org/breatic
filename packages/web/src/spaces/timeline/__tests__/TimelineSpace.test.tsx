@@ -1038,13 +1038,23 @@ describe('TimelineSpace toolbar that does not fit (inner#1709)', () => {
 });
 
 describe('TimelineSpace transport row that does not fit (inner#1709)', () => {
-  // Each part's width in each of the six forms; the full row is 389, then 299, 253, 173, 98 and 56 (jsdom has no gaps; the
-  // fifth and sixth forms have no time).
-  const PART: Record<string, readonly number[]> = { play: [74, 74, 28, 28, 28, 28], time: [155, 155, 155, 75, 0, 0], ratio: [160, 70, 70, 70, 70, 28] };
+  /**
+   * A part's width from what it shows when it is measured, so a part still showing its wider content is measured wide.
+   * The six forms then measure 389, 299, 253, 173, 98 and 56 (jsdom has no gaps).
+   * @param part - Which part.
+   * @param text - Its text content.
+   * @returns Its width.
+   * @throws {never} Never.
+   */
+  function partWidth(part: string, text: string): number {
+    if (part === 'play') return text === '' ? 28 : 74;
+    if (part === 'time') return text.includes('/') ? 155 : 75;
+    return text.includes('×') ? 160 : text === '' ? 28 : 70;
+  }
   let resize: ((width: number) => void) | null = null;
 
   /**
-   * Give the control row `room` pixels of content width, and its parts the widths of PART in the form it shows.
+   * Give the control row `room` pixels of content width, and its parts the widths `partWidth` gives for what they show.
    * @param room - The row's content width.
    * @throws {never} Never.
    */
@@ -1063,8 +1073,7 @@ describe('TimelineSpace transport row that does not fit (inner#1709)', () => {
     const original = Element.prototype.getBoundingClientRect;
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
       const part = this.getAttribute('data-transport-part');
-      const form = Number(this.closest('[data-transport-form]')?.getAttribute('data-transport-form'));
-      if (part !== null) return { width: PART[part]![form]! } as DOMRect;
+      if (part !== null) return { width: partWidth(part, this.textContent ?? '') } as DOMRect;
       return original.call(this);
     });
   }
