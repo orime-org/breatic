@@ -3013,13 +3013,17 @@ function CanvasSpaceInner({
     setFlowNodes((current) =>
       reconcileSelection(current, (node) => targets.has(node.id)),
     );
+    // A marquee made before the creation (the selection plus is pressed on
+    // one) leaves xyflow's NodesSelection active, and its rect would shrink
+    // onto the new node and swallow its clicks; same as `selectOnlyNode`.
+    rfStoreApi.setState({ nodesSelectionActive: false });
     // A newer creation may already be waiting; only this run's ids clear.
     setSelectAfterCreate((current) => (current === ids ? null : current));
     const pasted = focusPastedRef.current;
     if (pasted?.ids !== ids) return;
     focusPastedRef.current = null;
     focusFirstCopy(ids, pasted.sources);
-  }, [selectAfterCreate, nodes, setFlowNodes, focusFirstCopy]);
+  }, [selectAfterCreate, nodes, setFlowNodes, focusFirstCopy, rfStoreApi]);
 
   // A 3D capture's "View" press (#1411 design 5.4): once loaded and holding
   // the node, centre on it at the user's zoom and select it.
