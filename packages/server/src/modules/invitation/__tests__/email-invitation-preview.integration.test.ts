@@ -60,7 +60,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
     it.each(["pending", "accepted", "declined", "revoked", "expired"] as const)("returns only claimed for a converted %s invitation", async (status) => {
       const fixture = await seedInvitationFixture(sql);
       const invitation = await seedEmailInvitation(sql, scope, fixture);
-      const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+      const user = await usersRepo.createUser({ locale: "en", influencerCode: "official", email: fixture.email, emailVerified: true });
       await claimEmailInvitations(user);
       if (status === "accepted") await answerInvitation(scope, invitation.id, user.id, true);
       else if (status === "declined") await answerInvitation(scope, invitation.id, user.id, false);

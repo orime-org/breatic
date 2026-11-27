@@ -52,7 +52,7 @@ import { LOOPBACK_PEER } from "@server/__tests__/helpers/peer.js";
 
 const USER: UserEntity = {
   id: "verified-signup", email: "new@example.test", emailVerified: true,
-  googleId: null, locale: "en", membershipTier: "base",
+  googleId: null, locale: "en", membershipTier: "base", influencerCode: "official",
   createdAt: new Date("2026-01-01T00:00:00Z"),
   updatedAt: new Date("2026-01-01T00:00:00Z"), deletedAt: null,
 };
@@ -76,7 +76,7 @@ describe("verified signup session invitation compensation", () => {
     }, LOOPBACK_PEER);
 
     expect(response.status).toBe(201);
-    expect(spies.verifySignupCode).toHaveBeenCalledWith("signup-ticket", "123456", null);
+    expect(spies.verifySignupCode).toHaveBeenCalledWith("signup-ticket", "123456", null, undefined);
     expect(spies.claimEmailInvitations).toHaveBeenCalledWith(USER);
     const body = await response.json() as { data: { user: { id: string; personalStudio: null } } };
     expect(body.data.user.id).toBe("verified-signup");

@@ -335,6 +335,7 @@ return {0}
  * @param ticket - The browser's ticket, or `null` when it has none.
  * @param code - The code the user typed.
  * @param attribution - Campaign source the browser recorded before sign-up.
+ * @param origin - The verifying request's `Origin`, naming the influencer site (inner#2157).
  * @returns The new account, and what became of the referral code the sign-up carried.
  * @throws {AppError} 410 when there is no such pending sign-up.
  * @throws {AppError} 422 when this code has used up its comparisons.
@@ -345,6 +346,7 @@ export async function verifySignupCode(
   ticket: string | null,
   code: string,
   attribution: Attribution | null = null,
+  origin?: string,
 ): Promise<{ user: UserEntity; referral: SignupReferralOutcome }> {
   if (ticket === null) throw new AppError(HTTP_GONE, t("server.auth.signup_expired"));
   const { maxAttemptsPerCode } = getSignupCodeConfig();
@@ -374,5 +376,5 @@ export async function verifySignupCode(
   }
   const source = SIGNUP_REFERRAL_SOURCES.find((known) => known === referralSource) ?? null;
   const carried = referralCode && source !== null ? { code: referralCode, source, onRefused: "skip" as const } : undefined;
-  return createAccount({ email, hashedPassword, locale: getActiveLocale(), emailVerified: true, attribution }, carried);
+  return createAccount({ email, hashedPassword, locale: getActiveLocale(), emailVerified: true, attribution }, carried, origin);
 }

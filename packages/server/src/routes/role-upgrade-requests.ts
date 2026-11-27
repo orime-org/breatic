@@ -28,7 +28,7 @@
  */
 
 import { Hono } from "hono";
-import { frontendOrigin, validate, ForbiddenError } from "@breatic/core";
+import { frontendOriginFor, validate, ForbiddenError } from "@breatic/core";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -80,7 +80,7 @@ projectRoleUpgradeRequests.post(
       projectId,
       projectName: project.name,
       message: body.message ?? null,
-      origin: frontendOrigin(c.req.header("Origin")),
+      origin: await frontendOriginFor(c.req.header("Origin")),
     });
 
     // Just the id of the thing that was created. The bell entry the service

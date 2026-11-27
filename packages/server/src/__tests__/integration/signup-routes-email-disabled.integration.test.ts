@@ -57,7 +57,7 @@ afterAll(async () => {
 describe("sign-up without an email backend", () => {
   it("tells the page that sign-up needs no code", async () => {
     const res = await app.request("/api/v1/auth/options");
-    expect(await res.json()).toEqual({ data: { emailVerification: false, referralEnabled: expect.any(Boolean), desktopAppScheme: "ai.breatic.desktop", desktopAppName: "Breatic" } });
+    expect(await res.json()).toEqual({ data: { emailVerification: false, referralEnabled: expect.any(Boolean), googleSignIn: expect.any(Boolean), desktopAppScheme: "ai.breatic.desktop", desktopAppName: "Breatic" } });
   });
 
   it("creates the account at once and returns a recovery code", async () => {

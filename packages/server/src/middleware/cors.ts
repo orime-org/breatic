@@ -8,7 +8,7 @@
  */
 
 import { cors } from "hono/cors";
-import { env } from "@breatic/core";
+import { isTrustedFrontendOrigin } from "@breatic/core";
 
 /**
  * CORS middleware configured from environment.
@@ -22,9 +22,13 @@ import { env } from "@breatic/core";
  * was removed in the cookie migration (2026-05-26). Removing it cuts
  * an unnecessary cross-origin preflight allow that no longer matches
  * any client code path.
+ *
+ * The allowed origins are the exact `ALLOWED_ORIGINS` items plus every
+ * registered influencer site (inner#2157), read through
+ * `isTrustedFrontendOrigin`, so opening an influencer needs no restart.
  */
 export const corsMiddleware = cors({
-  origin: env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()),
+  origin: async (origin) => ((await isTrustedFrontendOrigin(origin)) ? origin : null),
   credentials: true,
   allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   // `Idempotency-Key` is the one-per-press key the run-once routes need

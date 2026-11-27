@@ -39,7 +39,6 @@
       "logout_success": "已登出",
       "logout_others_success": "已登出其他裝置",
       "not_authenticated": "未登入",
-      "google_oauth_unconfigured": "本伺服器未開啟 Google 登入",
       "invalid_google_credential": "無法驗證你的 Google 帳號",
       "desktop_exchange_invalid": "這個登入連結已失效，請重新登入。",
       "google_email_unverified": "你的 Google 帳號電子郵件未驗證",
@@ -3410,6 +3409,13 @@
     "email": "電子郵件",
     "password": "密碼",
     "or": "或",
+    "google": {
+      "continue": "使用 Google 帳戶繼續",
+      "cancelled": "已取消 Google 登入。請重試或使用電子郵件。",
+      "expired": "Google 登入已逾時，請重試。",
+      "rateLimited": "嘗試次數過多，請稍後再試。",
+      "unavailable": "Google 登入暫時無法使用，請使用電子郵件。"
+    },
     "invalidEmail": "請輸入有效的電子郵件地址。",
     "passwordTooShort": "密碼至少 8 個字元。",
     "passwordShow": "顯示密碼",
@@ -3422,8 +3428,6 @@
       "signUp": "註冊",
       "noAccount": "還沒有帳號?",
       "forgotPassword": "忘記密碼?",
-      "googleLoading": "正在載入 Google 登入…",
-      "googleFailed": "Google 登入暫不可用，請重新整理頁面或使用電子郵件登入。",
       "failed": "登入失敗,請重試。"
     },
     "register": {
@@ -3515,7 +3519,6 @@
       "googleOnly": "用 Google 新註冊時使用"
     },
     "desktop": {
-      "continueWithGoogle": "透過 Google 帳戶繼續操作",
       "waitingBrowser": "請在瀏覽器中完成登入",
       "cancel": "取消",
       "exchangeFailed": "登入沒有完成，請重試。",

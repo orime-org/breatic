@@ -76,7 +76,7 @@ describe("signing in with Google with a referral code", () => {
   it("appends the code for a new account", async () => {
     activeCodes();
     const address = email();
-    const result = await authService.loginOrCreateGoogle(`g-${randomUUID()}`, address, true, null, { code: "FRIEND-2", source: "signup_typed" });
+    const result = await authService.resolveGoogleAccount(`g-${randomUUID()}`, address, true, null, { code: "FRIEND-2", source: "signup_typed" });
     expect(result.created).toBe(true);
     expect(result.referral).toBe("applied");
     expect(await bindingOfEmail(address)).toEqual({ code: "FRIEND-2", source: "signup_typed" });
@@ -85,7 +85,7 @@ describe("signing in with Google with a referral code", () => {
   it("refuses an inactive code for a new account with 422 and creates nothing", async () => {
     inactiveCodes();
     const address = email();
-    await expect(authService.loginOrCreateGoogle(`g-${randomUUID()}`, address, true, null, { code: "NOPE-NOPE", source: "signup_link" }))
+    await expect(authService.resolveGoogleAccount(`g-${randomUUID()}`, address, true, null, { code: "NOPE-NOPE", source: "signup_link" }))
       .rejects.toMatchObject({ statusCode: 422 });
     expect(await suite.sql`select 1 from users where email = ${address}`).toHaveLength(0);
   });
@@ -93,9 +93,9 @@ describe("signing in with Google with a referral code", () => {
   it("does not ask or bind on signing in to an existing account, and says the code was not used", async () => {
     const googleId = `g-${randomUUID()}`;
     const address = email();
-    await authService.loginOrCreateGoogle(googleId, address, true);
+    await authService.resolveGoogleAccount(googleId, address, true);
     activeCodes();
-    const again = await authService.loginOrCreateGoogle(googleId, address, true, null, { code: "FRIEND-3", source: "signup_link" });
+    const again = await authService.resolveGoogleAccount(googleId, address, true, null, { code: "FRIEND-3", source: "signup_link" });
     expect(again.created).toBe(false);
     expect(again.referral).toBe("not_applied");
     expect(await bindingOfEmail(address)).toBeNull();

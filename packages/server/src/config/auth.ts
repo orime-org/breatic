@@ -26,6 +26,9 @@ export const authConfigSchema = z.object({
       resend_cooldown_seconds: positiveInt.default(60),
     })
     .default({ ttl_seconds: 600, max_attempts_per_code: 5, resend_cooldown_seconds: 60 }),
+  google_login: z
+    .object({ state_ttl_seconds: positiveInt.default(600) })
+    .default({ state_ttl_seconds: 600 }),
   desktop_handoff: z.object({ ttl_seconds: positiveInt.default(300) }).default({ ttl_seconds: 300 }),
 });
 
@@ -38,6 +41,7 @@ export interface SignupCodeConfig {
 
 let _cached: SignupCodeConfig | null = null;
 let _desktopHandoffTtl: number | null = null;
+let _googleCached: { stateTtlSeconds: number } | null = null;
 
 /**
  * Whether an email sign-up must prove the address with a code. True for the
@@ -62,6 +66,16 @@ export function getSignupCodeConfig(): SignupCodeConfig {
     resendCooldownSeconds: c.resend_cooldown_seconds,
   };
   return _cached;
+}
+
+/**
+ * Load and cache the full-page Google sign-in settings (inner#2157).
+ * @returns How long a started sign-in lives, in seconds.
+ * @throws {z.ZodError} if a value is malformed.
+ */
+export function getGoogleLoginConfig(): { stateTtlSeconds: number } {
+  _googleCached ??= { stateTtlSeconds: readAuthConfig().google_login.state_ttl_seconds };
+  return _googleCached;
 }
 
 /**
