@@ -350,7 +350,7 @@ test('a picture whose uploader closed the page once it was sent lands as a pictu
 test.describe('a Timeline beside the widest Agent column', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  test('keeps the editor left of the property panel and moves the toolbar\'s rightmost controls behind More', async ({ page }) => {
+  test('keeps the editor left of the property panel, moves the toolbar\'s rightmost controls behind More and narrows the play bar', async ({ page }) => {
     const errors = watchTimelineErrors(page);
     await openSmokeProject(page);
     const spaceId = await createSpace(page, 'timeline', `Timeline narrow ${crypto.randomUUID()}`);
@@ -385,6 +385,19 @@ test.describe('a Timeline beside the widest Agent column', () => {
       expect(await toolbar.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(panelLeft + 0.5);
       await expect(outlet.getByTestId('timeline-toggle-snap')).toHaveCount(0);
 
+      // The play bar: the seek slider keeps the editor's inner width in its own row; the controls below narrow in steps.
+      const transport = outlet.getByTestId('timeline-transport');
+      const ratio = outlet.getByTestId('timeline-frame-ratio');
+      expect(await transport.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(panelLeft + 0.5);
+      expect(await ratio.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(panelLeft + 0.5);
+      await expect(ratio).toHaveText(/^16:9$/);
+      const [seekWidth, innerWidth] = await transport.evaluate((el) => {
+        const seek = el.previousElementSibling!.firstElementChild!.getBoundingClientRect().width;
+        const style = getComputedStyle(el);
+        return [seek, el.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight)];
+      });
+      expect(Math.abs(seekWidth - innerWidth)).toBeLessThanOrEqual(1);
+
       await outlet.getByTestId('timeline-more').click();
       const snapRow = page.getByTestId('timeline-toggle-snap-item');
       await expect(snapRow).toHaveAttribute('aria-checked', 'true');
@@ -396,6 +409,8 @@ test.describe('a Timeline beside the widest Agent column', () => {
       await page.keyboard.press('Escape');
 
       await dragAgentEdge(-600);
+      await expect(ratio).toHaveText('16:9 · 1920×1080');
+      await expect(outlet.getByTestId('timeline-play')).toHaveText(/\S/);
       const snap = outlet.getByTestId('timeline-toggle-snap');
       await expect(snap).toHaveAttribute('aria-pressed', 'false');
       await snap.click();
