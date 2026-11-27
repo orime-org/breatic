@@ -230,7 +230,8 @@ test('shows the main prompt again on Single shot, keeping the shots for next tim
   await expect(page.getByTestId('generate-prompt-editor')).toBeVisible();
   await expect(page.getByTestId('generate-storyboard-shots')).toHaveCount(0);
   await pickShots(page, 'multi');
-  await expect(page.getByTestId('generate-storyboard-shot-1-toggle')).toContainText('a red paper boat');
+  // The first shot opens with the list again, its words in its box.
+  await expect(page.getByTestId('generate-storyboard-shot-1-editor')).toContainText('a red paper boat');
 });
 
 test('shows no Shots pill where the model takes no shots in the mode', async () => {
