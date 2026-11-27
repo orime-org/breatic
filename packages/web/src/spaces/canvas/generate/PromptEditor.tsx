@@ -60,6 +60,8 @@ import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/genera
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { planCascadeDeletion } from '@web/features/reference-mention/reference-mention-whitespace';
 import { useFocusReturn } from '@web/lib/use-focus-return';
+import { closeMentionList } from '@web/features/reference-mention/mention-suggestion';
+import { TextFullscreen } from '@web/spaces/canvas/nodes/_shared/TextFullscreen';
 
 /** Imperative handle exposed to the container to insert a reference at the cursor. */
 export interface PromptEditorHandle {
@@ -95,6 +97,12 @@ export interface PromptEditorHandle {
    * insert to the start.
    */
   focus: () => void;
+  /**
+   * Closes the `@` list this editor has on screen (inner#2115), for full
+   * screen, which takes Escape before the editor does.
+   * @returns True when a list was open and is now closed.
+   */
+  closeMentionList: () => boolean;
 }
 
 /**
@@ -226,6 +234,29 @@ interface PromptEditorProps {
    * prompt. `voices` names each speaker's voice beside it in the picker.
    */
   dialogue?: { readonly names: readonly string[]; readonly voices?: readonly string[] };
+}
+
+/** What the editor itself takes: the props, and whether it is the full-screen one. */
+interface PromptEditorBodyProps extends PromptEditorProps {
+  /** The full-screen editor (inner#2115): kept apart from the panel's, and drawn at the reading size. */
+  fullscreen?: boolean;
+}
+
+/** Each prompt's full-screen key, apart from the panel's, which is the fragment itself. */
+const fullscreenKeys = new WeakMap<Y.XmlFragment, object>();
+
+/**
+ * What a prompt's full-screen editor is kept under.
+ * @param fragment - The prompt.
+ * @returns The key, the same object for the same prompt.
+ */
+function fullscreenKeyOf(fragment: Y.XmlFragment): object {
+  let key = fullscreenKeys.get(fragment);
+  if (key === undefined) {
+    key = {};
+    fullscreenKeys.set(fragment, key);
+  }
+  return key;
 }
 
 /**
@@ -482,10 +513,10 @@ function useHeldBackHint(): HeldBackHintArea {
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
-export const PromptEditor = React.forwardRef<
+const PromptEditorBody = React.forwardRef<
   PromptEditorHandle,
-  PromptEditorProps
->(function PromptEditor(
+  PromptEditorBodyProps
+>(function PromptEditorBody(
   {
     fragment,
     placeholder,
@@ -500,7 +531,8 @@ export const PromptEditor = React.forwardRef<
     blockSeparator,
     mentionTokens = NO_MENTION_TOKENS,
     dialogue,
-  }: PromptEditorProps,
+    fullscreen = false,
+  }: PromptEditorBodyProps,
   ref,
 ): React.JSX.Element {
   // From context, not from a prop: the roster is a project-level fact and every
@@ -638,7 +670,7 @@ export const PromptEditor = React.forwardRef<
       const stop = sessionStore.subscribe((st) => {
         if (st.panelSession === session) return;
         stop();
-        if (!built.isDestroyed) endKeptEditor(spaceId, fragment);
+        if (!built.isDestroyed) endKeptEditor(spaceId, fullscreen ? fullscreenKeyOf(fragment) : fragment);
       });
       return built;
     };
@@ -646,7 +678,7 @@ export const PromptEditor = React.forwardRef<
     // with the same captured string. The empty-list label is baked into the
     // extensions and changes only on a locale switch; the caret connection
     // arrives once, on the socket's first connect.
-    return keptEditor(spaceId, fragment, build, (kept) => {
+    return keptEditor(spaceId, fullscreen ? fullscreenKeyOf(fragment) : fragment, build, (kept) => {
       const bound = keptOf.get(kept);
       return (
         bound?.caretProvider === caretProvider &&
@@ -658,7 +690,7 @@ export const PromptEditor = React.forwardRef<
     // rebuilding it. The panel's session is listed so that a panel ending
     // under a mounted editor builds this one a new editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaceId, fragment, caretProvider, mentionEmptyLabel, resolveName, panelSession, dialogueOn]);
+  }, [spaceId, fragment, caretProvider, mentionEmptyLabel, resolveName, panelSession, dialogueOn, fullscreen]);
 
   const kept = keptOf.get(editor);
   if (kept !== undefined) {
@@ -752,6 +784,7 @@ export const PromptEditor = React.forwardRef<
         const wiring = keptOf.get(editor)?.wiring;
         return editor.isDestroyed || wiring === undefined ? null : serialized(editor, wiring, dialogueOn, tokens);
       },
+      closeMentionList: (): boolean => !editor.isDestroyed && closeMentionList(editor),
     }),
     [editor, dialogueOn],
   );
@@ -854,6 +887,50 @@ export const PromptEditor = React.forwardRef<
   const dimReferences = REFERENCE_KINDS.filter((kind) => !referenceKinds.includes(kind))
     .map((kind) => DIM_CHIP[kind])
     .join('');
+  const body = (
+    <>
+      <div ref={heldBack.areaRef} className='relative' onPointerOver={heldBack.onPointerOver} onPointerLeave={heldBack.onPointerLeave}>
+        <EditorContent editor={editor} />
+        {heldBack.hint !== null && (
+          <Tooltip open>
+            <TooltipTrigger asChild>
+              <span aria-hidden='true' className='pointer-events-none absolute' style={heldBack.hint.box} />
+            </TooltipTrigger>
+            <TooltipContent side='top' avoidCollisions={false}>
+              {t('canvas.generatePanel.optionalParagraphHint', { name: heldBack.hint.names })}
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+      {dialogueOn && (
+        <Button
+          type='button'
+          variant={null}
+          size={null}
+          data-testid='dialogue-add-line'
+          onClick={() => addDialogueLine(editor, keptOf.get(editor)?.wiring.dialogueNames.length ?? 0)}
+          className='mt-1 inline-flex h-6 w-fit items-center gap-1 rounded-chrome px-1.5 text-xs text-muted-foreground hover-enabled:bg-accent hover-enabled:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+        >
+          <Plus className='size-3' aria-hidden='true' />
+          {t('canvas.generatePanel.dialogueAddLine')}
+        </Button>
+      )}
+    </>
+  );
+  if (fullscreen) {
+    // Full screen (inner#2115): the reading size, no height of its own and no
+    // scroller of its own, the layer's being the only one; the panel box's
+    // chip dimming, cursors (`.prompt-editor` in index.css) and outline rule
+    // stay.
+    return (
+      <div
+        data-testid={testId}
+        className={'prompt-editor text-base text-foreground [&_.ProseMirror]:min-h-[60vh] [&_.ProseMirror]:outline-none' + dimReferences}
+      >
+        {body}
+      </div>
+    );
+  }
   return (
     // ScrollArea (#1773): the prompt scrolls behind a custom OVERLAY scrollbar
     // (appears only while scrolling, no layout space, hover changes color
@@ -898,32 +975,103 @@ export const PromptEditor = React.forwardRef<
         dimReferences
       }
     >
-      <div ref={heldBack.areaRef} className='relative' onPointerOver={heldBack.onPointerOver} onPointerLeave={heldBack.onPointerLeave}>
-        <EditorContent editor={editor} />
-        {heldBack.hint !== null && (
-          <Tooltip open>
-            <TooltipTrigger asChild>
-              <span aria-hidden='true' className='pointer-events-none absolute' style={heldBack.hint.box} />
-            </TooltipTrigger>
-            <TooltipContent side='top' avoidCollisions={false}>
-              {t('canvas.generatePanel.optionalParagraphHint', { name: heldBack.hint.names })}
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-      {dialogueOn && (
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          data-testid='dialogue-add-line'
-          onClick={() => addDialogueLine(editor, keptOf.get(editor)?.wiring.dialogueNames.length ?? 0)}
-          className='mt-1 inline-flex h-6 w-fit items-center gap-1 rounded-chrome px-1.5 text-xs text-muted-foreground hover-enabled:bg-accent hover-enabled:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-        >
-          <Plus className='size-3' aria-hidden='true' />
-          {t('canvas.generatePanel.dialogueAddLine')}
-        </Button>
-      )}
+      {body}
     </ScrollArea>
+  );
+});
+
+/**
+ * Ends a prompt's full-screen editor once full screen stops showing that
+ * prompt: the user closed it, the panel closed it because the box left, or the
+ * box moved to another prompt (inner#2115). It runs in the panel, which holds
+ * full screen and outlives the box: the box unmounts in the same render that
+ * closes it. A hidden Space keeps the panel's value, so revealing ends nothing.
+ * @param spaceId - The Space the editor is kept in.
+ * @param fragment - The prompt open full screen, null when none is.
+ */
+export function useEndFullscreenEditor(spaceId: string, fragment: Y.XmlFragment | null): void {
+  const shown = React.useRef<Y.XmlFragment | null>(null);
+  React.useLayoutEffect(() => {
+    if (shown.current !== null && shown.current !== fragment) endKeptEditor(spaceId, fullscreenKeyOf(shown.current));
+    shown.current = fragment;
+  }, [spaceId, fragment]);
+}
+
+/** A prompt box's full screen, as its panel holds it (inner#2115). */
+export interface PromptFullscreenLayer {
+  /** Whether this box is open full screen. */
+  open: boolean;
+  /** The title: the node's name, and the box's when the panel has several. */
+  title: string;
+  /** Closes it. */
+  onClose: () => void;
+}
+
+/** Props for {@link PromptEditor}. */
+interface PromptEditorOuterProps extends PromptEditorProps {
+  /** This box's full screen; none for a box that never opens it. */
+  fullscreenLayer?: PromptFullscreenLayer;
+}
+
+/**
+ * A prompt box, which the panel can open full screen (inner#2115). Full screen
+ * has an editor of its own on the same prompt: the panel's ends as it opens,
+ * so one editor at a time holds this person's caret, and the box shows that
+ * it is open full screen. The handle reaches whichever editor is on screen, so
+ * the reference rail inserts into full screen too. The panel closes it when
+ * it stops showing the box (a shot removed, a model that takes no prompt).
+ */
+export const PromptEditor = React.forwardRef<PromptEditorHandle, PromptEditorOuterProps>(function PromptEditor(
+  { fullscreenLayer, ...props },
+  ref,
+): React.JSX.Element {
+  const t = useTranslation();
+  const { spaceId } = useCanvasContext();
+  const { fragment } = props;
+  const open = fullscreenLayer?.open === true;
+  const inner = React.useRef<PromptEditorHandle>(null);
+  const onClose = React.useRef(fullscreenLayer?.onClose);
+  onClose.current = fullscreenLayer?.onClose;
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      insertReference: (item) => inner.current?.insertReference(item),
+      serializePrompt: (tokens) => inner.current?.serializePrompt(tokens) ?? null,
+      insertText: (text) => inner.current?.insertText(text),
+      focus: () => inner.current?.focus(),
+      closeMentionList: () => inner.current?.closeMentionList() ?? false,
+    }),
+    [],
+  );
+  // The panel's editor is kept past an unmount, so opening ends it here.
+  React.useLayoutEffect(() => {
+    if (open) endKeptEditor(spaceId, fragment);
+  }, [open, spaceId, fragment]);
+  const close = React.useCallback((): void => onClose.current?.(), []);
+
+  if (!open || fullscreenLayer === undefined) return <PromptEditorBody ref={inner} {...props} />;
+  return (
+    <>
+      <div
+        data-testid='prompt-fullscreen-placeholder'
+        // The box's own floor, so the panel keeps its height while full screen is open.
+        className={`flex ${props.startingHeight === 'half' ? 'min-h-[3.25rem]' : 'min-h-[6.5rem]'} items-center justify-center rounded-overlay border border-border bg-background px-2.5 py-2 text-xs text-muted-foreground`}
+      >
+        {t('canvas.textFullscreen.inProgress')}
+      </div>
+      <TextFullscreen
+        title={fullscreenLayer.title}
+        onClose={close}
+        onEscapeWithin={() => inner.current?.closeMentionList() ?? false}
+        onOpenFocus={() => inner.current?.focus()}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          queueMicrotask(() => inner.current?.focus());
+        }}
+        testId='prompt-fullscreen'
+      >
+        <PromptEditorBody ref={inner} {...props} fullscreen />
+      </TextFullscreen>
+    </>
   );
 });
