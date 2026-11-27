@@ -17,6 +17,10 @@ import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-
 import { connectableCreatableTypesForAny } from '@web/spaces/canvas/lib/connect-create';
 import { CREATABLE_NODE_TYPES, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { CreatableNodeMenuItems } from '@web/spaces/canvas/nodes/_shared/CreatableNodeMenuItems';
+import { SELECTION_ADD_BUTTON_PX } from '@web/spaces/canvas/selection-add';
+
+/** The plus's size; the preview wires end at its left edge. */
+const BUTTON_SIZE: React.CSSProperties = { width: SELECTION_ADD_BUTTON_PX, height: SELECTION_ADD_BUTTON_PX };
 
 interface SelectionAddButtonProps {
   /** The modalities of the nodes a pick would wire in. */
@@ -69,7 +73,8 @@ export const SelectionAddButton = React.memo(function SelectionAddButton({
           size={null}
           type='button'
           data-testid='selection-add-button'
-          className='flex size-6 select-none items-center justify-center rounded-full border border-border bg-popover text-foreground hover-enabled:bg-accent'
+          className='flex select-none items-center justify-center rounded-full border border-border bg-popover text-foreground hover-enabled:bg-accent'
+          style={BUTTON_SIZE}
         >
           <Plus className='size-4' aria-hidden='true' />
         </Button>

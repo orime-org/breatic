@@ -27,6 +27,22 @@ export interface SelectionAddNode {
   height: number;
 }
 
+/** How far outside the selection's right edge the plus sits, in screen px. */
+export const SELECTION_ADD_OFFSET_PX = 16;
+
+/** The plus button's size, in screen px. */
+export const SELECTION_ADD_BUTTON_PX = 24;
+
+/** One preview wire, in flow coordinates. */
+export interface PreviewWire {
+  sourceId: string;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+}
+
+/** The node facts that decide the offer, without geometry. */
+export type SelectionAddKind = Pick<SelectionAddNode, 'id' | 'type' | 'parentId'>;
+
 /** A rect in flow coordinates. */
 interface Rect {
   x: number;
@@ -72,12 +88,12 @@ function takesEdges(type: string): boolean {
  */
 export function resolveSelectionAdd(
   selectedIds: readonly string[],
-  nodes: readonly SelectionAddNode[],
+  nodes: readonly SelectionAddKind[],
 ): SelectionAdd {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const picked = selectedIds
     .map((id) => byId.get(id))
-    .filter((node): node is SelectionAddNode => node !== undefined && node.type !== 'annotation');
+    .filter((node): node is SelectionAddKind => node !== undefined && node.type !== 'annotation');
   if (picked.length === 0) return { kind: 'none' };
   if (picked.length === 1 && picked[0].type !== 'group') return { kind: 'single', nodeId: picked[0].id };
   const groupIds = new Set(picked.filter((node) => node.type === 'group').map((node) => node.id));
@@ -131,6 +147,77 @@ export function handlesEmphasized(input: {
  */
 export function orderSources<T extends { position: { x: number; y: number } }>(nodes: readonly T[]): T[] {
   return [...nodes].sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x);
+}
+
+/** The canvas library's node facts {@link placedNodes} reads. */
+interface PlacedLike {
+  type?: string;
+  parentId?: string;
+  internals: { positionAbsolute: { x: number; y: number } };
+  measured: { width?: number; height?: number };
+}
+
+/**
+ * The given nodes as the plan and the preview read them: absolute position
+ * and measured size, skipping ids the canvas no longer holds.
+ * @param ids - The node ids.
+ * @param lookup - The canvas's node lookup.
+ * @returns The nodes found, in the given order.
+ * @throws {never} Never.
+ */
+export function placedNodes(
+  ids: readonly string[],
+  lookup: (id: string) => PlacedLike | undefined,
+): SelectionAddNode[] {
+  const nodes: SelectionAddNode[] = [];
+  for (const id of ids) {
+    const node = lookup(id);
+    if (!node) continue;
+    nodes.push({
+      id,
+      type: node.type ?? '',
+      ...(node.parentId ? { parentId: node.parentId } : {}),
+      position: node.internals.positionAbsolute,
+      width: node.measured.width ?? 0,
+      height: node.measured.height ?? 0,
+    });
+  }
+  return nodes;
+}
+
+/**
+ * The bounds around some nodes, the rect the plus sits beside.
+ * @param nodes - The nodes.
+ * @returns Their union rect, or null for none.
+ * @throws {never} Never.
+ */
+export function boundsOf(nodes: readonly SelectionAddNode[]): Rect | null {
+  if (nodes.length === 0) return null;
+  const left = Math.min(...nodes.map((node) => node.position.x));
+  const top = Math.min(...nodes.map((node) => node.position.y));
+  const right = Math.max(...nodes.map((node) => node.position.x + node.width));
+  const bottom = Math.max(...nodes.map((node) => node.position.y + node.height));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/**
+ * The preview wires drawn while the plus menu is open: from each source's
+ * right connection point to the plus button's left edge, which the toolbar
+ * keeps {@link SELECTION_ADD_OFFSET_PX} screen px past the selection's right
+ * edge at its vertical middle, whatever the zoom.
+ * @param sources - The nodes a pick would wire in, in the order to draw.
+ * @param bounds - The selection's bounds.
+ * @param zoom - The canvas zoom.
+ * @returns One wire per source.
+ * @throws {never} Never.
+ */
+export function previewWires(sources: readonly SelectionAddNode[], bounds: Rect, zoom: number): PreviewWire[] {
+  const to = { x: bounds.x + bounds.width + SELECTION_ADD_OFFSET_PX / zoom, y: bounds.y + bounds.height / 2 };
+  return sources.map((source) => ({
+    sourceId: source.id,
+    from: { x: source.position.x + source.width, y: source.position.y + source.height / 2 },
+    to,
+  }));
 }
 
 /**

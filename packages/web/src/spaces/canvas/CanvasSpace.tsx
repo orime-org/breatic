@@ -213,6 +213,17 @@ import {
 import { planDuplicateGroupGrowth } from '@web/spaces/canvas/duplicate-group-growth';
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
 import { useStableList } from '@web/spaces/canvas/use-stable-list';
+import { createConnectedNode } from '@web/spaces/canvas/create-connected-node';
+import {
+  SELECTION_ADD_OFFSET_PX,
+  boundsOf,
+  placedNodes,
+  planConnectedNode,
+  resolveSelectionAdd,
+  type SelectionAddKind,
+} from '@web/spaces/canvas/selection-add';
+import { SelectionAddButton } from '@web/spaces/canvas/SelectionAddButton';
+import { SelectionAddPreview } from '@web/spaces/canvas/SelectionAddPreview';
 import {
   canJoinGroup,
   gateBlockedDeletion,
@@ -630,6 +641,9 @@ function toFlowEdge(edge: CanvasEdge): Edge {
  * pin where it was and opened nothing at all.
  */
 const NODE_DRAG_THRESHOLD = 3;
+
+/** One stable empty id list, for a selection that offers no plus. */
+const NO_IDS: readonly string[] = [];
 
 /**
  * Canvas body — mounts ReactFlow over the Yjs-backed canvas space.
@@ -2464,19 +2478,18 @@ function CanvasSpaceInner({
         x: connectCreate.x,
         y: connectCreate.y,
       });
-      // One add for the size cap: the empty node and its wire.
-      runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
-        const id = createNodeAt(type, point);
-        const added = addEdge(projectId, spaceId, {
-          id: `${connectCreate.sourceId}->${id}`,
-          source: connectCreate.sourceId,
-          target: id,
-        });
-        // Source deleted while the menu was open (collaborator race): the node
-        // still lands; surface the missing wire like every failed reference.
-        if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
-        setSelectAfterCreate([id]);
+      const { nodeId, failedSourceIds } = createConnectedNode({
+        projectId,
+        spaceId,
+        type,
+        center: point,
+        sourceIds: [connectCreate.sourceId],
+        createNodeAt,
       });
+      // Source deleted while the menu was open (collaborator race): the node
+      // still lands; surface the missing wire like every failed reference.
+      if (failedSourceIds.length > 0) toast.error(t('canvas.generatePanel.referenceAddFailed'));
+      setSelectAfterCreate([nodeId]);
     },
     [
       connectCreate.x,
@@ -3188,6 +3201,42 @@ function CanvasSpaceInner({
     () => computeGroupToolbar(selectedIds, groupInfos),
     [selectedIds, groupInfos],
   );
+  // ---- Selection plus (inner#2216) ----
+  // Kinds and membership only, so a position drag or a data write never
+  // re-derives the offer.
+  const selectionAddKinds = useStableList(
+    React.useMemo<SelectionAddKind[]>(
+      () => flowNodes.map((node) => ({ id: node.id, type: node.type ?? '', parentId: node.parentId })),
+      [flowNodes],
+    ),
+    (kind) => `${kind.id}:${kind.type}:${kind.parentId ?? ''}`,
+  );
+  const selectionAdd = React.useMemo(
+    () => resolveSelectionAdd(selectedIds, selectionAddKinds),
+    [selectedIds, selectionAddKinds],
+  );
+  const selectionAddAnchors = useStableList(
+    selectionAdd.kind === 'add' ? selectionAdd.anchorIds : NO_IDS,
+  );
+  const selectionAddSources = useStableList(
+    selectionAdd.kind === 'add' ? selectionAdd.sourceIds : NO_IDS,
+  );
+  const selectionAddSourceKinds = useStableList(
+    React.useMemo(() => {
+      const typeOf = new Map(selectionAddKinds.map((kind) => [kind.id, kind.type]));
+      return selectionAddSources.map((id) => typeOf.get(id) ?? '');
+    }, [selectionAddKinds, selectionAddSources]),
+  );
+  // Same concealment as the group toolbar: viewers cannot create, and floating
+  // chrome over a reference pick would swallow candidate clicks.
+  const selectionAddVisible =
+    selectionAddAnchors.length > 0 && !readOnly && pickForNodeId == null;
+  const [selectionAddMenuOpen, setSelectionAddMenuOpen] = React.useState(false);
+  // A different selection is a different set of upstreams: the menu closes.
+  React.useEffect(() => {
+    setSelectionAddMenuOpen(false);
+  }, [selectedIds]);
+  const selectionAddOpen = selectionAddMenuOpen && selectionAddVisible;
   // Who would go into a new Group. A node a remote gesture is holding is left
   // out: taking it in would write its parent and its position relative to an
   // origin that did not exist a moment ago, while its coordinates are still
@@ -3610,6 +3659,63 @@ function CanvasSpaceInner({
           .map((node) => node.id),
       ),
     [addToAgent, buffer],
+  );
+
+  /**
+   * The selection plus's pick (inner#2216): build the picked type one column
+   * right of the selection and wire every selected node that connects into
+   * it, skipping the rest; the whole build is refused when they exceed the
+   * reference cap, as every reference add is.
+   * @param type - The picked node type.
+   */
+  const onSelectionAddPick = React.useCallback(
+    (type: CreatableNodeType): void => {
+      const bounds = boundsOf(placedNodes(selectionAddAnchors, getInternalNode));
+      if (!bounds) return;
+      // The selection is no obstacle: every node's task counts reach 68 canvas
+      // px past its right edge, and the 72px column clears them on its own.
+      const inSelection = new Set([...selectionAddAnchors, ...selectionAddSources]);
+      const obstacles = occupiedRects(
+        readNodePlacements(projectId, spaceId).filter((p) => !inSelection.has(p.id)),
+        (id) => {
+          const measured = getInternalNode(id)?.measured;
+          return measured?.width && measured.height
+            ? { width: measured.width, height: measured.height }
+            : undefined;
+        },
+      );
+      const plan = planConnectedNode({
+        type,
+        sources: placedNodes(selectionAddSources, getInternalNode),
+        selectionBounds: bounds,
+        obstacles,
+        cap: getCachedReferencePoolCap(),
+      });
+      if (plan.kind === 'full') {
+        toast.warning(t('canvas.generatePanel.referencePoolFull', { cap: plan.cap }));
+        return;
+      }
+      const { nodeId, failedSourceIds } = createConnectedNode({
+        projectId,
+        spaceId,
+        type,
+        center: plan.center,
+        sourceIds: plan.sourceIds,
+        createNodeAt,
+      });
+      // An upstream deleted while the menu was open: the rest still land.
+      if (failedSourceIds.length > 0) toast.error(t('canvas.generatePanel.referenceAddFailed'));
+      setSelectAfterCreate([nodeId]);
+    },
+    [
+      getInternalNode,
+      selectionAddAnchors,
+      selectionAddSources,
+      projectId,
+      spaceId,
+      createNodeAt,
+      t,
+    ],
   );
 
   const duplicateSelection = React.useCallback((): void => {
@@ -5045,6 +5151,30 @@ function CanvasSpaceInner({
                 onPickBg={pickGroupBackground}
               />
             </NodeToolbar>
+            {/* Selection plus (inner#2216): right of a multi-selection or a
+              selected group; picking a type builds it wired from the selection. */}
+            <NodeToolbar
+              nodeId={selectionAddAnchors}
+              isVisible={selectionAddVisible}
+              position={Position.Right}
+              align='center'
+              offset={SELECTION_ADD_OFFSET_PX}
+            >
+              <SelectionAddButton
+                sourceKinds={selectionAddSourceKinds}
+                open={selectionAddOpen}
+                onOpenChange={setSelectionAddMenuOpen}
+                onPick={onSelectionAddPick}
+                onAddToAgent={addSelectionToAgent}
+                addToAgentDisabled={chatNavigating}
+              />
+            </NodeToolbar>
+            {selectionAddOpen ? (
+              <SelectionAddPreview
+                anchorIds={selectionAddAnchors}
+                sourceIds={selectionAddSources}
+              />
+            ) : null}
             {/* Generate panel: floats below its node via NodeToolbar (no viewport
               change on open); shows nothing until a node's panel is opened. */}
             <GeneratePanelContainer
