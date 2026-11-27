@@ -1,8 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-/** The control row's forms: full; ratio without size; then Play as an icon; then the time without the total. */
-export const TRANSPORT_FORMS = 4;
+/**
+ * The control row's forms: full; the ratio without its size; then Play as an icon; then the time without the total; then no
+ * time; then the ratio as an icon.
+ */
+export const TRANSPORT_FORMS = 6;
 
 /**
  * Which form the Timeline play bar's control row should show next (inner#1709). Forms go from widest to narrowest;

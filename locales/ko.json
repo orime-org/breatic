@@ -5160,6 +5160,7 @@
     "play": "재생",
     "pause": "일시 정지",
     "seek": "미리보기 프레임",
+    "frameRatio": "화면 비율",
     "tracks": "트랙",
     "addMedia": "미디어 추가",
     "selectClip": "클립을 선택하여 속성을 확인하세요.",

@@ -4,7 +4,8 @@
 /**
  * The Timeline play bar (inner#1709): the seek bar in a row of its own under the preview, then Play, the time and the
  * frame ratio. When the control row is too narrow it narrows in steps: the ratio without its size, then Play as an icon,
- * then the time without the total; the steps come back in reverse order as it widens.
+ * then the time without the total, then no time, then the ratio as an icon; the steps come back in reverse order as it
+ * widens.
  */
 
 import * as React from 'react';
@@ -113,13 +114,13 @@ export const TimelineTransport = React.memo(function TimelineTransport({ state, 
         {iconOnly && <TooltipContent>{label}</TooltipContent>}
       </Tooltip>
       {/* The buffering text sits above the timecode, out of the flow, so nothing in the row moves when it appears. */}
-      <div data-testid='timeline-timecode' data-transport-part='time' className='relative flex shrink-0'>
+      {form < 4 && <div data-testid='timeline-timecode' data-transport-part='time' className='relative flex shrink-0'>
         <span className='whitespace-nowrap text-xs tabular-nums'>{form === 3 ? time : `${time} / ${total}`}</span>
         {waiting && <span className='pointer-events-none absolute bottom-full left-0 mb-0.5 whitespace-nowrap text-2xs leading-none text-muted-foreground'>{t('timeline.transport.waiting')}</span>}
-      </div>
+      </div>}
       <div data-transport-spacer='' className='min-w-3 flex-1' />
       <span data-transport-part='ratio' className='inline-flex shrink-0'>
-        <TimelineFrameRatio width={width} height={height} readOnly={readOnly} compact={form >= 1} onChoose={onChoose} />
+        <TimelineFrameRatio width={width} height={height} readOnly={readOnly} form={form >= 5 ? 'icon' : form >= 1 ? 'ratio' : 'full'} onChoose={onChoose} />
       </span>
     </div>
   </div>;

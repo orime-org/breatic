@@ -5160,6 +5160,7 @@
     "play": "播放",
     "pause": "暂停",
     "seek": "预览帧",
+    "frameRatio": "画面比例",
     "tracks": "轨道",
     "addMedia": "添加素材",
     "selectClip": "选择片段以查看属性。",

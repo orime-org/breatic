@@ -5160,6 +5160,7 @@
     "play": "Play",
     "pause": "Pause",
     "seek": "Preview frame",
+    "frameRatio": "Aspect ratio",
     "tracks": "Tracks",
     "addMedia": "Add media",
     "selectClip": "Select a clip to view its properties.",

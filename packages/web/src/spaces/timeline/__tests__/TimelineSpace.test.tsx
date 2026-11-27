@@ -1038,8 +1038,9 @@ describe('TimelineSpace toolbar that does not fit (inner#1709)', () => {
 });
 
 describe('TimelineSpace transport row that does not fit (inner#1709)', () => {
-  // Each part's width in each of the four forms; the full row is 389, then 299, 253 and 173 (jsdom has no gaps).
-  const PART: Record<string, readonly number[]> = { play: [74, 74, 28, 28], time: [155, 155, 155, 75], ratio: [160, 70, 70, 70] };
+  // Each part's width in each of the six forms; the full row is 389, then 299, 253, 173, 98 and 56 (jsdom has no gaps; the
+  // fifth and sixth forms have no time).
+  const PART: Record<string, readonly number[]> = { play: [74, 74, 28, 28, 28, 28], time: [155, 155, 155, 75, 0, 0], ratio: [160, 70, 70, 70, 70, 28] };
   let resize: ((width: number) => void) | null = null;
 
   /**
@@ -1081,7 +1082,7 @@ describe('TimelineSpace transport row that does not fit (inner#1709)', () => {
     expect(row).not.toContainElement(screen.getByRole('slider', { name: t('timeline.seek') }));
   });
 
-  it('drops the size from the ratio, then the Play name into a tooltip, then the total from the time', async () => {
+  it('drops the size from the ratio, then the Play name into a tooltip, then the total from the time, then the time, then the ratio\'s text', async () => {
     sizeTransport(388);
     seedLayout([clipAt(X, 'v2', 0, 24)]);
     showTimeline();
@@ -1093,8 +1094,26 @@ describe('TimelineSpace transport row that does not fit (inner#1709)', () => {
     expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(position(0, 24));
     resize!(252);
     await waitFor(() => expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(/^00:00:00:00$/));
-    resize!(100);
-    expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(/^00:00:00:00$/);
+    resize!(172);
+    await waitFor(() => expect(screen.queryByTestId('timeline-timecode')).toBeNull());
+    expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^16:9$/);
+    resize!(97);
+    await waitFor(() => expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^$/));
+    resize!(10);
+    expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^$/);
+    expect(screen.getByTestId('timeline-play')).toBeInTheDocument();
+  });
+
+  it('names the icon-only ratio control and its preset on hover, and still opens the list of presets', async () => {
+    sizeTransport(56);
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    const ratio = await screen.findByTestId('timeline-frame-ratio');
+    await waitFor(() => expect(ratio).toHaveTextContent(/^$/));
+    await userEvent.hover(ratio);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(`${t('timeline.frameRatio')} · 16:9`);
+    await userEvent.click(ratio);
+    expect(await screen.findByRole('option', { name: '9:16 · 1080×1920' })).toBeInTheDocument();
   });
 
   it('names the icon-only Play button on hover', async () => {
@@ -1107,9 +1126,15 @@ describe('TimelineSpace transport row that does not fit (inner#1709)', () => {
   });
 
   it('brings the parts back in the reverse order as the row widens', async () => {
-    sizeTransport(100);
+    sizeTransport(50);
     seedLayout([clipAt(X, 'v2', 0, 24)]);
     showTimeline();
+    await waitFor(() => expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^$/));
+    expect(screen.queryByTestId('timeline-timecode')).toBeNull();
+    resize!(98);
+    await waitFor(() => expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^16:9$/));
+    expect(screen.queryByTestId('timeline-timecode')).toBeNull();
+    resize!(173);
     await waitFor(() => expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(/^00:00:00:00$/));
     resize!(253);
     await waitFor(() => expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(position(0, 24)));
