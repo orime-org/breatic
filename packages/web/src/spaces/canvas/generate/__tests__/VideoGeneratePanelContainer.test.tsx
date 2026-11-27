@@ -2330,7 +2330,6 @@ describe('multi-shot inside a mode (inner#2192)', () => {
       shot_type: { description: '', default: null, values: ['customize'], modes: ['t2v'], fill: 'storyboard' },
       auto_shots: {
         description: '',
-        label: 'Auto multi-shot',
         default: false,
         values: [true, false],
         modes: ['t2v'],
@@ -2488,6 +2487,16 @@ describe('multi-shot inside a mode (inner#2192)', () => {
     await pickShots('multi');
     await waitFor(() => expect(stored().multiShot).toBe(true));
     expect(readShots('p', 's', 'target')?.map((s) => s.id)).toEqual(before);
+  });
+
+  it('writes only the Shots choice on a model with no shot planning of its own', async () => {
+    await openOn('single', () => undefined, 'wan-3');
+    const data = getDoc(docName.canvasSpace('p', 's')).getMap<Y.Map<unknown>>('nodesMap').get('target')?.get('data') as Y.Map<unknown>;
+    const written: string[] = [];
+    data.observe((event) => written.push(...event.keysChanged));
+    await pickShots('multi');
+    await waitFor(() => expect(stored().multiShot).toBe(true));
+    expect(written).not.toContain('paramsByModel');
   });
 
   it('turns Auto multi-shot on and Multi-shot off, in one undo', async () => {

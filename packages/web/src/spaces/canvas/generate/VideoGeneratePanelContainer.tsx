@@ -299,17 +299,22 @@ function VideoGeneratePanelBody({
     [nodeId, nodes, edges, models, mode, textById],
   );
   // The node's shots, shown and sent only on Multi-shot: `spec` is defined
-  // there alone, for a model that takes shots in this mode.
-  const spec = shotsOn(vm);
+  // there alone, for a model that takes shots in this mode. Keyed on the
+  // catalog entry and two strings, so a canvas change leaves it as it is and
+  // the memoized panel below bails.
+  const spec = React.useMemo(
+    () => (vm.shots === 'multi' ? specOf(vm.modelEntry, mode) : undefined),
+    [vm.shots, vm.modelEntry, mode],
+  );
   const total = totalOf(spec, vm.params);
   // A fresh list only when a shot is added, removed, brought back or given
   // other seconds; words typed in a shot leave it as it is (`useShots`).
   const shots = useShots(projectId, spaceId, nodeId);
 
-  // The shot whose box is open (#1201): the first when the mode opens, then
+  // The shot whose box is open (#1201): the first when Multi-shot shows, then
   // the one the user opens or adds, kept by `nextOpenShot` across every
-  // change to the list. Leaving the mode forgets it, so coming back opens the
-  // first shot again.
+  // change to the list. Leaving Multi-shot forgets it, so coming back opens
+  // the first shot again.
   const [openedShot, setOpenedShot] = React.useState<string | null>(null);
   const [seenShots, setSeenShots] = React.useState(shots);
   if (shots !== seenShots) setSeenShots(shots);
@@ -591,7 +596,7 @@ function VideoGeneratePanelBody({
       if (!board) return;
       const content = freshContent();
       const paramsByModel = board.autoParam === undefined
-        ? (content?.paramsByModel ?? {})
+        ? undefined
         : resolveParamsEdit(content, { [board.autoParam]: choice === 'auto' }, live.model);
       const multi = choice === 'multi';
       const kind = multi ? strongestKind('edit', storyboardEntryKind(projectId, spaceId, nodeId)) : 'edit';
