@@ -136,6 +136,14 @@ afterEach(() => {
   // Query stops reading the page's visibility, and a later file that hides
   // and shows the tab sees no change. Undefined hands it back to visibility.
   focusManager.setFocused(undefined);
+  // The page's visibility belongs to the one document every file shares, and
+  // tests hide the tab by defining `visibilityState` and `hidden` on it. One
+  // left hidden hands every later file a hidden page: the chat sync and the
+  // Studio page poll never ask, and a file far from the cause fails on an
+  // empty list, in an order only CI produced (inner#2168). Deleting the own
+  // properties hands back jsdom's, a visible page.
+  delete (document as { visibilityState?: unknown }).visibilityState;
+  delete (document as { hidden?: unknown }).hidden;
   // A canvas's render buffer, session and text editors are kept by Space id
   // for as long as the tab is open, so they outlive an unmount the way the
   // online state does: every test renders a fresh canvas, and a later one
