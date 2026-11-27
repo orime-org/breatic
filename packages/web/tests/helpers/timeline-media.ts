@@ -50,7 +50,9 @@ export function watchTimelineErrors(page: Page): TimelineErrors {
     const knownNetworkTarget = observed.mediaUrls.has(url) || observed.mediaUrls.has(url.replace(/[?&]cors=1$/, '')) || sockets.has(url)
       || (url.startsWith(new URL(page.url()).origin) && new URL(url).pathname.startsWith('/api/'));
     const offlineNetwork = observed.offline && knownNetworkTarget && text.includes('net::ERR_INTERNET_DISCONNECTED');
-    if (!explicitDisconnect && !offlineNetwork) observed.unexpected.push(`console: ${text} (${url})`);
+    // The Agent panel beside the Space reports a sync it could not send while the network is down.
+    const offlineChatSync = observed.offline && url.endsWith('/stores/chat-live.ts') && text.startsWith('[chat] a sync did not land ApiException: Network Error');
+    if (!explicitDisconnect && !offlineNetwork && !offlineChatSync) observed.unexpected.push(`console: ${text} (${url})`);
   });
   return observed;
 }
