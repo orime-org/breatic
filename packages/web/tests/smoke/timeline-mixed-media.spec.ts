@@ -414,7 +414,11 @@ test.describe('a Timeline beside the widest Agent column', () => {
       await expect(outlet.getByTestId('timeline-timecode')).toHaveCount(0);
       const narrowPanelLeft = await outlet.getByTestId('timeline-side-panel').evaluate((el) => el.getBoundingClientRect().left);
       expect(await ratio.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(narrowPanelLeft + 0.5);
-      await ratio.hover();
+      // A one-step hover can land inside the grace area Radix keeps between More and its tooltip, where other triggers
+      // ignore the pointer; leave first, then arrive in steps as a real pointer does.
+      await page.mouse.move(0, 0);
+      const ratioBox = (await ratio.boundingBox())!;
+      await page.mouse.move(ratioBox.x + ratioBox.width / 2, ratioBox.y + ratioBox.height / 2, { steps: 5 });
       // More keeps focus after Escape closed its menu, so its own tooltip may be open beside this one.
       await expect(page.getByRole('tooltip').filter({ hasText: '16:9' })).toBeVisible();
       await page.setViewportSize({ width: 1280, height: 800 });

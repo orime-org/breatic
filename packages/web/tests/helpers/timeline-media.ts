@@ -248,8 +248,12 @@ export async function uploadTimelineVideo(page: Page, projectId: string, fixture
   }
   await expect(dialog).toHaveCount(0, { timeout: 60_000 });
   const [clipId] = await timelineClipIds(page);
-  const fileUrl = await timelineVideoOf(page, clipId).getAttribute('src');
-  if (fileUrl === null) throw new Error('The registered placement has no video address');
+  const src = await timelineVideoOf(page, clipId).getAttribute('src');
+  if (src === null) throw new Error('The registered placement has no video address');
+  // The element adds the CORS marker to the stored address (inner#1709 design §5.2); the list holds the address itself.
+  const stored = new URL(src);
+  stored.searchParams.delete('cors');
+  const fileUrl = stored.href;
   const asset = await projectVideoByUrl(page, projectId, fileUrl);
   expect(asset.kind).toBe('video');
   expect(asset.assetId).toMatch(/^[0-9a-f-]{36}$/);
