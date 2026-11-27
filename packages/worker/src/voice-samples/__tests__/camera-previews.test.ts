@@ -14,7 +14,7 @@ const COMMANDS = [
 const PARAMS = {
   aspect_ratio: { default: "16:9", values: ["16:9", "9:16"], fill: "panel" },
   duration: { default: 5, values: [5, 10], fill: "panel" },
-  shots: { default: null, type: "items", modes: ["multi_shot"], fill: "storyboard" },
+  shots: { default: null, type: "items", modes: ["t2v"], fill: "storyboard" },
 };
 
 /**
@@ -31,7 +31,7 @@ describe("planCameraPreviews", () => {
   it("makes one clip per key with the text-to-video entry, at its own defaults", () => {
     const jobs = planCameraPreviews([
       entry("h3-i2v", ["i2v"], COMMANDS),
-      entry("h3-t2v", ["t2v", "multi_shot"], COMMANDS),
+      entry("h3-t2v", ["t2v", "r2v"], COMMANDS),
       entry("veo", ["t2v"]),
     ]);
     expect(jobs).toEqual([

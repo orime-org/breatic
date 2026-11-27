@@ -64,7 +64,7 @@ export interface ItemField {
 
 /**
  * How a parameter's value reaches the run (#269). `storyboard` is filled from
- * the node's shots in the multi-shot mode (`storyboard.ts`); `tool` by a
+ * the node's shots when the node has multi-shot on (`storyboard.ts`); `tool` by a
  * mini-tool's panel (inner#888).
  */
 export const PARAM_FILLS = ["canvas", "pool", "editor", "panel", "remote", "storyboard", "tool", "none"] as const;
@@ -189,6 +189,12 @@ export interface ParamDescriptor {
    * `{start}`/`{end}` its running seconds, `{prompt}` its text), one per line.
    */
   into_prompt?: string;
+  /**
+   * Marks a `true`/`false` switch that lets the model plan its own shots (Kling's
+   * `auto_shots`): the panel draws it in the Shots control as Auto multi-shot,
+   * in the modes the model takes shots in, never among the other settings.
+   */
+  shots_auto?: boolean;
   /** Marks a control only this model has; its name on screen comes from the locales. */
   label?: string;
   /** How a value of `values` reads on screen, when its spelling is not that; English. */
@@ -399,7 +405,6 @@ export const VIDEO_GENERATION_MODES = [
   "first_last",
   "animate",
   "ref",
-  "multi_shot",
   "talking_head",
 ] as const;
 
@@ -540,6 +545,7 @@ const paramDescriptorSchema = z
     replaces: z.string().optional().catch(undefined),
     fields: z.record(z.string(), itemFieldSchema).optional().catch(undefined),
     into_prompt: z.string().optional().catch(undefined),
+    shots_auto: z.boolean().optional().catch(undefined),
     label: z.string().optional().catch(undefined),
     value_labels: z.record(z.string(), z.string()).optional().catch(undefined),
     value_locales: z.array(z.string()).optional().catch(undefined),

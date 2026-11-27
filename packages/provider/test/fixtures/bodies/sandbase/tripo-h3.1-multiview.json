@@ -18,6 +18,7 @@
         "generate_parts": false,
         "auto_size": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "texture_alignment": "original_image",
         "orientation": "default",
         "enable_image_autofix": false
@@ -51,6 +52,7 @@
         "generate_parts": false,
         "auto_size": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "texture_alignment": "original_image",
         "orientation": "default",
         "enable_image_autofix": false
@@ -84,6 +86,7 @@
         "generate_parts": false,
         "auto_size": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "texture_alignment": "original_image",
         "orientation": "default",
         "enable_image_autofix": false
@@ -117,6 +120,7 @@
         "generate_parts": false,
         "auto_size": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "texture_alignment": "original_image",
         "orientation": "default",
         "enable_image_autofix": false
@@ -151,6 +155,7 @@
         "face_limit": 1500000,
         "auto_size": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "texture_alignment": "original_image",
         "orientation": "default",
         "enable_image_autofix": false
@@ -186,6 +191,7 @@
         "face_limit": 20000,
         "auto_size": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "texture_alignment": "original_image",
         "orientation": "default",
         "enable_image_autofix": false
@@ -221,6 +227,7 @@
         "face_limit": 2000000,
         "auto_size": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "texture_alignment": "original_image",
         "orientation": "default",
         "enable_image_autofix": false
@@ -255,6 +262,7 @@
         "generate_parts": false,
         "auto_size": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "model_seed": 0,
         "texture_alignment": "original_image",
         "orientation": "default",
@@ -290,6 +298,7 @@
         "generate_parts": false,
         "auto_size": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "model_seed": 2147483647,
         "texture_alignment": "original_image",
         "orientation": "default",
@@ -322,6 +331,7 @@
         "smart_low_poly": false,
         "generate_parts": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "texture_alignment": "original_image",
         "enable_image_autofix": false
       },

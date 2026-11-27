@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * What the multi-shot mode's controls say on their own: the shot list holds
+ * What Multi-shot's controls say on their own: the shot list holds
  * only the shots, and the row under it shows either "+ Add shot" or, when a
  * shot cannot be added, the reason in its place.
  */

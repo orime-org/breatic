@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * What the multi-shot mode's shots add to a run: Kling's go out in their own
+ * What a node's shots add to a run on Multi-shot: Kling's go out in their own
  * field, another model's are written into the prompt.
  */
 
@@ -19,11 +19,11 @@ const KLING: Record<string, ParamDescriptor> = {
     default: null,
     type: 'items',
     max_items: 6,
-    modes: ['multi_shot'],
+    modes: ['t2v'],
     fill: 'storyboard',
     fields: { prompt: { type: 'text', max_chars: 512 }, duration: { values: [1, 2, 3, 4, 5] } },
   },
-  shot_type: { description: '', default: null, values: ['customize'], modes: ['multi_shot'], fill: 'storyboard' },
+  shot_type: { description: '', default: null, values: ['customize'], modes: ['t2v'], fill: 'storyboard' },
 };
 const WAN: Record<string, ParamDescriptor> = {
   duration: { description: '', default: 5, min: 2, max: 30, fill: 'panel' },
@@ -31,7 +31,7 @@ const WAN: Record<string, ParamDescriptor> = {
     description: '',
     default: null,
     type: 'items',
-    modes: ['multi_shot'],
+    modes: ['t2v'],
     into_prompt: 'Shot {n} [{start}-{end}s]: {prompt}',
     fill: 'storyboard',
     fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5] } },
@@ -62,8 +62,8 @@ const GATE = {
 };
 
 describe('the shots part of a run', () => {
-  it('adds nothing and keeps the main prompt outside the multi-shot mode', () => {
-    expect(storyboardRun(storyboardSpec(KLING, 't2v'), SHOTS, 5, [], {})).toEqual({
+  it('adds nothing and keeps the main prompt off Multi-shot', () => {
+    expect(storyboardRun(undefined, SHOTS, 5, [], {})).toEqual({
       sendsPrompt: true,
       writtenPrompt: undefined,
       params: {},
@@ -72,7 +72,7 @@ describe('the shots part of a run', () => {
   });
 
   it('sends Kling every shot in its own field in place of the prompt, and hands the gate the same shots', () => {
-    expect(storyboardRun(storyboardSpec(KLING, 'multi_shot'), SHOTS, 5, [], {})).toEqual({
+    expect(storyboardRun(storyboardSpec(KLING, 't2v'), SHOTS, 5, [], {})).toEqual({
       sendsPrompt: false,
       writtenPrompt: undefined,
       params: {
@@ -84,7 +84,7 @@ describe('the shots part of a run', () => {
   });
 
   it('writes the shots into the prompt for a model with no field for them', () => {
-    expect(storyboardRun(storyboardSpec(WAN, 'multi_shot'), SHOTS, 5, [], {})).toEqual({
+    expect(storyboardRun(storyboardSpec(WAN, 't2v'), SHOTS, 5, [], {})).toEqual({
       sendsPrompt: false,
       writtenPrompt: 'Shot 1 [0-2s]: a paper boat\nShot 2 [2-5s]: the pond',
       params: {},

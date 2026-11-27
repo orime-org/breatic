@@ -228,9 +228,9 @@ export interface ModelInfo {
   /** Its parameters, keyed by the name the node stores them under. */
   params: Record<string, ParamInfo>;
   /**
-   * The shots it takes in the multi-shot mode, for a model that declares
-   * them: how many, how long each may be written, and what their seconds add
-   * up to. Absent in every other mode.
+   * The shots it takes in this mode, for a model that declares them here:
+   * how many, how long each may be written, and what their seconds add up
+   * to. Absent in a mode where it takes none.
    */
   storyboard?: StoryboardSpec;
   /**

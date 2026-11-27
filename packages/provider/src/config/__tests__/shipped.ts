@@ -48,6 +48,8 @@ export interface CatalogBound {
 
 /** One model of our catalog, as the files write it; the fields the provider checks are typed. */
 export type CatalogModel = CatalogShape["models"][number] & {
+  /** The modes the model runs in, one or a list. */
+  mode?: string | string[];
   /** Per mode, the params of which a run must carry at least one. */
   source_groups?: { mode: string; any_of: string[] }[];
   /** The longest prompt the model takes, where it states one (`prompt_max_length` in the 3D catalog). */

@@ -6,8 +6,7 @@
  *
  * The catalog names each model by its vendor's name; the mode picker already
  * says which mode it runs in, so the name does not say it again. Where one
- * list holds several versions of one model under the same name (Gemini's text,
- * image and reference endpoints all run the multi-shot mode), each joins on
+ * list holds several versions of one model under the same name, each joins on
  * its `variant`, so the user can tell them apart.
  */
 

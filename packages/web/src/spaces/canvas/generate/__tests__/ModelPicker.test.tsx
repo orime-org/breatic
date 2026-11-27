@@ -59,6 +59,19 @@ describe('ModelPicker — pick the generation model from the catalog', () => {
   });
 
 
+  it('keeps the chosen row’s description readable on its fill, the others muted until hovered (inner#2192)', () => {
+    const described = [model('a', 'Alpha', 'first'), model('b', 'Beta', 'second')];
+    render(<ModelPicker models={described} value='a' onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('generate-model-trigger'));
+    expect(screen.getByText('first')).toHaveClass('text-row-foreground-muted');
+    expect(screen.getByText('second')).toHaveClass('text-muted-foreground', 'group-hover/row:text-row-foreground-muted');
+  });
+
+  it('keeps its width when the row runs short, so the model name stays readable (inner#2192)', () => {
+    render(<ModelPicker models={MODELS} value='nano_banana_pro' onChange={() => {}} />);
+    expect(screen.getByTestId('generate-model-trigger')).toHaveClass('shrink-0', 'max-w-[8rem]');
+  });
+
   it('shows the current model’s display name on the trigger', () => {
     render(
       <ModelPicker models={MODELS} value='nano_banana_pro' onChange={() => {}} />,
@@ -210,10 +223,11 @@ describe('ModelPicker — pick the generation model from the catalog', () => {
       const option = screen.getByTestId('generate-model-option-nano');
       expect(option).toHaveTextContent('Nano Banana Pro');
       expect(option).toHaveTextContent('Flagship quality, 4K, lens control');
-      // Muted and smaller than the name, so the name still leads the row.
+      // Recessive and smaller than the name, so the name still leads the row;
+      // on the chosen row's fill the row token keeps it readable (inner#2192).
       const blurb = screen.getByText('Flagship quality, 4K, lens control');
       expect(blurb.className).toContain('text-xs');
-      expect(blurb.className).toContain('text-muted-foreground');
+      expect(blurb.className).toContain('text-row-foreground-muted');
       // Every model's own line, not just the chosen one's.
       expect(
         screen.getByTestId('generate-model-option-mj'),

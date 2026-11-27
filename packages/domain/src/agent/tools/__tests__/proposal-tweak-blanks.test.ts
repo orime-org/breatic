@@ -42,11 +42,11 @@ const LOOK = "the look";
 /** A tweak segment. */
 const BLANK = { slot: { kind: "tweak" as const, label: LOOK, note: "Write the look you want" } };
 
-/** The multi-shot node with a blank left in its first shot. */
+/** A node with shots, a blank left in its first shot. */
 const SHOT_BLANK: Partial<Sent["nodes"][number]> = {
   type: "video",
   name: "Clip",
-  mode: "multi_shot",
+  mode: "t2v",
   model: "kling-v3.0-4k-text-to-video",
   params: { duration: 5 },
   prompt: undefined,

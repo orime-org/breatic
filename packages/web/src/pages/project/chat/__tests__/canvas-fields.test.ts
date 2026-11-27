@@ -177,14 +177,28 @@ describe('a slim entry', () => {
     expect(texts).toEqual([{ path: ['data', 'prompts', 't2v'], text: 'a boat' }]);
   });
 
-  it('keeps the multi-shot mode shots with their prompts as words', () => {
+  /** A model that takes shots written into its prompt in text-to-video. */
+  const TAKES_SHOTS: Record<string, ParamDescriptor> = {
+    shots: { description: '', default: null, type: 'items', modes: ['t2v'], into_prompt: 'Shot {n}: {prompt}', fill: 'storyboard', fields: { prompt: { type: 'text' } } },
+  };
+
+  it('keeps the shots of a node on Multi-shot with their prompts as words (inner#2192)', () => {
     const { slim, texts } = fitPartsOf(
-      entryOf('video', { shots: [{ id: 's1', prompt: 'one', duration: 3 }] }, { mode: 'multi_shot', model: 'm1', params: {} }),
-      {},
+      entryOf('video', { multiShot: true, shots: [{ id: 's1', prompt: 'one', duration: 3 }] }, { mode: 't2v', model: 'm1', params: {} }),
+      TAKES_SHOTS,
     );
 
     expect((slim.data as Record<string, unknown>).shots).toEqual([{ id: 's1', prompt: 'one', duration: 3 }]);
     expect(texts).toEqual([{ path: ['data', 'shots', 0, 'prompt'], text: 'one' }]);
+  });
+
+  it('leaves out the shots of a node on Multi-shot whose model takes none in the mode', () => {
+    const { slim } = fitPartsOf(
+      entryOf('video', { multiShot: true, shots: [{ id: 's1', prompt: 'one', duration: 3 }] }, { mode: 'i2v', model: 'm1', params: {} }),
+      TAKES_SHOTS,
+    );
+
+    expect(slim.data).not.toHaveProperty('shots');
   });
 
   it('keeps the mode and model the user picked when nothing would run', () => {

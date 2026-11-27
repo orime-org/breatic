@@ -3,8 +3,8 @@
 
 /**
  * Space size cap v2 (inner#1790 v2 web spec E-10, SB-01, SB-02, RQ-16): the
- * video panel's undo batches (model switch with re-split, mode switch into
- * the shots, param edit with re-split) are refused at `full` with the add
+ * video panel's undo batches (model switch with re-split, picking Multi-shot
+ * with its shots, param edit with re-split) are refused at `full` with the add
  * toast, since both `edit` and `add` are; and Generate on the existing node
  * sends no task when the Space cannot take an add.
  */
@@ -65,7 +65,7 @@ const KLING: ModelEntry = {
   name: 'kling-v3',
   display_name: 'Kling v3',
   modality: 'video',
-  mode: ['t2v', 'multi_shot'],
+  mode: ['t2v'],
   description: '',
   guide: '',
   tier: 'recommended',
@@ -78,7 +78,7 @@ const KLING: ModelEntry = {
       default: null,
       type: 'items',
       max_items: 6,
-      modes: ['multi_shot'],
+      modes: ['t2v'],
       fill: 'storyboard',
       fields: { prompt: { type: 'text', max_chars: 512 }, duration: { values: [1, 2, 3, 4, 5] } },
     },
@@ -98,7 +98,7 @@ const WAN: ModelEntry = {
       description: '',
       default: null,
       type: 'items',
-      modes: ['multi_shot'],
+      modes: ['t2v'],
       into_prompt: 'Shot {n} [{start}-{end}s]: {prompt}',
       fill: 'storyboard',
       fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] } },
@@ -118,9 +118,9 @@ function catalog(): ModelCatalog {
  * The stored data of the panel's node v1.
  * @returns Its model, mode and per-model params.
  */
-function stored(): { model: unknown; mode: unknown; paramsByModel: unknown } {
+function stored(): { model: unknown; mode: unknown; paramsByModel: unknown; multiShot: unknown } {
   const data = nodeDataMap(getDoc(NAME), 'v1');
-  return { model: data?.get('model'), mode: data?.get('mode'), paramsByModel: data?.get('paramsByModel') };
+  return { model: data?.get('model'), mode: data?.get('mode'), paramsByModel: data?.get('paramsByModel'), multiShot: data?.get('multiShot') };
 }
 
 /**
@@ -132,24 +132,31 @@ function shotSeconds(): number[] | undefined {
 }
 
 /**
- * Seeds v1 on Kling in a mode (with two shots when in multi_shot), opens its
- * panel, then puts the Space in one size state.
- * @param mode - The mode v1 stores.
+ * Seeds v1 on Kling in text-to-video (on Multi-shot with two shots, or on
+ * Single shot), opens its panel, then puts the Space in one size state.
+ * @param shots - Whether v1 is on Multi-shot.
  * @param code - The size state.
  * @param params - Kling's stored params.
  * @param prompt - Words typed into the mode's prompt box, when given.
  * @throws {Error} When the panel does not open.
  */
-async function openAt(mode: 't2v' | 'multi_shot', code: SizeCode, params: Record<string, unknown> = {}, prompt?: string): Promise<void> {
+async function openAt(shots: 'single' | 'multi', code: SizeCode, params: Record<string, unknown> = {}, prompt?: string): Promise<void> {
   vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
-  const data = { mode, model: 'kling-v3', modelByMode: { [mode]: 'kling-v3' }, paramsByModel: { 'kling-v3': params } };
+  const mode = 't2v';
+  const data = {
+    mode,
+    model: 'kling-v3',
+    modelByMode: { [mode]: 'kling-v3' },
+    paramsByModel: { 'kling-v3': params },
+    ...(shots === 'multi' ? { multiShot: true } : {}),
+  };
   addNode('p', 's', {
     id: 'v1',
     type: 'video',
     position: { x: 0, y: 0 },
     data: { name: 'V', createdAt: 1, createdBy: 'u1', locked: false, attachments: [], ...data },
   } as Parameters<typeof addNode>[2]);
-  if (mode === 'multi_shot') enterStoryboardShots('p', 's', 'v1', 5);
+  if (shots === 'multi') enterStoryboardShots('p', 's', 'v1', 5);
   if (prompt !== undefined) {
     const paragraph = new Y.XmlElement('paragraph');
     paragraph.insert(0, [new Y.XmlText(prompt)]);
@@ -205,7 +212,7 @@ afterEach(() => {
 
 describe('E-10 switching the model and re-splitting the shots is one batch', () => {
   it('E-10 [F] keeps the model, the params and the shots', async () => {
-    await openAt('multi_shot', 'F');
+    await openAt('multi', 'F');
     const before = stored();
     fireEvent.click(screen.getByTestId('generate-model-trigger'));
     await userEvent.click(await screen.findByTestId('generate-model-option-wan-3'));
@@ -216,7 +223,7 @@ describe('E-10 switching the model and re-splitting the shots is one batch', () 
   });
 
   it('E-10 [W] switches and re-splits', async () => {
-    await openAt('multi_shot', 'W');
+    await openAt('multi', 'W');
     fireEvent.click(screen.getByTestId('generate-model-trigger'));
     await userEvent.click(await screen.findByTestId('generate-model-option-wan-3'));
     await waitFor(() => expect(shotSeconds()).toEqual([4, 6]));
@@ -225,21 +232,21 @@ describe('E-10 switching the model and re-splitting the shots is one batch', () 
   });
 });
 
-describe('SB-01 switching into the shots is one add batch', () => {
-  it('SB-01 [F] keeps the mode and lays out no shot', async () => {
-    await openAt('t2v', 'F');
-    fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
-    await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
+describe('SB-01 picking Multi-shot with its shots is one add batch', () => {
+  it('SB-01 [F] stays on Single shot and lays out no shot', async () => {
+    await openAt('single', 'F');
+    fireEvent.click(screen.getByTestId('generate-video-shots-trigger'));
+    await userEvent.click(await screen.findByTestId('generate-video-shots-multi'));
     await expectAddBlockedOnce();
-    expect(stored().mode).toBe('t2v');
+    expect(stored().multiShot).toBeUndefined();
     expect(readShots('p', 's', 'v1')).toHaveLength(0);
   });
 
-  it('SB-01 [W] enters the mode with shots', async () => {
-    await openAt('t2v', 'W');
-    fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
-    await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
-    await waitFor(() => expect(stored().mode).toBe('multi_shot'));
+  it('SB-01 [W] turns Multi-shot on with shots', async () => {
+    await openAt('single', 'W');
+    fireEvent.click(screen.getByTestId('generate-video-shots-trigger'));
+    await userEvent.click(await screen.findByTestId('generate-video-shots-multi'));
+    await waitFor(() => expect(stored().multiShot).toBe(true));
     expect(readShots('p', 's', 'v1')!.length).toBeGreaterThanOrEqual(1);
     expect(toast.warning).not.toHaveBeenCalled();
   });
@@ -247,7 +254,7 @@ describe('SB-01 switching into the shots is one add batch', () => {
 
 describe('SB-02 editing the total and re-splitting the shots is one batch', () => {
   it('SB-02 [F] keeps the params and the shots', async () => {
-    await openAt('multi_shot', 'F');
+    await openAt('multi', 'F');
     const before = stored().paramsByModel;
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(await screen.findByTestId('generate-video-duration-option-10'));
@@ -257,7 +264,7 @@ describe('SB-02 editing the total and re-splitting the shots is one batch', () =
   });
 
   it('SB-02 [F] refuses a shorter total too: an edit is refused at full', async () => {
-    await openAt('multi_shot', 'F', { duration: 10 });
+    await openAt('multi', 'F', { duration: 10 });
     const before = stored().paramsByModel;
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(await screen.findByTestId('generate-video-duration-option-5'));
@@ -266,7 +273,7 @@ describe('SB-02 editing the total and re-splitting the shots is one batch', () =
   });
 
   it('SB-02 [W] writes the new total', async () => {
-    await openAt('multi_shot', 'W');
+    await openAt('multi', 'W');
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(await screen.findByTestId('generate-video-duration-option-10'));
     await waitFor(() => expect((stored().paramsByModel as Record<string, Record<string, unknown>>)['kling-v3']?.duration).toBe(10));
@@ -280,7 +287,7 @@ describe('RQ-16 Generate on an existing video node sends no task when the Space 
     ['O', SIZE_COPY_EN.T_OVER],
     ['Z', null],
   ] as const)('RQ-16 [%s] video: createTask is not called and the node is unchanged', async (code, sentence) => {
-    await openAt('t2v', code, {}, 'a drone shot over a canyon');
+    await openAt('single', code, {}, 'a drone shot over a canyon');
     const doc = getDoc(NAME);
     const before = Y.encodeStateAsUpdate(doc);
     const execute = screen.getByTestId('generate-video-execute');
@@ -295,7 +302,7 @@ describe('RQ-16 Generate on an existing video node sends no task when the Space 
   });
 
   it('RQ-16 [W] video: Generate sends the task once (control)', async () => {
-    await openAt('t2v', 'W', {}, 'a drone shot over a canyon');
+    await openAt('single', 'W', {}, 'a drone shot over a canyon');
     const execute = screen.getByTestId('generate-video-execute');
     await waitFor(() => expect(execute).not.toBeDisabled());
     fireEvent.click(execute);

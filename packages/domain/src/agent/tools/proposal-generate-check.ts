@@ -115,13 +115,16 @@ export function takesPromptHere(node: ProposalNode, chosen: ModelInfo): boolean 
 function checkSettings(node: ProposalNode, chosen: ModelInfo, at: NodeLabel): ProposalVerdict {
   const values = checkParams(chosen, node, at);
   if (!values.ok) return values;
-  // Defined in the multi-shot mode alone, for a model that takes shots there.
+  // Defined for a model that takes shots in the node's mode; a node carrying
+  // shots is a multi-shot node (inner#2192).
   const board = chosen.storyboard;
   if (node.shots !== undefined && board === undefined) {
-    return refuse("shots-outside-multishot", `Shots belong to the multi_shot mode, and "${node.name}" runs "${node.mode ?? ""}".`, fixOn(at, "leave shots out."));
+    return refuse("shots-not-taken", `"${chosen.name}" takes no shots in "${node.mode ?? ""}".`, fixOn(at, "leave shots out."));
   }
-  if (board !== undefined && node.shots === undefined) {
-    return refuse("multishot-no-shots", "In the multi_shot mode the shots are what is generated.", fixOn(at, "give shots, each with its own prompt and seconds."));
+  // Writing the shots out and letting the model plan them are two choices of
+  // the same Shots control, sent through the same upstream field.
+  if (node.shots !== undefined && board?.autoParam !== undefined && node.params?.[board.autoParam] === true) {
+    return refuse("shots-with-auto", `${board.autoParam} lets "${chosen.name}" plan the shots itself, and this node writes its shots out.`);
   }
   // The multi-shot run sends the shots in place of the main prompt, so marks
   // in a main prompt beside them would be counted and priced but never sent.
@@ -356,7 +359,8 @@ function refWordsFor(proposal: CanvasProposal, node: ProposalNode, pooled: reado
  */
 function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelInfo, sent: string, scripts: readonly ProposalNode[], at: NodeLabel): Refusal | null {
   const model = chosen.name;
-  const board = chosen.storyboard;
+  // The storyboard counts only on a node writing its shots out.
+  const board = node.shots === undefined ? undefined : chosen.storyboard;
   switch (verdict.refusal) {
     case "storyboard-shot-empty":
       return refuse("shot-empty", `Shot ${String(verdict.shot)} writes nothing. Every shot needs its own words.`);
@@ -393,7 +397,8 @@ function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelIn
  */
 function sentPrompt(proposal: CanvasProposal, node: ProposalNode, chosen: ModelInfo, pooled: readonly number[]): { sent: string; shots: { text: string; duration: NonNullable<ProposalNode["shots"]>[number]["duration"] }[] } {
   const refWords = refWordsFor(proposal, node, pooled);
-  const board = chosen.storyboard;
+  // The storyboard counts only on a node writing its shots out.
+  const board = node.shots === undefined ? undefined : chosen.storyboard;
   const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt, refWords), duration: shot.duration }));
   const sent = onDialogueSide(node)
     ? proposalDialogueText(node, (segments) => promptTextOf(segments, refWords))
@@ -458,7 +463,8 @@ export function generateRunOf(proposal: CanvasProposal, node: ProposalNode, inde
  */
 function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: ModelInfo, wiring: Wiring, at: NodeLabel): ProposalVerdict {
   const { arriving, pooled } = wiring;
-  const board = chosen.storyboard;
+  // The storyboard counts only on a node writing its shots out.
+  const board = node.shots === undefined ? undefined : chosen.storyboard;
   const scripts = pooled.flatMap((at) => {
     const target = proposal.nodes[at];
     return target?.type === "text" ? [target] : [];

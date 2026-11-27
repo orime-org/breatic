@@ -157,7 +157,7 @@ describe("a multi-node template's full text", () => {
     }
     expect(said).toContain('"reference" (image) into "front", "side", "back", "result"');
     expect(said).toContain('{"ref": <index of the node wired in for input "reference">}');
-    expect(said).toContain('"result" (anchor): generate video, t2v, seedance-2.5-text-to-video');
+    expect(said).toContain('"result" (anchor): generate video, ref, seedance-2.5-text-to-video');
   });
 
   it("shows the designed character drawn into the sheet with a note to generate it first", () => {
@@ -189,24 +189,25 @@ describe("the settings each generate node of a template runs at (breatic#1361)",
 });
 
 describe("a template with a shot list (inner#1816)", () => {
-  it("shows the quick tip as five shots in multi_shot, each with its seconds and segments, and says to send the shots", async () => {
+  it("shows the quick tip as five shots in ref, each with its seconds and segments, and says to send the shots", async () => {
     const said = await read("vertical-15s-quick-tip");
-    expect(said).toContain('"result" (anchor): generate video, multi_shot, seedance-2.5-text-to-video, 5 shots');
+    expect(said).toContain('"result" (anchor): generate video, ref, seedance-2.5-text-to-video, 5 shots');
     expect(said).toContain("shots: [");
     expect(said.match(/"duration": 3\b/g)).toHaveLength(5);
     expect(said).toContain('{"ref": <index of the node wired in for input "subject">}');
-    expect(said).toContain("sends shots and no prompt");
+    expect(said).toContain("send it shots and no prompt");
     expect(said).toContain(describeTemplate(byId("vertical-15s-quick-tip")));
   });
 
-  it("says a multi_shot node sends shots adding up to the duration written in its params, else the template's while it keeps the template's mode and model, and any other mode sends one prompt", async () => {
+  it("says a template node with shots sends shots adding up to the duration written in its params, else the template's while it keeps the template's mode and model, and a mode or model that takes no shots sends one prompt", async () => {
     const said = await read("vertical-15s-quick-tip");
     expect(said).toContain(
-      "A node sent in multi_shot sends shots and no prompt, their durations adding up to the node's duration: " +
+      "A template node with shots is written out shot by shot: send it shots and no prompt, their durations adding up to the node's duration: " +
         "the one you write in its params, else the template's while the node keeps the template's mode and model; " +
         "on another mode or model, write one. " +
-        "A node sent in any other mode sends a prompt, a template's shots written as one.",
+        "On a mode or model that takes no shots, or with params letting the model plan its own shots, send a prompt instead, the template's shots written as one.",
     );
+    expect(said).not.toContain("multi_shot");
     expect(said).not.toContain("the template's while the node keeps the template's mode and model, otherwise one you set in its params");
     expect(said).not.toContain("For a node with shots");
     expect(said).not.toContain("each with the duration the template gives it");

@@ -39,7 +39,7 @@ export interface VideoTaskInput {
   params: Record<string, unknown>;
   /**
    * Plain-text prompt (extracted from the rich-text prompt), or the shots
-   * written into one prompt in the multi-shot mode; undefined when the shots
+   * written into one prompt on Multi-shot; undefined when the shots
    * go out in a field of their own and stand in for it.
    */
   promptText: string | undefined;
@@ -57,7 +57,7 @@ export interface VideoTaskInput {
    * model takes no pool, or when nothing is mentioned.
    */
   poolParams: Readonly<Record<string, readonly string[]>>;
-  /** What the multi-shot mode adds, as `storyboardSend` builds it. */
+  /** What Multi-shot adds, as `storyboardSend` builds it. */
   storyboardParams: Readonly<Record<string, unknown>>;
 }
 
@@ -147,7 +147,7 @@ interface VideoEstimateSource {
  * the same source fields the submit sends, and how long those sources run.
  * @param vm - The panel's view model.
  * @param prompt - The prompt as the model reads it.
- * @param storyboardParams - What the multi-shot mode adds, as the submit merges it.
+ * @param storyboardParams - What Multi-shot adds, as the submit merges it.
  * @returns The estimate input.
  */
 export function videoEstimateInput(

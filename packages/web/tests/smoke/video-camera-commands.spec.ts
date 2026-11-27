@@ -5,8 +5,8 @@
  * Camera commands on MiniMax H3: the picker sits in the settings
  * row, keeps opposite directions and Static shot apart, previews each command
  * in a pane at the top, and writes the picks as one bracket at the
- * caret the user left -- in the prompt, or in the shot box in the multi-shot
- * mode -- which the submit carries.
+ * caret the user left -- in the prompt, or in the shot box on Multi-shot --
+ * which the submit carries.
  *
  * The submit is stubbed: whether H3 acts on the commands was measured on real
  * runs when the commands were added, and is not what this checks.
@@ -77,29 +77,31 @@ async function seedVideoNode(p: Page): Promise<string> {
  * Open the Generate panel the way a person does, then put it on a mode and model.
  * @param p - A page with the Space open.
  * @param nodeId - The node.
- * @param mode - The mode's test id suffix.
+ * @param shots - The Shots pill's item to be on.
  * @param model - The model to pick.
  */
-async function openOn(p: Page, nodeId: string, mode: 't2v' | 'multi-shot', model: string): Promise<void> {
+async function openOn(p: Page, nodeId: string, shots: 'single' | 'multi', model: string): Promise<void> {
   const node = visibleSpace(p).locator(`.react-flow__node[data-id="${nodeId}"]`);
   await expect(node).toBeVisible({ timeout: 15_000 });
   await node.click({ button: 'right' });
   await p.getByTestId('node-menu-generate').click();
   await expect(p.getByTestId('generate-video-execute')).toBeVisible({ timeout: 15_000 });
-  await pickModeAndModel(p, mode, model);
+  await pickModelAndShots(p, shots, model);
 }
 
 /**
- * Put the open panel on a mode and model.
+ * Put the open panel, in text to video, on a model and a Shots item.
  * @param p - A page with the panel open.
- * @param mode - The mode's test id suffix.
+ * @param shots - The Shots pill's item to be on.
  * @param model - The model to pick.
  */
-async function pickModeAndModel(p: Page, mode: 't2v' | 'multi-shot', model: string): Promise<void> {
-  await p.getByTestId('generate-video-mode-trigger').click();
-  await p.getByTestId(`generate-video-mode-${mode}`).click();
+async function pickModelAndShots(p: Page, shots: 'single' | 'multi', model: string): Promise<void> {
   await p.getByTestId('generate-model-trigger').click();
   await p.getByTestId(`generate-model-option-${model}`).click();
+  if (shots === 'multi') {
+    await p.getByTestId('generate-video-shots-trigger').click();
+    await p.getByTestId('generate-video-shots-multi').click();
+  }
 }
 
 /**
@@ -147,7 +149,7 @@ test.afterEach(async () => {
 
 test('picks camera commands and writes them at the caret, then sends them', async () => {
   const nodeId = await seedVideoNode(page);
-  await openOn(page, nodeId, 't2v', H3);
+  await openOn(page, nodeId, 'single', H3);
 
   // The pill sits in the settings row, right after the settings pill.
   const params = await page.getByTestId('generate-video-params-trigger').boundingBox();
@@ -245,7 +247,7 @@ test('picks camera commands and writes them at the caret, then sends them', asyn
 
 test('writes into the open shot, and the shot line carries it', async () => {
   const nodeId = await seedVideoNode(page);
-  await openOn(page, nodeId, 'multi-shot', H3);
+  await openOn(page, nodeId, 'multi', H3);
   await page.getByTestId('generate-storyboard-shot-1-editor').click();
   await page.keyboard.type('a paper boat');
   await page.getByTestId('generate-storyboard-shot-2-toggle').click();
@@ -264,7 +266,7 @@ test('writes into the open shot, and the shot line carries it', async () => {
 
 test('draws no camera pill for a model that reads no commands', async () => {
   const nodeId = await seedVideoNode(page);
-  await openOn(page, nodeId, 't2v', H3);
+  await openOn(page, nodeId, 'single', H3);
   await expect(page.getByTestId('generate-video-camera-trigger')).toBeVisible();
   await page.getByTestId('generate-model-trigger').click();
   await page.getByTestId(`generate-model-option-${OTHER}`).click();

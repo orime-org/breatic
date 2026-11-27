@@ -13,7 +13,8 @@
         "smart_low_poly": false,
         "generate_parts": false,
         "auto_size": false,
-        "export_uv": true
+        "export_uv": true,
+        "rig_skeleton": false
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
@@ -36,7 +37,8 @@
         "smart_low_poly": false,
         "generate_parts": false,
         "auto_size": false,
-        "export_uv": true
+        "export_uv": true,
+        "rig_skeleton": false
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
@@ -59,7 +61,8 @@
         "smart_low_poly": false,
         "generate_parts": false,
         "auto_size": false,
-        "export_uv": true
+        "export_uv": true,
+        "rig_skeleton": false
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
@@ -82,7 +85,8 @@
         "smart_low_poly": false,
         "generate_parts": false,
         "auto_size": false,
-        "export_uv": true
+        "export_uv": true,
+        "rig_skeleton": false
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
@@ -106,7 +110,8 @@
         "generate_parts": false,
         "face_limit": 1500000,
         "auto_size": false,
-        "export_uv": true
+        "export_uv": true,
+        "rig_skeleton": false
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
@@ -131,7 +136,8 @@
         "generate_parts": false,
         "face_limit": 20000,
         "auto_size": false,
-        "export_uv": true
+        "export_uv": true,
+        "rig_skeleton": false
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
@@ -156,7 +162,8 @@
         "generate_parts": false,
         "face_limit": 2000000,
         "auto_size": false,
-        "export_uv": true
+        "export_uv": true,
+        "rig_skeleton": false
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
@@ -181,6 +188,7 @@
         "generate_parts": false,
         "auto_size": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "model_seed": 0
       },
       "prompt": "a red fox running through fresh snow at dawn",
@@ -206,6 +214,7 @@
         "generate_parts": false,
         "auto_size": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "model_seed": 2147483647
       },
       "prompt": "a red fox running through fresh snow at dawn",
@@ -231,6 +240,7 @@
         "generate_parts": false,
         "auto_size": false,
         "export_uv": true,
+        "rig_skeleton": false,
         "negative_prompt": "sample text"
       },
       "prompt": "a red fox running through fresh snow at dawn",
@@ -252,7 +262,8 @@
         "geometry_quality": "standard",
         "smart_low_poly": false,
         "generate_parts": false,
-        "export_uv": true
+        "export_uv": true,
+        "rig_skeleton": false
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {

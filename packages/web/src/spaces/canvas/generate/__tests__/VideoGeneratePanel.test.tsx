@@ -87,6 +87,9 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         onSelectModel={() => {}}
         onChangeParams={() => {}}
         onExecute={onExecute}
+        shots={undefined}
+        shotsAuto={false}
+        onSelectShots={vi.fn()}
         {...over}
       />
     </TooltipProvider>,

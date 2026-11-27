@@ -45,12 +45,9 @@ async function lineOf(mode: string, name: string): Promise<string> {
 
 const SERVED: ReadonlyArray<readonly [string, string]> = [
   ["t2v", "minimax-h3-text-to-video"],
-  ["multi_shot", "minimax-h3-text-to-video"],
   ["i2v", "minimax-h3-image-to-video"],
   ["first_last", "minimax-h3-image-to-video"],
-  ["multi_shot", "minimax-h3-image-to-video"],
   ["ref", "minimax-h3-reference-to-video"],
-  ["multi_shot", "minimax-h3-reference-to-video"],
 ];
 
 describe("camera commands in the model listing", () => {
@@ -64,9 +61,11 @@ describe("camera commands in the model listing", () => {
     expect(line).toMatch(/comma-separated with no space, as in \[Truck left,Push in\]/);
   });
 
-  it("says where the commands go in the multi-shot mode", async () => {
-    expect(await lineOf("multi_shot", "minimax-h3-text-to-video")).toMatch(/written into a shot:/);
-    expect(await lineOf("t2v", "minimax-h3-text-to-video")).toMatch(/written into the prompt:/);
+  it("says the commands go in the prompt or each shot where the model takes shots, and in the prompt where it takes none", async () => {
+    for (const [mode, name] of [["t2v", "minimax-h3-text-to-video"], ["i2v", "minimax-h3-image-to-video"], ["ref", "minimax-h3-reference-to-video"]] as const) {
+      expect(await lineOf(mode, name), `${name} in ${mode}`).toMatch(/written into the prompt, or a shot on a node with shots:/);
+    }
+    expect(await lineOf("first_last", "minimax-h3-image-to-video")).toMatch(/written into the prompt:/);
   });
 
   it("says nothing about camera commands for a model that reads none", async () => {

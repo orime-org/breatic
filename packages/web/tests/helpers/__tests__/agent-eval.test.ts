@@ -418,7 +418,7 @@ describe('forJudge', () => {
     it('keeps each generate node\'s key, mode, model and params as the template sets them, and the cost paragraph whole', () => {
       expect(forJudge('get_generation_template', { id: 'product-ad-15s' }, output)).toEqual({
         nodes: [
-          { key: 'result', mode: 't2v', model: 'seedance-2.5-text-to-video', params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+          { key: 'result', mode: 'ref', model: 'seedance-2.5-text-to-video', params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
           { key: 'still', mode: 'i2i', model: 'nano-banana-pro-edit-ultra', params: { aspect_ratio: '9:16' } },
         ],
         cost,

@@ -12,6 +12,7 @@ import {
   setNodeModel,
   runCanvasUndoBatch,
   setNodeParams,
+  setNodeShots,
   type CanvasEdge,
 } from '@web/data/yjs/canvas-space';
 import { checkAdd, strongestKind } from '@web/data/yjs/space-write';
@@ -39,6 +40,7 @@ import {
   type ExecuteVerdict,
   type ModelEntry,
   type ReferencePool,
+  type ShotsChoice,
   type StoryboardSpec,
 } from '@breatic/shared';
 import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
@@ -97,6 +99,7 @@ import {
   nodeVideoMode,
   selectVideoModeModels,
   type VideoGenMode,
+  type VideoPanelViewModel,
 } from '@web/spaces/canvas/generate/video-panel-view-model';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
@@ -129,14 +132,22 @@ function IGNORE(): void {
 }
 
 /**
- * A model's storyboard in a mode: defined only in the multi-shot mode, for a
- * model that takes shots there.
- * @param entry - The current model.
- * @param mode - The mode the panel is in.
- * @returns Its storyboard spec.
+ * How a model takes shots in a mode, whatever the node's Shots choice.
+ * @param entry - The model.
+ * @param mode - The mode.
+ * @returns Its storyboard spec, undefined where it takes none.
  */
 function specOf(entry: ModelEntry | undefined, mode: string): StoryboardSpec | undefined {
   return entry ? storyboardSpec(entry.params, mode) : undefined;
+}
+
+/**
+ * The storyboard a run writes its shots out by: defined only on Multi-shot (inner#2192).
+ * @param vm - The panel's view model.
+ * @returns The model's storyboard spec on Multi-shot, else undefined.
+ */
+function shotsOn(vm: VideoPanelViewModel): StoryboardSpec | undefined {
+  return vm.shots === 'multi' ? vm.storyboard : undefined;
 }
 
 /**
@@ -289,18 +300,23 @@ function VideoGeneratePanelBody({
       buildVideoPanelViewModel({ nodeId, nodes, edges, models, mode, textById }),
     [nodeId, nodes, edges, models, mode, textById],
   );
-  // The node's shots, which only the multi-shot mode shows and sends: `spec`
-  // is defined there alone, for a model that takes shots.
-  const spec = React.useMemo(() => specOf(vm.modelEntry, mode), [vm.modelEntry, mode]);
+  // The node's shots, shown and sent only on Multi-shot: `spec` is defined
+  // there alone, for a model that takes shots in this mode. Keyed on the
+  // catalog entry and two strings, so a canvas change leaves it as it is and
+  // the memoized panel below bails.
+  const spec = React.useMemo(
+    () => (vm.shots === 'multi' ? specOf(vm.modelEntry, mode) : undefined),
+    [vm.shots, vm.modelEntry, mode],
+  );
   const total = totalOf(spec, vm.params);
   // A fresh list only when a shot is added, removed, brought back or given
   // other seconds; words typed in a shot leave it as it is (`useShots`).
   const shots = useShots(projectId, spaceId, nodeId);
 
-  // The shot whose box is open (#1201): the first when the mode opens, then
+  // The shot whose box is open (#1201): the first when Multi-shot shows, then
   // the one the user opens or adds, kept by `nextOpenShot` across every
-  // change to the list. Leaving the mode forgets it, so coming back opens the
-  // first shot again.
+  // change to the list. Leaving Multi-shot forgets it, so coming back opens
+  // the first shot again.
   const [openedShot, setOpenedShot] = React.useState<string | null>(null);
   const [seenShots, setSeenShots] = React.useState(shots);
   if (shots !== seenShots) setSeenShots(shots);
@@ -325,7 +341,7 @@ function VideoGeneratePanelBody({
   // The rail refuses a row the prompt cannot take itself (#1966), so this
   // only routes the insert: the open shot's box, else the main prompt. A chip
   // put into a closed shot would arrive where the user cannot see it. Shot
-  // boxes are mounted only in the multi-shot mode and leave the map when
+  // boxes are mounted only on Multi-shot and leave the map when
   // they unmount.
   const insertTarget = React.useCallback(
     (): PromptEditorHandle | null =>
@@ -420,7 +436,7 @@ function VideoGeneratePanelBody({
   // A media chip's words follow the pool, and a new record on every derive
   // would rebuild the prompt slot each time the canvas moves.
   const stableMentionTokens = useContentStable(vm.mentionTokens);
-  // What the multi-shot mode sends, read as the click reads it: the shots in Kling's field, or written into the prompt
+  // What Multi-shot sends, read as the click reads it: the shots in Kling's field, or written into the prompt
   // for a model with no field for them. Words typed in a shot change it (`useShotWords`).
   const shotWords = useShotWords(projectId, spaceId, nodeId);
   const shotRun = React.useMemo(
@@ -428,11 +444,11 @@ function VideoGeneratePanelBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `shotWords` is the signal that the shots' words changed.
     [spec, shots, total, stableReferences, stableMentionTokens, shotWords],
   );
-  // The run as the click sends it: no prompt for a model taking none, the shots in the multi-shot mode, else the main
+  // The run as the click sends it: no prompt for a model taking none, the shots on Multi-shot, else the main
   // prompt. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
   const sentPrompt = !vm.promptRequired ? '' : shotRun ? (shotRun.writtenPrompt ?? '') : promptText;
-  // Priced with the images the run sends, read as the submit reads them: the main prompt's `@` outside the multi-shot
-  // mode, every shot's in it.
+  // Priced with the images the run sends, read as the submit reads them: the main prompt's `@` off Multi-shot, every
+  // shot's on it.
   const estimateMentioned = spec ? (shots ?? []).flatMap((shot) => mentionedSourceIds(shot.prompt, vm.references)) : atMentioned;
   const estimateUrls = mentionedReferenceUrls({ references: vm.references, focusImages: vm.focusImages, atMentioned: new Set(estimateMentioned), nodes });
   const estimateInput = videoEstimateInput({ ...vm, referenceUrls: estimateUrls }, extractPromptText(sentPrompt), shotRun?.params);
@@ -465,9 +481,9 @@ function VideoGeneratePanelBody({
       // model's (#1948).
       const { params, paramsByModel } = resolveModelSwitch(freshContent(), picked);
       const liveMode = nodeVideoMode(graph.nodes, nodeId, availableModes);
-      // In the multi-shot mode the shots follow the new model's total, in the
-      // same undo step as the switch.
-      const pickedSpec = specOf(picked, liveMode);
+      // On Multi-shot the shots follow the new model's total, in the same undo
+      // step as the switch.
+      const pickedSpec = freshContent()?.multiShot === true ? specOf(picked, liveMode) : undefined;
       // One write for the size cap: the switch and the re-split shots both
       // edit fields of the node.
       runCanvasUndoBatch(projectId, spaceId, { kind: 'edit' }, () => {
@@ -501,9 +517,9 @@ function VideoGeneratePanelBody({
       // modality that serves none does not open a panel at all. Kept as
       // defence against a layer above breaking.
       if (!model) return;
-      // Entering the multi-shot mode with no shots lays out two, splitting
-      // the model's total, in the same step as the switch.
-      const targetSpec = specOf(models.find((m) => m.name === model), target);
+      // On Multi-shot the shots follow the target model's total, laid out as two
+      // when there are none, in the same step as the switch.
+      const targetSpec = freshContent()?.multiShot === true ? specOf(models.find((m) => m.name === model), target) : undefined;
       const kind = targetSpec ? strongestKind('edit', storyboardEntryKind(projectId, spaceId, nodeId)) : 'edit';
       runCanvasUndoBatch(projectId, spaceId, { kind }, () => {
         setNodeMode(projectId, spaceId, nodeId, target, model, paramsByModel);
@@ -529,10 +545,9 @@ function VideoGeneratePanelBody({
         partial,
         live.model,
       );
-      // A new total re-splits the shots in the multi-shot mode; outside it
-      // they are not showing and stay as they are. One gesture, so one undo
-      // takes back both.
-      const liveSpec = specOf(live.modelEntry, live.mode);
+      // A new total re-splits the shots on Multi-shot; otherwise they are not
+      // showing and stay as they are. One gesture, so one undo takes back both.
+      const liveSpec = shotsOn(live);
       const next = liveSpec?.totalParam === undefined
         ? undefined
         : (partial as Record<string, unknown>)[liveSpec.totalParam];
@@ -550,7 +565,7 @@ function VideoGeneratePanelBody({
   // switched either since this render.
   const liveShots = React.useCallback(() => {
     const live = freshVm();
-    const liveSpec = specOf(live.modelEntry, live.mode);
+    const liveSpec = shotsOn(live);
     return { spec: liveSpec, total: totalOf(liveSpec, live.params) };
   }, [freshVm]);
   const onAddShot = React.useCallback(() => {
@@ -570,6 +585,29 @@ function VideoGeneratePanelBody({
       removeStoryboardShot(projectId, spaceId, nodeId, shotId, liveShots().total);
     },
     [projectId, spaceId, nodeId, liveShots],
+  );
+
+  // The Shots control (inner#2192): Multi-shot writes the shots out, laying out
+  // two when there are none; Auto multi-shot turns the model's own planning
+  // on; Single shot turns both off. One undo takes back the pick and the shots
+  // it laid out.
+  const onSelectShots = React.useCallback(
+    (choice: ShotsChoice) => {
+      const live = freshVm();
+      const board = live.storyboard;
+      if (!board) return;
+      const content = freshContent();
+      const paramsByModel = board.autoParam === undefined
+        ? undefined
+        : resolveParamsEdit(content, { [board.autoParam]: choice === 'auto' }, live.model);
+      const multi = choice === 'multi';
+      const kind = multi ? strongestKind('edit', storyboardEntryKind(projectId, spaceId, nodeId)) : 'edit';
+      runCanvasUndoBatch(projectId, spaceId, { kind }, () => {
+        setNodeShots(projectId, spaceId, nodeId, multi, paramsByModel);
+        if (multi) enterStoryboardShots(projectId, spaceId, nodeId, totalOf(board, live.params));
+      });
+    },
+    [projectId, spaceId, nodeId, freshVm, freshContent],
   );
 
   // Reference and first frame are TOGGLES: start the pick when this node is not
@@ -722,12 +760,12 @@ function VideoGeneratePanelBody({
       warnNodeGate(t(gateBlock.toastKey));
       return;
     }
-    // Which sources the run sends depends on the mode: the main prompt's `@`
-    // outside the multi-shot mode, the union of every shot's in it, read off
+    // Which sources the run sends depends on the Shots choice: the main prompt's `@`
+    // off Multi-shot, the union of every shot's in it, read off
     // the shots the node holds right now. Whether the run is multi-shot needs
-    // the mode and the model, so they are read first.
+    // the node, its mode and its model, so they are read first.
     const probe = freshVm();
-    const liveSpec = specOf(probe.modelEntry, probe.mode);
+    const liveSpec = shotsOn(probe);
     const shotsNow = liveSpec ? (readShots(projectId, spaceId, nodeId) ?? []) : [];
     const mentioned = liveSpec
       ? shotsNow.flatMap((shot) => mentionedSourceIds(shot.prompt, referencesRef.current))
@@ -752,7 +790,7 @@ function VideoGeneratePanelBody({
     // clears it, and the editor does not call back on unmount — so without
     // this line a talking-head task would carry the last mode's words.
     //
-    // In the multi-shot mode the prompt is the shots written out, for a model
+    // On Multi-shot the prompt is the shots written out, for a model
     // with no field for them, and nothing for Kling.
     const freshPrompt = !fresh.promptRequired
       ? ''
@@ -789,6 +827,7 @@ function VideoGeneratePanelBody({
         fresh.slots,
         fresh.slotUrls,
         fresh.referenceUrls,
+        fresh.params,
       ),
       pools: poolCounts(fresh.pool, fresh.referenceUrls),
       storyboard: run.gate,
@@ -1007,7 +1046,7 @@ function VideoGeneratePanelBody({
   );
   const promptSlot = React.useMemo(() => {
     if (!vm.promptRequired) return <PromptNotUsedNotice />;
-    // The shots take the prompt box's place in the multi-shot mode.
+    // The shots take the prompt box's place on Multi-shot.
     if (!spec || !shots) return mainEditor;
     return (
       <>
@@ -1089,6 +1128,7 @@ function VideoGeneratePanelBody({
             vm.slots,
             vm.slotUrls,
             vm.referenceUrls,
+            vm.params,
           ),
           pools: poolCounts(vm.pool, vm.referenceUrls),
           inputRefusal: refusalText,
@@ -1096,6 +1136,9 @@ function VideoGeneratePanelBody({
       }
       promptSlot={promptSlot}
       durationFloor={spec ? shots?.length : undefined}
+      shots={vm.storyboard ? vm.shots : undefined}
+      shotsAuto={vm.storyboard?.autoParam !== undefined}
+      onSelectShots={onSelectShots}
       onExit={closeActivePanel}
       onOpenPromptFullscreen={vm.promptRequired && (fragment || (spec && shots)) ? openPromptFullscreen : undefined}
       onSelectModel={onSelectModel}
