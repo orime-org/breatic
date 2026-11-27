@@ -182,7 +182,7 @@ function controllerFor(elements: Readonly<Record<string, ElementFixture>>): {
       if (fixture === undefined) throw new Error(`no element for ${clipId}`);
       return fixture.element;
     },
-  } as unknown as Parameters<typeof createMediaLayerController>[0]);
+  });
   return { controller, onChange, asked };
 }
 
