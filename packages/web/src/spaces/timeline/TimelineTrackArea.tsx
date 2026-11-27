@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
-import { Code, Film, Image as ImageIcon, Music, Trash2, Type } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip as TimelineClipRecord, type TimelineDocumentV1, type TimelineExecution, type TimelineExecutionStatus, type TimelineWebResolution } from '@breatic/shared';
 import { timelineClipSource } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
@@ -11,11 +11,13 @@ import { orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timel
 
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { previewTimelineGesture, timelineGestureCommand, timelineInsertMarkerFrame, type TimelineGestureMode, type TimelineGesturePreview } from '@web/spaces/timeline/timeline-gesture';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
+import { TIMELINE_KIND_ICON } from '@web/spaces/timeline/timeline-kind-icon';
 import { formatTimelineTimecode } from '@web/spaces/timeline/timeline-timecode';
 import { timelineClipKind, timelineClipName } from '@web/spaces/timeline/timeline-clip-name';
 import { TIMELINE_TRACK_HEADER_PX, timelineRulerStep } from '@web/spaces/timeline/timeline-zoom';
@@ -26,24 +28,20 @@ const HEADER_STYLE = { width: TIMELINE_TRACK_HEADER_PX };
 // Text that stays beside the sticky track headers while the lanes scroll: the zone hint, clip text, drop readouts.
 const BESIDE_HEADERS = { left: TIMELINE_TRACK_HEADER_PX };
 // The palette sits outside @theme, so its colours are written as arbitrary values; the `color:` hint tells Tailwind a var() is a colour.
-// Each kind has its palette colour (inner#1709): video blue, web violet, picture green, text orange, sound teal.
+// Each kind has its palette colour (inner#1709): video blue, web violet, picture green, text orange, sound pink (the Canvas colours its picture and sound nodes the same).
 const CLIP_FILL = {
   video: 'border-[color:var(--color-palette-blue-border)] bg-[color:var(--color-palette-blue-bg)] hover-enabled:bg-[color:var(--color-palette-blue-highlight)]',
   'web-animation': 'border-[color:var(--color-palette-violet-border)] bg-[color:var(--color-palette-violet-bg)] hover-enabled:bg-[color:var(--color-palette-violet-highlight)]',
   image: 'border-[color:var(--color-palette-green-border)] bg-[color:var(--color-palette-green-bg)] hover-enabled:bg-[color:var(--color-palette-green-highlight)]',
   text: 'border-[color:var(--color-palette-orange-border)] bg-[color:var(--color-palette-orange-bg)] hover-enabled:bg-[color:var(--color-palette-orange-highlight)]',
-  audio: 'border-[color:var(--color-palette-teal-border)] bg-[color:var(--color-palette-teal-bg)] hover-enabled:bg-[color:var(--color-palette-teal-highlight)]',
+  audio: 'border-[color:var(--color-palette-pink-border)] bg-[color:var(--color-palette-pink-bg)] hover-enabled:bg-[color:var(--color-palette-pink-highlight)]',
   failed: 'border-status-error-border bg-status-error-bg hover-enabled:border-status-error',
   slot: 'border-border bg-card',
   unfinished: 'border-border bg-muted',
 };
 const SELECTED_FILL = {
   video: 'bg-[color:var(--color-palette-blue-highlight)]', 'web-animation': 'bg-[color:var(--color-palette-violet-highlight)]',
-  image: 'bg-[color:var(--color-palette-green-highlight)]', text: 'bg-[color:var(--color-palette-orange-highlight)]', audio: 'bg-[color:var(--color-palette-teal-highlight)]',
-};
-const KIND_ICON = {
-  video: <Film className='size-4 shrink-0' />, 'web-animation': <Code className='size-4 shrink-0' />, image: <ImageIcon className='size-4 shrink-0' />,
-  text: <Type className='size-4 shrink-0' />, audio: <Music className='size-4 shrink-0' />,
+  image: 'bg-[color:var(--color-palette-green-highlight)]', text: 'bg-[color:var(--color-palette-orange-highlight)]', audio: 'bg-[color:var(--color-palette-pink-highlight)]',
 };
 
 /**
@@ -175,7 +173,7 @@ const TimelineClip = React.memo(function TimelineClip({ clip, sourceName, webVie
       {/* overflow-clip keeps the button from becoming the scroller, so this text can stick beside the track headers. */}
       <span className='sticky flex min-w-0 max-w-full flex-col gap-0.5' style={BESIDE_HEADERS}>
         <span className='flex min-w-0 items-center gap-2'>
-          {KIND_ICON[kind]}
+          {TIMELINE_KIND_ICON[kind]}
           <span className='min-w-0 truncate leading-normal'>{name}</span>
         </span>
         <span className={cn('truncate text-2xs tabular-nums', failedCopy || problem !== null ? 'text-status-error-foreground' : 'text-foreground-secondary')}>{detail}</span>
@@ -197,7 +195,14 @@ const TimelineClip = React.memo(function TimelineClip({ clip, sourceName, webVie
 function DeleteTrackButton({ trackId, placement, onCommit }: { trackId: string; placement: TimelineEditPlacement; onCommit: (command: TimelineEditCommand) => void }): React.JSX.Element {
   const t = useTranslation();
   const remove = React.useCallback((): void => onCommit({ operation: 'delete_track', parameters: { trackId }, placement }), [onCommit, trackId, placement]);
-  return <Button data-testid={`timeline-delete-track-${trackId}`} variant='ghost' size='compact' className='ml-auto' onClick={remove} icon={<Trash2 className='mr-1.5 size-3.5' />}>{t('timeline.edit.deleteTrack')}</Button>;
+  const label = t('timeline.edit.deleteTrack');
+  // An icon, named on hover as the toolbar's buttons are, so the narrow header keeps its room for the track name.
+  return <Tooltip>
+    <TooltipTrigger asChild>
+      <Button data-testid={`timeline-delete-track-${trackId}`} variant='ghost' size='compact' aria-label={label} className='ml-auto w-[var(--btn-compact)] shrink-0 px-0' onClick={remove} icon={<Trash2 className='size-3.5' />} />
+    </TooltipTrigger>
+    <TooltipContent>{label}</TooltipContent>
+  </Tooltip>;
 }
 
 /**

@@ -98,7 +98,7 @@ async function openAddMedia(page: Page, kind: MediaKind, source: 'project' | 'lo
   const dialog = page.getByRole('dialog', { name: 'Add media', exact: true });
   await dialog.getByTestId(`timeline-material-${source}`).click();
   await dialog.getByTestId(`timeline-material-kind-${kind}`).click();
-  await expect(dialog.getByTestId(`timeline-material-kind-${kind}`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(dialog.getByTestId(`timeline-material-kind-${kind}`)).toHaveAttribute('aria-selected', 'true');
   if (place !== undefined) {
     await dialog.getByTestId('timeline-material-track').click();
     await page.getByRole('option', { name: place.track, exact: true }).click();
@@ -407,6 +407,8 @@ test.describe('a Timeline beside the widest Agent column', () => {
       await outlet.getByTestId('timeline-more').click();
       await expect(page.getByTestId('timeline-toggle-snap-item')).toHaveAttribute('aria-checked', 'false');
       await page.keyboard.press('Escape');
+      // The menu opens above More, over the ratio control; a pointer arriving while it fades out lands on its rows.
+      await expect(page.getByRole('menu')).toHaveCount(0);
 
       // At the narrowest Space the ratio control is a square icon that still stays left of the property panel.
       await page.setViewportSize({ width: 640 + 1 + 420, height: 800 });

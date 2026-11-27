@@ -883,6 +883,17 @@ describe('TimelineSpace tracks', () => {
     expect(screen.queryByTestId('timeline-track-v3')).toBe(null);
   });
 
+  it('draws the empty track delete control as an icon named on hover, so the header keeps room for the track name', async () => {
+    const user = userEvent.setup();
+    seedLayout([clipAt(X, MAIN, 0, 24)]);
+    showTimeline();
+    const remove = await screen.findByTestId('timeline-delete-track-v2');
+    expect(remove).toHaveTextContent(/^$/);
+    expect(remove).toHaveAttribute('aria-label', t('timeline.edit.deleteTrack'));
+    await user.hover(remove);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(t('timeline.edit.deleteTrack'));
+  });
+
   it('draws every overlapping video in the preview, stacked by track with the upper layer on top (breatic#1410 §6.1)', async () => {
     seedLayout([clipAt(CLIP.id, MAIN, 0, 48), clipAt(X, 'v2', 0, 24)]);
     showTimeline();

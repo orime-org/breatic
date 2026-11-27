@@ -32,6 +32,9 @@ export interface TimelineLayerHandlesProps {
 }
 
 const DIRECTIONS = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'];
+const CORNERS = ['nw', 'ne', 'sw', 'se'];
+/** A handle's hit target in display pixels, as `timeline-layer-handles.css` draws it. */
+const HANDLE_TARGET = 24;
 const SNAP_DIRECTIONS = { left: true, right: true, top: true, bottom: true, center: true, middle: true };
 // Snapping to the frame's edges and centre lines within 6 display pixels (#1410 design §4.4).
 const SNAP_THRESHOLD = 6;
@@ -168,6 +171,8 @@ export function TimelineLayerHandles({ canvas, base, transform, factor, snap, on
   // Moveable measures its target only when told: a transform written by the panel, a collaborator or undo moves the
   // proxy without a gesture, so the box is measured again whenever the proxy's place changes.
   React.useLayoutEffect(() => { moveable.current?.updateRect(); }, [style]);
+  // Below three targets along a side, its midpoint handle would sit between the corners and cover what the box holds.
+  const directions = Math.min(Math.abs(boxWidth * shown.scaleX), Math.abs(boxHeight * shown.scaleY)) * factor < 3 * HANDLE_TARGET ? CORNERS : DIRECTIONS;
   const width = canvas.width * factor;
   const height = canvas.height * factor;
   const vertical = React.useMemo(() => [0, width / 2, width], [width]);
@@ -175,7 +180,7 @@ export function TimelineLayerHandles({ canvas, base, transform, factor, snap, on
   return <>
     <div ref={setProxy} data-testid='timeline-layer-proxy' className='absolute' style={style} />
     {proxy !== null && <Moveable ref={moveable} target={proxy} className='timeline-layer-handles' origin={false} throttleRotate={0}
-      draggable scalable rotatable keepRatio={keepRatio} renderDirections={DIRECTIONS}
+      draggable scalable rotatable keepRatio={keepRatio} renderDirections={directions}
       snappable={snap} snapThreshold={SNAP_THRESHOLD} snapDirections={SNAP_DIRECTIONS} elementSnapDirections={SNAP_DIRECTIONS}
       verticalGuidelines={vertical} horizontalGuidelines={horizontal} isDisplaySnapDigit={false}
       onDragStart={begin} onDrag={onDrag} onDragEnd={finish}

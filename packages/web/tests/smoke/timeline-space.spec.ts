@@ -50,7 +50,7 @@ async function expectEmptyTimeline(page: Page, projectId: string, spaceId: strin
   await expect(projectMedia).toHaveText('Project media');
   await expect(projectMedia).toBeEnabled();
   await expect(projectMedia).toHaveAttribute('aria-pressed', 'true');
-  await expect(dialog.getByTestId('timeline-material-kind-video')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dialog.getByTestId('timeline-material-kind-video')).toHaveAttribute('aria-selected', 'true');
   if (directoryResponse !== null) {
     const response = await directoryResponse;
     expect(response.status(), `read Project ${projectId} video directory`).toBe(200);

@@ -22,6 +22,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { timelineClipKind } from '@web/spaces/timeline/timeline-clip-name';
+import { TIMELINE_KIND_ICON } from '@web/spaces/timeline/timeline-kind-icon';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 import { TimelineTransformFields } from '@web/spaces/timeline/TimelineTransformFields';
 
@@ -338,10 +339,13 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
 
   return <div className='flex flex-col gap-3'>
     <div className='flex min-w-0 flex-col gap-1'>
-      <Tooltip>
-        <TooltipTrigger asChild><span className='truncate text-sm font-semibold leading-normal'>{name}</span></TooltipTrigger>
-        <TooltipContent portal className='max-w-sm break-all'>{name}</TooltipContent>
-      </Tooltip>
+      <div data-testid='timeline-properties-heading' className='flex min-w-0 items-center gap-2'>
+        {TIMELINE_KIND_ICON[kind]}
+        <Tooltip>
+          <TooltipTrigger asChild><span className='truncate text-sm font-semibold leading-normal'>{name}</span></TooltipTrigger>
+          <TooltipContent portal className='max-w-sm break-all'>{name}</TooltipContent>
+        </Tooltip>
+      </div>
       {webCopy !== null && webCopy.request !== null && <span data-testid='timeline-clip-request' className='break-words text-xs text-muted-foreground'>{webCopy.request}</span>}
       {webCopy !== null && webCopy.baseRequest !== null && <span data-testid='timeline-web-base-request' className='break-words text-xs text-muted-foreground'>
         {t('timeline.webAnimation.modifiedFrom', { base: webCopy.baseRequest })}

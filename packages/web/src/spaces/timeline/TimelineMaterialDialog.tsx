@@ -16,6 +16,7 @@ import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { timelineApi, timelineMediaQueryKey } from '@web/data/api/timeline';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
@@ -25,6 +26,9 @@ import { timelineClipName } from '@web/spaces/timeline/timeline-clip-name';
 import type { TimelineMediaDraft } from '@web/spaces/timeline/timeline-media-draft';
 import type { TimelineUploadKind } from '@web/spaces/timeline/timeline-uploads';
 import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
+
+/** The 64 by 40 place every row's picture or kind icon takes, so names start in one column. */
+const TILE = 'h-10 w-16 shrink-0 rounded-content-xs object-cover';
 
 /** A visible view of the document-owned material workflow. */
 interface TimelineMaterialDialogProps {
@@ -59,9 +63,9 @@ function ProjectVideoChoice({ asset, selected, disabled, onSelect }: ProjectVide
   const choose = React.useCallback((): void => onSelect(asset), [onSelect, asset]);
   return <Button type='button' data-testid={`timeline-project-video-${asset.assetId}`} variant={null} size={null} disabled={disabled} onClick={choose} aria-pressed={selected}
     className={cn('flex w-full min-w-0 justify-start gap-3 rounded-chrome border border-border p-3 text-left hover-enabled:bg-accent', selected && 'border-active-border')}>
-    {asset.kind === 'audio' ? <Music className='size-10 shrink-0 text-muted-foreground' />
-      : asset.kind === 'image' ? <img src={asset.fileUrl} alt='' className='h-10 w-16 shrink-0 rounded-content-xs object-cover' />
-        : asset.coverUrl === null ? <Film className='size-10 shrink-0 text-muted-foreground' /> : <img src={asset.coverUrl} alt='' className='h-10 w-16 shrink-0 rounded-content-xs object-cover' />}
+    {asset.kind === 'image' ? <img src={asset.fileUrl} alt='' className={TILE} />
+      : asset.kind === 'video' && asset.coverUrl !== null ? <img src={asset.coverUrl} alt='' className={TILE} />
+        : <span className={cn(TILE, 'flex items-center justify-center bg-muted text-muted-foreground')}>{asset.kind === 'audio' ? <Music className='size-4' /> : <Film className='size-4' />}</span>}
     <span className='flex min-w-0 flex-1 flex-col gap-1'>
       <span className='min-w-0 truncate leading-normal'>{timelineVideoName(asset) ?? t('timeline.video', { kind: asset.kind })}</span>
       {asset.kind === 'image'
@@ -98,7 +102,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
   const changeOpen = React.useCallback((open: boolean): void => { if (!open) onClose(); }, [onClose]);
   const chooseProject = React.useCallback((): void => draft.setMode('project'), [draft]);
   const chooseLocal = React.useCallback((): void => draft.setMode('local'), [draft]);
-  const chooseKind = React.useCallback((event: React.MouseEvent<HTMLButtonElement>): void => draft.setKind(event.currentTarget.dataset.kind as TimelineUploadKind), [draft]);
+  const chooseKind = React.useCallback((value: string): void => draft.setKind(value as TimelineUploadKind), [draft]);
   const chooseFile = React.useCallback((): void => fileInput.current?.click(), []);
   const changeFile = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => draft.setFile(event.target.files?.[0] ?? null), [draft]);
   // A start frame is whole and never negative: the plain field keeps digits only, with no native spinner.
@@ -121,10 +125,11 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
         <div className='flex shrink-0 items-center gap-2 px-4 pt-4'>
           <Button data-testid='timeline-material-project' type='button' variant='outline' onClick={chooseProject} disabled={state.busy} aria-pressed={state.mode === 'project'} className={state.mode === 'project' ? 'border-active-border' : undefined}>{t('timeline.material.project')}</Button>
           <Button data-testid='timeline-material-local' type='button' variant='outline' onClick={chooseLocal} disabled={state.busy} aria-pressed={state.mode === 'local'} className={state.mode === 'local' ? 'border-active-border' : undefined}>{t('timeline.material.local')}</Button>
-          <span className='ml-auto flex items-center gap-1'>
-            {KINDS.map((item) => <Button key={item} data-testid={`timeline-material-kind-${item}`} data-kind={item} type='button' variant='outline' size='sm' onClick={chooseKind} disabled={state.busy}
-              aria-pressed={kind === item} className={kind === item ? 'border-active-border' : undefined}>{t('timeline.video', { kind: item })}</Button>)}
-          </span>
+          <Tabs value={kind} onValueChange={chooseKind} className='ml-auto'>
+            <TabsList>
+              {KINDS.map((item) => <TabsTrigger key={item} data-testid={`timeline-material-kind-${item}`} value={item} disabled={state.busy} className='px-3'>{t('timeline.video', { kind: item })}</TabsTrigger>)}
+            </TabsList>
+          </Tabs>
         </div>
         <ScrollArea className='min-h-0 flex-1' viewportClassName='p-4'>
           {state.mode === 'project' ? <div className='flex flex-col gap-2'>
@@ -141,12 +146,15 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
           </div>}
         </ScrollArea>
         <div className='flex shrink-0 flex-col gap-3 border-t border-border p-4'>
-          <div className='flex items-center gap-3'><Label htmlFor={`timeline-track-${spaceId}`} className='shrink-0'>{t('timeline.edit.track')}</Label>
+          {/* One label column as wide as the longer label, so both fields start at the same x in every language. */}
+          <div data-material-fields='' className='grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3'>
+            <Label htmlFor={`timeline-track-${spaceId}`}>{t('timeline.edit.track')}</Label>
             <Select value={trackKnown ? state.trackId : ''} onValueChange={changeTrack} disabled={state.busy}>
-              <SelectTrigger id={`timeline-track-${spaceId}`} data-testid='timeline-material-track' className='min-w-0 flex-1'><SelectValue placeholder={t('timeline.edit.trackRemoved')} /></SelectTrigger>
+              <SelectTrigger id={`timeline-track-${spaceId}`} data-testid='timeline-material-track' className='min-w-0'><SelectValue placeholder={t('timeline.edit.trackRemoved')} /></SelectTrigger>
               <SelectContent>{labels.visual.map((track) => <SelectItem key={track.id} value={track.id}>{track.label}</SelectItem>)}<SelectItem value='new'>{t('timeline.edit.newTrack')}</SelectItem></SelectContent>
-            </Select></div>
-          <div className='flex items-center gap-3'><Label htmlFor={`timeline-start-${spaceId}`} className='shrink-0'>{t('timeline.startFrame')}</Label><Input id={`timeline-start-${spaceId}`} data-testid='timeline-start-frame' type='text' inputMode='numeric' autoComplete='off' value={state.startFrame} onChange={changeFrame} disabled={state.busy} /></div>
+            </Select>
+            <Label htmlFor={`timeline-start-${spaceId}`}>{t('timeline.startFrame')}</Label><Input id={`timeline-start-${spaceId}`} data-testid='timeline-start-frame' type='text' inputMode='numeric' autoComplete='off' value={state.startFrame} onChange={changeFrame} disabled={state.busy} />
+          </div>
           {showsHint && <p data-testid='timeline-material-insert-hint' className='text-xs text-muted-foreground'>{before === undefined ? t('timeline.material.insertFirst') : t('timeline.material.insertAfter', { name: beforeName })}</p>}
           {state.errorKey !== null && <p data-testid='timeline-material-error' className='text-sm text-status-error-foreground'>{t(`timeline.errors.${state.errorKey}`, { kind })}</p>}
           {!canWrite && <p className='text-sm text-muted-foreground'>{t('timeline.errors.readonly')}</p>}

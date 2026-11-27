@@ -123,6 +123,17 @@ describe('TimelineLayerHandles proxy and handles (§4.1, §4.3)', () => {
     expect(props.renderDirections).toEqual(expect.arrayContaining(['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se']));
   });
 
+  it('draws only the corner handles while the box on screen is narrower or shorter than three handle targets', () => {
+    // A 100 x 20 canvas-pixel text box shows at 50 x 10 display pixels: edge handles would sit on its letters.
+    const small = { left: 0, top: 0, width: 100, height: 20 };
+    const { rerender } = showHandles({ base: small });
+    expect(handleProps().renderDirections).toEqual(['nw', 'ne', 'sw', 'se']);
+    rerender({ base: small, transform: { ...IDENTITY, scaleX: 10, scaleY: 10 } });
+    expect(handleProps().renderDirections).toEqual(['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se']);
+    rerender({ base: { left: 0, top: 0, width: 400, height: 140 } });
+    expect(handleProps().renderDirections).toEqual(['nw', 'ne', 'sw', 'se']);
+  });
+
   it('re-measures the handles when the stored transform or base box changes outside a gesture', () => {
     const { rerender } = showHandles();
     const instance = moveableMock.instance;

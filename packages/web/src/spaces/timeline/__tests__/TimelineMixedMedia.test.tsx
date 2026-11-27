@@ -12,6 +12,7 @@
  * the next case's.
  */
 
+import { NODE_TYPE_PALETTE } from '@web/spaces/canvas/node-type-palette';
 import * as React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within, type RenderResult } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -409,6 +410,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/**
+ * Pick a kind in the add media dialog's kind switch, as a mouse press does.
+ * @param dialog - The dialog.
+ * @param name - The kind's name.
+ */
+function chooseKind(dialog: HTMLElement, name: string): void {
+  fireEvent.mouseDown(within(dialog).getByRole('tab', { name }));
+}
+
 describe('the toolbar (design §6.1, acceptance 12)', () => {
   const NAMES = ['添加素材', '添加网页动画', '添加文字', '撤销', '重做', '分割', '复制', '删除', '主轨磁吸', '自动吸附', '联动'];
 
@@ -557,6 +567,14 @@ describe('tracks and clip faces (design §3.1, §3.5, §6.4)', () => {
     expect(screen.getByTestId('timeline-clip-' + AUDIO.id)).toHaveAttribute('data-kind', 'audio');
   });
 
+  it('colours picture and sound clips as the Canvas colours its picture and sound nodes, so the two kinds read apart', async () => {
+    seed([IMAGE, AUDIO]);
+    show();
+    for (const [clip, kind] of [[IMAGE, 'image'], [AUDIO, 'audio']] as const) {
+      expect((await screen.findByTestId('timeline-clip-' + clip.id)).className).toContain(`bg-[color:var(${NODE_TYPE_PALETTE[kind]}-bg)]`);
+    }
+  });
+
   it('names a selected text clip 文字 in its properties', async () => {
     seed([TEXT]);
     show();
@@ -564,6 +582,18 @@ describe('tracks and clip faces (design §3.1, §3.5, §6.4)', () => {
     const panel = screen.getByTestId('timeline-side-panel');
     expect(within(panel).getByText('文字')).toBeInTheDocument();
     expect(within(panel).getByTestId('timeline-clip-text-body')).toHaveValue('镜头 1：开场\n第二行');
+  });
+
+  it('puts the clip kind icon of the track before the properties heading of every kind', async () => {
+    seed([TEXT, IMAGE, AUDIO]);
+    show();
+    for (const [clip, icon] of [[TEXT, 'lucide-type'], [IMAGE, 'lucide-image'], [AUDIO, 'lucide-music']] as const) {
+      const face = await screen.findByTestId('timeline-clip-' + clip.id);
+      expect(face.querySelector(`svg.${icon}`)).not.toBeNull();
+      fireEvent.click(face);
+      const heading = within(screen.getByTestId('timeline-side-panel')).getByTestId('timeline-properties-heading');
+      expect(heading.querySelector(`svg.${icon}`)).not.toBeNull();
+    }
   });
 
   it('draws no record it cannot read, and of two clips overlapping on one track draws only the later-starting one', async () => {
@@ -605,6 +635,39 @@ describe('the add media dialog (design §6.2, acceptance 2, 3)', () => {
     return screen.findByRole('dialog');
   }
 
+  it('switches the kind in one segmented control beside the source buttons, the chosen kind selected (design §6.2)', async () => {
+    seed([]);
+    show();
+    const dialog = await openDialog();
+    const kinds = within(dialog).getByRole('tablist');
+    expect(within(kinds).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['视频', '图片', '音频']);
+    expect(within(kinds).getByRole('tab', { name: '视频' })).toHaveAttribute('aria-selected', 'true');
+    chooseKind(dialog, '音频');
+    expect(within(kinds).getByRole('tab', { name: '音频' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(kinds).getByRole('tab', { name: '视频' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('draws a sound or a coverless video in the same 64 by 40 place as a picture, so names start in one column (design §6.2)', async () => {
+    seed([]);
+    show();
+    const dialog = await openDialog();
+    chooseKind(dialog, '音频');
+    const sound = await within(dialog).findByRole('button', { name: /配乐-轻快\.mp3/ });
+    const tile = sound.firstElementChild!;
+    expect(tile.tagName).toBe('SPAN');
+    expect(tile).toHaveClass('h-10', 'w-16', 'bg-muted');
+    expect(tile.querySelector('svg')).toHaveClass('size-4');
+  });
+
+  it('lines up the track and start frame fields in one column after the longer label (design §6.2)', async () => {
+    seed([]);
+    show();
+    const dialog = await openDialog();
+    const fields = within(dialog).getByTestId('timeline-material-track').closest('[data-material-fields]')!;
+    expect(fields).toHaveClass('grid', 'grid-cols-[auto_minmax(0,1fr)]');
+    expect(fields).toContainElement(within(dialog).getByTestId('timeline-start-frame'));
+  });
+
   it('says 素材, lists Project pictures by kind with their size, and adds one for the configured picture length', async () => {
     magnetOff();
     seed([], undefined, ['v2']);
@@ -613,7 +676,7 @@ describe('the add media dialog (design §6.2, acceptance 2, 3)', () => {
     const dialog = await openDialog();
     expect(within(dialog).getByText('选择素材并确认添加位置。')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Project 素材' })).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: '图片' }));
+    chooseKind(dialog, '图片');
     const choice = await within(dialog).findByRole('button', { name: /镜头2-生成图\.png/ });
     expect(choice).toHaveTextContent('1920 × 1080');
     expect(vi.mocked(apiGet).mock.calls.some(([url, config]) => url === `/projects/${PROJECT}/assets` && (config as { params?: { kind?: string } } | undefined)?.params?.kind === 'image')).toBe(true);
@@ -632,7 +695,7 @@ describe('the add media dialog (design §6.2, acceptance 2, 3)', () => {
     seed([]);
     show();
     const dialog = await openDialog();
-    fireEvent.click(within(dialog).getByRole('button', { name: '图片' }));
+    chooseKind(dialog, '图片');
     const choice = await within(dialog).findByRole('button', { name: /镜头2-生成图\.png/ });
     expect(choice.querySelector('img')).toHaveAttribute('src', IMAGE_ASSET.fileUrl);
   });
@@ -645,8 +708,8 @@ describe('the add media dialog (design §6.2, acceptance 2, 3)', () => {
     const user = userEvent.setup();
     await user.upload(within(dialog).getByTestId('timeline-file-input') as HTMLInputElement, new File(['mp4'], 'clip.mp4', { type: 'video/mp4' }));
     expect((within(dialog).getByTestId('timeline-file-input') as HTMLInputElement).files).toHaveLength(1);
-    fireEvent.click(within(dialog).getByRole('button', { name: '图片' }));
-    fireEvent.click(within(dialog).getByRole('button', { name: '视频' }));
+    chooseKind(dialog, '图片');
+    chooseKind(dialog, '视频');
     expect((within(dialog).getByTestId('timeline-file-input') as HTMLInputElement).files).toHaveLength(0);
   });
 
@@ -655,7 +718,7 @@ describe('the add media dialog (design §6.2, acceptance 2, 3)', () => {
     seed([], undefined, ['v2']);
     show();
     const dialog = await openDialog();
-    fireEvent.click(within(dialog).getByRole('button', { name: '音频' }));
+    chooseKind(dialog, '音频');
     const choice = await within(dialog).findByRole('button', { name: /配乐-轻快\.mp3/ });
     expect(choice).toHaveTextContent('14');
     fireEvent.click(choice);
@@ -679,7 +742,7 @@ describe('the add media dialog (design §6.2, acceptance 2, 3)', () => {
     show();
     await waitFor(() => expect(apiGet).toHaveBeenCalledWith(`/projects/${PROJECT}/timeline-limits`, expect.anything()));
     const dialog = await openDialog();
-    fireEvent.click(within(dialog).getByRole('button', { name: '图片' }));
+    chooseKind(dialog, '图片');
     fireEvent.click(within(dialog).getByTestId('timeline-material-local'));
     expect(within(dialog).getByRole('button', { name: '选择图片' })).toBeInTheDocument();
     const input = within(dialog).getByTestId('timeline-file-input');
@@ -1049,7 +1112,7 @@ describe('upload placeholders (design §4.5, §7.1-§7.3)', () => {
     const invalidate = vi.spyOn(client, 'invalidateQueries');
     fireEvent.click(await screen.findByTestId('timeline-add-media'));
     const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: '音频' }));
+    chooseKind(dialog, '音频');
     fireEvent.click(within(dialog).getByTestId('timeline-material-local'));
     Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:local-audio'), revokeObjectURL: vi.fn() });
     vi.mocked(HTMLMediaElement.prototype.load).mockImplementation(function load(this: HTMLMediaElement) {
