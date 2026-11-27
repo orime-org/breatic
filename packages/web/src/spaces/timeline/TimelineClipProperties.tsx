@@ -12,6 +12,7 @@ import { parseTimelineFrame, timelineClipIntervalValid, timelineSourceOverflow }
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
+import { Progress } from '@web/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
 import { Slider } from '@web/components/ui/slider';
 import { Switch } from '@web/components/ui/switch';
@@ -38,12 +39,10 @@ export interface TimelineWebCopyDetails {
   opening: boolean;
 }
 
-/** Why a clip's file cannot be read, and what the user can do (inner#1709). */
+/** That a clip's file cannot be read, and its retry (inner#1709). */
 export interface TimelineMediaIssue {
   text: string;
-  /** The next step when it is to ask someone; null when it is a retry. */
-  next: string | null;
-  onRetry: (() => void) | null;
+  onRetry: () => void;
 }
 
 /** The selected clip's editable properties. */
@@ -355,14 +354,10 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
         <span data-testid='timeline-clip-upload' className={cn('min-w-0 break-words text-xs', upload.failed ? 'text-status-error-foreground' : 'text-muted-foreground')}>{upload.text}</span>
         {upload.onRetry !== null && <Button data-testid='timeline-upload-retry' variant='outline' size='compact' onClick={upload.onRetry}>{t('timeline.retry')}</Button>}
       </span>}
-      {upload !== null && upload.progress !== null && <span data-testid='timeline-upload-progress' role='progressbar' aria-valuenow={Math.round(upload.progress * 100)}
-        aria-valuemin={0} aria-valuemax={100} className='h-1 w-full overflow-hidden rounded-full bg-muted'>
-        <span className='block h-full bg-primary' style={{ width: `${Math.round(upload.progress * 100)}%` }} />
-      </span>}
+      {upload !== null && upload.progress !== null && <Progress data-testid='timeline-upload-progress' value={Math.round(upload.progress * 100)} indicatorClassName='bg-primary' />}
       {media !== null && <span data-testid='timeline-clip-media-issue' className='flex flex-col items-start gap-1.5 text-xs'>
         <span className='break-words text-status-error-foreground'>{media.text}</span>
-        {media.next !== null && <span className='text-muted-foreground'>{media.next}</span>}
-        {media.onRetry !== null && <Button data-testid='timeline-media-retry' variant='outline' size='compact' onClick={media.onRetry}>{t('timeline.retry')}</Button>}
+        <Button data-testid='timeline-media-retry' variant='outline' size='compact' onClick={media.onRetry}>{t('timeline.retry')}</Button>
       </span>}
     </div>
     {clip.kind === 'text' && <TextFields spaceId={spaceId} text={clip.text} frameHeight={document.settings.height} readOnly={readOnly} focusBody={focusBody} onCommit={commitText} />}

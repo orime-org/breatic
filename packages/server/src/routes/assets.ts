@@ -361,6 +361,10 @@ function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Recor
         // The picture's size, read off it when it was stored (inner#1367).
         width: outcome.width,
         height: outcome.height,
+        coverUrl: outcome.coverUrl,
+        durationSeconds: outcome.durationSeconds,
+        mimeType: outcome.mimeType,
+        sizeBytes: outcome.sizeBytes,
       }
     : {
         uploadId: outcome.uploadId,

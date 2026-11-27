@@ -7,18 +7,9 @@ import * as Y from "yjs";
 
 import { documentBodyFragment } from "../document-body.js";
 import { readSpaceMediaReferences } from "../space-media-references.js";
-import { initializeTimelineDocument } from "../timeline/document.js";
 import { CANVAS_NODES_KEY } from "../types/canvas-node.js";
 
 const docs: Y.Doc[] = [];
-const settings = { width: 1920, height: 1080, fps: { num: 24, den: 1 } };
-const sourceTemplate = {
-  kind: "video",
-  timebase: settings.fps,
-  extentFrames: 48,
-  durationSeconds: "2",
-  durationOrigin: "registered",
-};
 
 /**
  * Track the real document used by a reference extraction test.
@@ -69,15 +60,6 @@ function appendElement(parent: Y.XmlFragment | Y.XmlElement, name: string, attrs
   return element;
 }
 
-/**
- * Store one accepted V1 source without depending on any clip placement.
- * @returns Nothing after the source has been attached.
- * @throws {Error} When the source cannot be attached.
- */
-function timelineSource(doc: Y.Doc, id: string, assetId: string): void {
-  doc.getMap("sources").set(id, { ...sourceTemplate, id, assetId });
-}
-
 afterEach(() => {
   for (const doc of docs.splice(0)) doc.destroy();
 });
@@ -89,7 +71,7 @@ describe("semantic Space media references", () => {
       const before = Y.encodeStateAsUpdate(doc);
       const changed = vi.fn();
       doc.on("update", changed);
-      expect(readSpaceMediaReferences(kind, doc)).toEqual({ assetIds: [], urls: [] });
+      expect(readSpaceMediaReferences(kind, doc)).toEqual({ urls: [] });
       expect([...doc.share.keys()]).toEqual([]);
       expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
       expect(changed).not.toHaveBeenCalled();
@@ -102,7 +84,6 @@ describe("semantic Space media references", () => {
       canvasNode(doc, `node-${index}`, type, { content: `https://cdn.example/${type}` });
     }
     expect(readSpaceMediaReferences("canvas", doc)).toEqual({
-      assetIds: [],
       urls: ["https://cdn.example/3d", "https://cdn.example/audio", "https://cdn.example/image", "https://cdn.example/video"],
     });
   });
@@ -112,7 +93,7 @@ describe("semantic Space media references", () => {
     canvasNode(doc, "video", "video", { coverUrl: "https://cdn.example/video-poster.png" });
     canvasNode(doc, "image", "image", { coverUrl: "https://cdn.example/phantom-image-poster.png" });
     canvasNode(doc, "audio", "audio", { coverUrl: "https://cdn.example/phantom-audio-poster.png" });
-    expect(readSpaceMediaReferences("canvas", doc)).toEqual({ assetIds: [], urls: ["https://cdn.example/video-poster.png"] });
+    expect(readSpaceMediaReferences("canvas", doc)).toEqual({ urls: ["https://cdn.example/video-poster.png"] });
   });
 
   it("includes the stored scalar image slots and copied style images", () => {
@@ -125,7 +106,6 @@ describe("semantic Space media references", () => {
     });
     canvasNode(doc, "audio", "audio", { moodImageUrl: "https://cdn.example/mood.png" });
     expect(readSpaceMediaReferences("canvas", doc)).toEqual({
-      assetIds: [],
       urls: ["https://cdn.example/character.png", "https://cdn.example/end.png", "https://cdn.example/first.png", "https://cdn.example/mood.png", "https://cdn.example/style.png"],
     });
   });
@@ -138,7 +118,6 @@ describe("semantic Space media references", () => {
     });
     canvasNode(doc, "audio", "audio", { soundVideo: { url: "https://cdn.example/sound.mp4", cover: "https://cdn.example/sound.png" } });
     expect(readSpaceMediaReferences("canvas", doc)).toEqual({
-      assetIds: [],
       urls: ["https://cdn.example/driving.mp4", "https://cdn.example/driving.png", "https://cdn.example/sound.mp4", "https://cdn.example/sound.png", "https://cdn.example/source.mp4", "https://cdn.example/source.png"],
     });
   });
@@ -158,7 +137,6 @@ describe("semantic Space media references", () => {
       musicVocal: { url: "https://cdn.example/vocal.mp3" },
     });
     expect(readSpaceMediaReferences("canvas", doc)).toEqual({
-      assetIds: [],
       urls: ["https://cdn.example/cover.mp3", "https://cdn.example/driving.mp3", "https://cdn.example/left.mp3", "https://cdn.example/melody.mp3", "https://cdn.example/ref.mp3", "https://cdn.example/right.mp3", "https://cdn.example/song.mp3", "https://cdn.example/vocal.mp3"],
     });
   });
@@ -170,7 +148,7 @@ describe("semantic Space media references", () => {
     if (!(crops instanceof Y.Array)) throw new Error("The fixture crop container is missing");
     crops.push([{ id: "crop-a", url: "https://cdn.example/crop-a.png", name: "A", width: 20, height: 20 }]);
     canvasNode(doc, "retained", "video", { focusImages: [{ id: "crop-b", url: "https://cdn.example/crop-b.png", name: "B", width: 20, height: 20 }] });
-    expect(readSpaceMediaReferences("canvas", doc)).toEqual({ assetIds: [], urls: ["https://cdn.example/crop-a.png", "https://cdn.example/crop-b.png"] });
+    expect(readSpaceMediaReferences("canvas", doc)).toEqual({ urls: ["https://cdn.example/crop-a.png", "https://cdn.example/crop-b.png"] });
   });
 
   it("reads uploaded attachments in both documented pool encodings", () => {
@@ -182,7 +160,7 @@ describe("semantic Space media references", () => {
     const attachment = new Y.Map<unknown>();
     pool.push([attachment]);
     for (const [key, value] of Object.entries({ id: "file-b", url: "https://cdn.example/file-b.mp4", name: "B", mimeType: "video/mp4", size: 40, uploadedAt: "2026-10-24T00:00:00Z" })) attachment.set(key, value);
-    expect(readSpaceMediaReferences("canvas", doc)).toEqual({ assetIds: [], urls: ["https://cdn.example/file-a.pdf", "https://cdn.example/file-b.mp4"] });
+    expect(readSpaceMediaReferences("canvas", doc)).toEqual({ urls: ["https://cdn.example/file-a.pdf", "https://cdn.example/file-b.mp4"] });
   });
 
   it("does not scan text, iframe pages, prompts, arbitrary parameters or provider extras", () => {
@@ -199,7 +177,7 @@ describe("semantic Space media references", () => {
       extra: { audio_url: "https://cdn.example/extra.mp3" },
       metadata: { assetId: "20000000-0000-4000-8000-000000000001" },
     });
-    expect(readSpaceMediaReferences("canvas", doc)).toEqual({ assetIds: [], urls: [] });
+    expect(readSpaceMediaReferences("canvas", doc)).toEqual({ urls: [] });
   });
 
   it("skips unknown Canvas portions without losing readable media or rewriting the document", () => {
@@ -209,7 +187,7 @@ describe("semantic Space media references", () => {
     canvasNode(doc, "partial", "video", { content: null, coverUrl: 17, focusImages: [null, { name: "No URL" }] });
     doc.getMap(CANVAS_NODES_KEY).set("unknown-value", "https://cdn.example/not-a-node.png");
     const before = Y.encodeStateAsUpdate(doc);
-    expect(readSpaceMediaReferences("canvas", doc)).toEqual({ assetIds: [], urls: ["https://cdn.example/kept.png"] });
+    expect(readSpaceMediaReferences("canvas", doc)).toEqual({ urls: ["https://cdn.example/kept.png"] });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
@@ -223,7 +201,7 @@ describe("semantic Space media references", () => {
     const table = appendElement(appendElement(group, "blockContainer"), "table");
     const cell = appendElement(appendElement(table, "tableRow"), "tableCell");
     appendElement(cell, "video", { url: "https://cdn.example/video.mp4" });
-    expect(readSpaceMediaReferences("document", doc)).toEqual({ assetIds: [], urls: ["https://cdn.example/audio.mp3", "https://cdn.example/image.png", "https://cdn.example/video.mp4"] });
+    expect(readSpaceMediaReferences("document", doc)).toEqual({ urls: ["https://cdn.example/audio.mp3", "https://cdn.example/image.png", "https://cdn.example/video.mp4"] });
   });
 
   it("ignores body text, link marks, unrelated attributes and media outside the body fragment", () => {
@@ -236,7 +214,7 @@ describe("semantic Space media references", () => {
     appendElement(paragraph, "link", { href: "https://cdn.example/element-link.mp4" });
     appendElement(doc.getXmlFragment("other-content"), "video", { url: "https://cdn.example/other-root.mp4" });
     doc.getMap("comments").set("comment", { url: "https://cdn.example/comment.mp4" });
-    expect(readSpaceMediaReferences("document", doc)).toEqual({ assetIds: [], urls: [] });
+    expect(readSpaceMediaReferences("document", doc)).toEqual({ urls: [] });
   });
 
   it("leaves classification of explicit external or unknown media URLs to registered-asset resolution", () => {
@@ -247,122 +225,36 @@ describe("semantic Space media references", () => {
     appendElement(body, "audio", { url: "" });
     appendElement(body, "image", { url: 42 });
     const before = Y.encodeStateAsUpdate(doc);
-    expect(readSpaceMediaReferences("document", doc)).toEqual({ assetIds: [], urls: ["https://outside.example/video.mp4", "unregistered-media"] });
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
-  it("reads 3D model assets and part pictures from the scene records", () => {
-    const doc = trackedDoc();
-    const objects = doc.getMap("objects");
-    const model = "30000000-0000-4000-8000-000000000001";
-    const picture = "30000000-0000-4000-8000-000000000002";
-    const other = "30000000-0000-4000-8000-000000000003";
-    const imported = new Y.Map<unknown>();
-    objects.set("10000000-0000-4000-8000-000000000001", imported);
-    imported.set("model", { kind: "asset", assetId: model });
-    imported.set("look.0.map", picture);
-    imported.set("look.1.map", "none");
-    imported.set("look.d.map", other);
-    imported.set("look.0.color", "#ffffff");
-    const builtin = new Y.Map<unknown>();
-    objects.set("10000000-0000-4000-8000-000000000002", builtin);
-    builtin.set("model", { kind: "builtin", id: "box" });
-    builtin.set("look.0.map", picture);
-    builtin.set("look.2.map", "not-a-picture");
-    builtin.set("name", other.replace("3", "4"));
-    objects.set("10000000-0000-4000-8000-000000000003", "not a record");
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(readSpaceMediaReferences("3d", doc)).toEqual({ assetIds: [model, picture, other].sort(), urls: [] });
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
-  it("reads registered Timeline source asset ids even when their placements are absent", () => {
-    const doc = trackedDoc();
-    initializeTimelineDocument(doc, settings);
-    const assetId = "20000000-0000-4000-8000-000000000001";
-    timelineSource(doc, "10000000-0000-4000-8000-000000000001", assetId);
-    timelineSource(doc, "10000000-0000-4000-8000-000000000002", assetId);
-    doc.getMap("unrelatedMetadata").set("unrelated", { assetId: "20000000-0000-4000-8000-000000000002", url: "https://cdn.example/record-text.mp4" });
-    doc.getMap("clips").set("unknown", { assetId: "20000000-0000-4000-8000-000000000003", content: "https://cdn.example/clip-text.mp4" });
-    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [assetId], urls: [] });
-  });
-
-  it("keeps readable V1 sources when another source entry is unknown", () => {
-    const doc = trackedDoc();
-    initializeTimelineDocument(doc, settings);
-    const assetId = "20000000-0000-4000-8000-000000000001";
-    timelineSource(doc, "10000000-0000-4000-8000-000000000001", assetId);
-    doc.getMap("sources").set("unknown", { kind: "future-source", assetId: "20000000-0000-4000-8000-000000000002" });
-    doc.getMap("sources").set("text", "https://cdn.example/not-a-source.mp4");
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [assetId], urls: [] });
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
-  it("counts a valid source stored under another key, as before (inner#1708 F1)", () => {
-    const doc = trackedDoc();
-    initializeTimelineDocument(doc, settings);
-    const assetId = "20000000-0000-4000-8000-000000000001";
-    doc.getMap("sources").set("10000000-0000-4000-8000-0000000000aa", { ...sourceTemplate, id: "10000000-0000-4000-8000-0000000000bb", assetId });
-    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [assetId], urls: [] });
-  });
-
-  it.each([1, 2, 3])("reads source identities from a version %i Timeline (#1502 design §5, inner#1709 design §2.1)", (version) => {
-    const doc = trackedDoc();
-    initializeTimelineDocument(doc, settings);
-    timelineSource(doc, "10000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000001");
-    doc.getMap("timeline").set("schemaVersion", version);
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: ["20000000-0000-4000-8000-000000000001"], urls: [] });
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
-  it("does not infer source identities from an unsupported Timeline version", () => {
-    const doc = trackedDoc();
-    initializeTimelineDocument(doc, settings);
-    timelineSource(doc, "10000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000001");
-    doc.getMap("timeline").set("schemaVersion", 4);
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [], urls: [] });
+    expect(readSpaceMediaReferences("document", doc)).toEqual({ urls: ["https://outside.example/video.mp4", "unregistered-media"] });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
   it("reads encoded snapshots after loading them into fresh documents", () => {
-    for (const kind of ["canvas", "document", "timeline"] as const) {
+    for (const kind of ["canvas", "document"] as const) {
       const original = trackedDoc();
       if (kind === "canvas") canvasNode(original, "video", "video", { content: "https://cdn.example/restored.mp4" });
-      else if (kind === "document") appendElement(documentBodyFragment(original), "video", { url: "https://cdn.example/restored.mp4" });
-      else {
-        initializeTimelineDocument(original, settings);
-        timelineSource(original, "10000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000001");
-      }
+      else appendElement(documentBodyFragment(original), "video", { url: "https://cdn.example/restored.mp4" });
       const bytes = Y.encodeStateAsUpdate(original);
       const reopened = trackedDoc();
       Y.applyUpdate(reopened, bytes);
-      expect(readSpaceMediaReferences(kind, reopened)).toEqual(kind === "timeline"
-        ? { assetIds: ["20000000-0000-4000-8000-000000000001"], urls: [] }
-        : { assetIds: [], urls: ["https://cdn.example/restored.mp4"] });
+      expect(readSpaceMediaReferences(kind, reopened)).toEqual({ urls: ["https://cdn.example/restored.mp4"] });
       expect(Y.encodeStateAsUpdate(reopened)).toEqual(bytes);
     }
   });
 
   it("is read-only, deduplicated and repeatable for arbitrary references in each Space kind", () => {
     fc.assert(fc.property(
-      fc.constantFrom("canvas" as const, "document" as const, "timeline" as const),
+      fc.constantFrom("canvas" as const, "document" as const),
       fc.array(fc.integer({ min: 1, max: 8 }), { maxLength: 20 }),
       (kind, entries) => {
         const doc = trackedDoc();
-        if (kind === "timeline") initializeTimelineDocument(doc, settings);
         for (const [index, value] of entries.entries()) {
           const url = `https://cdn.example/${value}.mp4`;
           if (kind === "canvas") canvasNode(doc, `node-${index}`, "video", { content: url });
-          else if (kind === "document") appendElement(documentBodyFragment(doc), "video", { url });
-          else timelineSource(doc, `10000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`, `20000000-0000-4000-8000-${String(value).padStart(12, "0")}`);
+          else appendElement(documentBodyFragment(doc), "video", { url });
         }
         const unique = [...new Set(entries)].sort((left, right) => left - right);
-        const expected = kind === "timeline"
-          ? { assetIds: unique.map((value) => `20000000-0000-4000-8000-${String(value).padStart(12, "0")}`), urls: [] }
-          : { assetIds: [], urls: unique.map((value) => `https://cdn.example/${value}.mp4`) };
+        const expected = { urls: unique.map((value) => `https://cdn.example/${value}.mp4`) };
         const before = Y.encodeStateAsUpdate(doc);
         const roots = [...doc.share.keys()];
         const updates = vi.fn();
@@ -374,59 +266,5 @@ describe("semantic Space media references", () => {
         expect(updates).not.toHaveBeenCalled();
       },
     ));
-  });
-});
-
-describe("Timeline media references read every stored source shape (inner#1708 Q1)", () => {
-  it("collects the asset id of a source stored as a Y.Map beside a plain one", () => {
-    const doc = trackedDoc();
-    initializeTimelineDocument(doc, settings);
-    const plainAsset = "20000000-0000-4000-8000-000000000001";
-    const mapAsset = "20000000-0000-4000-8000-000000000002";
-    timelineSource(doc, "10000000-0000-4000-8000-000000000001", plainAsset);
-    const id = "10000000-0000-4000-8000-000000000002";
-    const record = new Y.Map<unknown>();
-    doc.getMap("sources").set(id, record);
-    for (const [key, value] of Object.entries({ ...sourceTemplate, id, assetId: mapAsset })) record.set(key, value);
-    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [plainAsset, mapAsset], urls: [] });
-  });
-});
-
-describe("Timeline media references collect image and audio sources (inner#1709 design §2.4)", () => {
-  it("collects the asset ids of image and audio sources beside a video one", () => {
-    const doc = trackedDoc();
-    initializeTimelineDocument(doc, settings);
-    const videoAsset = "20000000-0000-4000-8000-000000000001";
-    const imageAsset = "20000000-0000-4000-8000-000000000002";
-    const audioAsset = "20000000-0000-4000-8000-000000000003";
-    const unmeasuredAsset = "20000000-0000-4000-8000-000000000004";
-    timelineSource(doc, "10000000-0000-4000-8000-000000000001", videoAsset);
-    const sources = doc.getMap("sources");
-    sources.set("10000000-0000-4000-8000-000000000002", { id: "10000000-0000-4000-8000-000000000002", kind: "image", assetId: imageAsset, width: 800, height: 600 });
-    sources.set("10000000-0000-4000-8000-000000000003", { ...sourceTemplate, id: "10000000-0000-4000-8000-000000000003", kind: "audio", assetId: audioAsset });
-    sources.set("10000000-0000-4000-8000-000000000004", { id: "10000000-0000-4000-8000-000000000004", kind: "image", assetId: unmeasuredAsset, width: null, height: null });
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [videoAsset, imageAsset, audioAsset, unmeasuredAsset], urls: [] });
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
-  it("collects an image source stored as a Y.Map", () => {
-    const doc = trackedDoc();
-    initializeTimelineDocument(doc, settings);
-    const id = "10000000-0000-4000-8000-000000000002";
-    const assetId = "20000000-0000-4000-8000-000000000002";
-    const record = new Y.Map<unknown>();
-    doc.getMap("sources").set(id, record);
-    for (const [key, value] of Object.entries({ id, kind: "image", assetId, width: 800, height: 600 })) record.set(key, value);
-    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [assetId], urls: [] });
-  });
-
-  it("skips a source of no known kind", () => {
-    const doc = trackedDoc();
-    initializeTimelineDocument(doc, settings);
-    const imageAsset = "20000000-0000-4000-8000-000000000002";
-    doc.getMap("sources").set("10000000-0000-4000-8000-000000000002", { id: "10000000-0000-4000-8000-000000000002", kind: "image", assetId: imageAsset, width: 800, height: 600 });
-    doc.getMap("sources").set("10000000-0000-4000-8000-000000000005", { id: "10000000-0000-4000-8000-000000000005", kind: "text", assetId: "20000000-0000-4000-8000-000000000005" });
-    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [imageAsset], urls: [] });
   });
 });

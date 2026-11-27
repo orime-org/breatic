@@ -17,13 +17,11 @@ const { listPage, countGroups, findLiveExports, assertAccess } = vi.hoisted(() =
   assertAccess: vi.fn(),
 }));
 
-vi.mock("@server/modules/web-animation/web-animation-grants.repo.js", () => ({
-  listPage, countGroups, findLiveExports, BadCursorError: class BadCursorError extends Error {},
-}));
 vi.mock("@server/modules/project/project.service.js", () => ({ assertAccess }));
 vi.mock("@breatic/domain", () => ({
   sumCreditsByOperationKeys: vi.fn(async () => new Map()),
   timelineOperationKey: (id: string) => `timeline:${id}`,
+  webAnimationGrantRepo: { listPage, countGroups, findLiveExports, BadCursorError: class BadCursorError extends Error {} },
 }));
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<typeof CoreModule>()),

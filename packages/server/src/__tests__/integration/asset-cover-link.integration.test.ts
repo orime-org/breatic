@@ -38,7 +38,7 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
-import { assetRepo } from "@breatic/domain";
+import { assetRepo, ingestReportService } from "@breatic/domain";
 
 try {
   initCore(process.env);
@@ -99,23 +99,31 @@ async function registerAsset(
 }
 
 describe("linking a video to its cover (#173)", () => {
+  /**
+   * The address a registered asset is served at.
+   * @param id - The asset.
+   * @returns Its address.
+   */
+  async function fileUrlOf(id: string): Promise<string> {
+    const rows = await sql<{ file_url: string }[]>`SELECT file_url FROM studio_assets WHERE id = ${id}`;
+    return rows[0]!.file_url;
+  }
+
   it("a freshly registered video has no cover yet", async () => {
     const { userId, studioId } = await insertStudio();
     const videoId = await registerAsset(studioId, userId, "video");
 
-    expect(await assetRepo.findCoverOf(videoId)).toBeNull();
+    expect(await assetRepo.findCoverUrlOf({ id: videoId, kind: "video" })).toBeNull();
   });
 
-  it("setCoverAsset makes the cover readable back from the video", async () => {
+  it("setCoverAsset makes the cover's registered address readable back from the video", async () => {
     const { userId, studioId } = await insertStudio();
     const videoId = await registerAsset(studioId, userId, "video");
     const coverId = await registerAsset(studioId, userId, "image");
 
     await assetRepo.setCoverAsset(videoId, coverId);
 
-    const cover = await assetRepo.findCoverOf(videoId);
-    expect(cover?.id).toBe(coverId);
-    expect(cover?.kind).toBe("image");
+    expect(await assetRepo.findCoverUrlOf({ id: videoId, kind: "video" })).toBe(await fileUrlOf(coverId));
   });
 
   // A repeated report reaches a cover key derived from the video's own key, so
@@ -129,35 +137,54 @@ describe("linking a video to its cover (#173)", () => {
     await assetRepo.setCoverAsset(videoId, coverId);
     await assetRepo.setCoverAsset(videoId, coverId);
 
-    expect((await assetRepo.findCoverOf(videoId))?.id).toBe(coverId);
-  });
-
-  it("the cover URL read back is the registered canonical, not the video's", async () => {
-    const { userId, studioId } = await insertStudio();
-    const videoId = await registerAsset(studioId, userId, "video");
-    const coverId = await registerAsset(studioId, userId, "image");
-    await assetRepo.setCoverAsset(videoId, coverId);
-
-    const cover = await assetRepo.findCoverOf(videoId);
-    const rows = await sql<{ storage_key: string; file_url: string }[]>`
-      SELECT storage_key, file_url FROM studio_assets WHERE id = ${coverId}
-    `;
-    expect(cover?.storageKey).toBe(rows[0]!.storage_key);
-    expect(cover?.fileUrl).toBe(rows[0]!.file_url);
-  });
-
-  it("a soft-deleted cover reads as no cover", async () => {
-    const { userId, studioId } = await insertStudio();
-    const videoId = await registerAsset(studioId, userId, "video");
-    const coverId = await registerAsset(studioId, userId, "image");
-    await assetRepo.setCoverAsset(videoId, coverId);
-
-    await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${coverId}`;
-
-    expect(await assetRepo.findCoverOf(videoId)).toBeNull();
+    expect(await assetRepo.findCoverUrlOf({ id: videoId, kind: "video" })).toBe(await fileUrlOf(coverId));
   });
 
   it("an id that names no asset reads as no cover", async () => {
-    expect(await assetRepo.findCoverOf(crypto.randomUUID())).toBeNull();
+    expect(await assetRepo.findCoverUrlOf({ id: crypto.randomUUID(), kind: "video" })).toBeNull();
+  });
+
+  it("a deduped video pointing at another Studio's cover settles on the cover this Studio filed (inner#2171 implementation round 2)", async () => {
+    const { userId, studioId } = await insertStudio();
+    const other = await insertStudio();
+    const videoId = await registerAsset(studioId, userId, "video");
+    await assetRepo.setCoverAsset(videoId, await registerAsset(other.studioId, other.userId, "image"));
+    const filed = await registerAsset(studioId, userId, "image");
+    const video = await assetRepo.findById(videoId);
+
+    const settled = await ingestReportService.settleDedupedCover(video!, { id: filed, url: await fileUrlOf(filed) });
+
+    expect(settled).toEqual({ url: await fileUrlOf(filed), failed: false });
+    expect(await assetRepo.findCoverUrlOf({ id: videoId, kind: "video" })).toBe(await fileUrlOf(filed));
+  });
+});
+
+describe("a video's cover address, as every entry hands it out (inner#2171 implementation round 1)", () => {
+  it("reads the linked cover's address for a video", async () => {
+    const { userId, studioId } = await insertStudio();
+    const videoId = await registerAsset(studioId, userId, "video");
+    const coverId = await registerAsset(studioId, userId, "image");
+    await assetRepo.setCoverAsset(videoId, coverId);
+    const rows = await sql<{ file_url: string }[]>`SELECT file_url FROM studio_assets WHERE id = ${coverId}`;
+    expect(await assetRepo.findCoverUrlOf({ id: videoId, kind: "video" })).toBe(rows[0]!.file_url);
+  });
+
+  it("reads none for a picture, without asking", async () => {
+    const { userId, studioId } = await insertStudio();
+    const imageId = await registerAsset(studioId, userId, "image");
+    expect(await assetRepo.findCoverUrlOf({ id: imageId, kind: "image" })).toBeNull();
+  });
+
+  it("reads none for a video whose cover was deleted or sits in another Studio", async () => {
+    const { userId, studioId } = await insertStudio();
+    const other = await insertStudio();
+    const videoId = await registerAsset(studioId, userId, "video");
+    const elsewhere = await registerAsset(other.studioId, other.userId, "image");
+    await assetRepo.setCoverAsset(videoId, elsewhere);
+    expect(await assetRepo.findCoverUrlOf({ id: videoId, kind: "video" })).toBeNull();
+    const coverId = await registerAsset(studioId, userId, "image");
+    await assetRepo.setCoverAsset(videoId, coverId);
+    await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${coverId}`;
+    expect(await assetRepo.findCoverUrlOf({ id: videoId, kind: "video" })).toBeNull();
   });
 });

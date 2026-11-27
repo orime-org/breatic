@@ -13,30 +13,48 @@ export interface TimelineSettings { width: number; height: number; fps: Timeline
 /** A track identity; tracks have no kind, so any clip goes on any track (inner#1709). */
 export interface TimelineTrack { id: string; order: number }
 
-/** A registered video measured in a fixed logical source timebase. */
+/** A registered video, stored by its address with its media facts like a canvas node, measured in a fixed logical source timebase. */
 export interface TimelineVideoSource {
   id: string;
   kind: "video";
-  assetId: string;
+  url: string;
+  coverUrl: string | null;
+  /** Shown as the clip label. */
+  name: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
   timebase: TimelineRate;
   extentFrames: number;
   durationSeconds: string;
   durationOrigin: "registered" | "decoded";
 }
 
-/** A registered picture; it has no length of its own. */
+/** A registered picture, stored by its address with its media facts; it has no length of its own. */
 export interface TimelineImageSource {
   id: string;
   kind: "image";
-  assetId: string;
+  url: string;
+  /** Shown as the clip label. */
+  name: string;
+  mimeType: string;
   /** Null when registration measured no size; the preview then uses the decoded size. */
   width: number | null;
   height: number | null;
 }
 
-/** A registered sound, measured like a video. */
-export interface TimelineAudioSource extends Omit<TimelineVideoSource, "kind"> {
+/** A registered sound, stored by its address with its media facts and measured like a video. */
+export interface TimelineAudioSource {
+  id: string;
   kind: "audio";
+  url: string;
+  /** Shown as the clip label. */
+  name: string;
+  mimeType: string;
+  timebase: TimelineRate;
+  extentFrames: number;
+  durationSeconds: string;
+  durationOrigin: "registered" | "decoded";
 }
 
 /** Any registered source, discriminated by `kind`. */
@@ -142,9 +160,14 @@ export const TimelineSettingsSchema = z.object({ width: positiveInteger, height:
 /** Stable tracks used by both the editor and its serialized snapshots; reading drops the kind older versions stored. */
 export const TimelineTrackSchema = z.object({ id: z.string().min(1).max(64), order: safeFrame }).strict();
 
-const measuredSourceFields = {
+/** Every registered source's address and name, stored like a canvas node's media (inner#2171). */
+const addressedSourceFields = {
   id: identity,
-  assetId: identity,
+  url: z.string().url(),
+  name: z.string().min(1).max(255),
+};
+
+const measuredSourceFields = {
   timebase: TimelineRateSchema,
   extentFrames: positiveInteger,
   durationSeconds: z.string().min(1).max(128),
@@ -169,17 +192,30 @@ function conformedExtent(source: { durationSeconds: string; timebase: TimelineRa
   ctx.addIssue({ code: "custom", path: ["durationSeconds"], message: "Invalid conformed source extent" });
 }
 
-/** An immutable logical source descriptor without an embedded playback URL. */
-export const TimelineVideoSourceSchema = z.object({ ...measuredSourceFields, kind: z.literal("video") }).strict().superRefine(conformedExtent);
+/** An immutable source: the registered video's address and media facts, and its measured extent (inner#2171). */
+export const TimelineVideoSourceSchema = z.object({
+  ...addressedSourceFields,
+  kind: z.literal("video"),
+  coverUrl: z.string().url().nullable(),
+  mimeType: z.string().startsWith("video/"),
+  width: positiveInteger.nullable(),
+  height: positiveInteger.nullable(),
+  ...measuredSourceFields,
+}).strict().superRefine(conformedExtent);
 
-/** A registered sound, measured like a video. */
-export const TimelineAudioSourceSchema = z.object({ ...measuredSourceFields, kind: z.literal("audio") }).strict().superRefine(conformedExtent);
+/** A registered sound, stored by its address and measured like a video (inner#1709). */
+export const TimelineAudioSourceSchema = z.object({
+  ...addressedSourceFields,
+  kind: z.literal("audio"),
+  mimeType: z.string().startsWith("audio/"),
+  ...measuredSourceFields,
+}).strict().superRefine(conformedExtent);
 
-/** A registered picture; its size is both measured or both null. */
+/** A registered picture, stored by its address; its size is both measured or both null (inner#1709). */
 export const TimelineImageSourceSchema = z.object({
-  id: identity,
+  ...addressedSourceFields,
   kind: z.literal("image"),
-  assetId: identity,
+  mimeType: z.string().startsWith("image/"),
   width: positiveInteger.nullable(),
   height: positiveInteger.nullable(),
 }).strict().refine((source) => (source.width === null) === (source.height === null), { message: "Half-measured image size" });

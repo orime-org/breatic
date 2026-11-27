@@ -19,12 +19,12 @@ export * as enterpriseMembershipService from "@server/modules/enterprise-members
 export * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 export * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 export * as pasteAssetsService from "@server/modules/asset/pasteAssets.service.js";
-export * as sceneAssetService from "@server/modules/asset/scene-asset.service.js";
 export * as sceneTasksService from "@server/modules/asset/scene-tasks.service.js";
 export * as sceneGenerationService from "@server/modules/asset/scene-generation.service.js";
 export { holdRun } from "@server/modules/task/generation-task.js";
 export * as transferReferenceService from "@server/modules/asset/transfer-reference.service.js";
 export * as authService from "@server/modules/auth/auth.service.js";
+export * as desktopHandoffService from "@server/modules/auth/desktop-handoff.service.js";
 export * as invitationService from "@server/modules/invitation/invitation.service.js";
 export * as recoveryCodeService from "@server/modules/auth/recovery-code.service.js";
 export * as signupCodeService from "@server/modules/auth/signup-code.service.js";

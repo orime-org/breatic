@@ -2,7 +2,6 @@
   "server": {
     "error": {
       "not_found": "Resource not found",
-      "forbidden": "Access denied",
       "conflict": "Resource conflict",
       "validation": "Invalid input",
       "upload_too_large": "File exceeds the upload size limit.",
@@ -40,6 +39,7 @@
       "not_authenticated": "Not authenticated",
       "google_oauth_unconfigured": "Google sign-in is not available on this server",
       "invalid_google_credential": "Could not verify your Google account",
+      "desktop_exchange_invalid": "This sign-in link is no longer valid. Sign in again.",
       "google_email_unverified": "Your Google account email is not verified",
       "google_link_requires_email_login": "Sign in with email to access this account. Google could not safely link it.",
       "reset_link_sent": "If this email is registered, a reset link has been sent.",
@@ -1481,6 +1481,7 @@
         "drama": "Short dramas & story scenes",
         "fight": "Fights & action",
         "animation": "Animated shorts",
+        "music-video": "Music videos",
         "ecommerce": "E-commerce ads",
         "product-showcase": "Product showcase",
         "promo": "Promo films & brand stories",
@@ -1494,7 +1495,8 @@
         "cinematic": "Cinematic shorts & trailers",
         "speed": "Motion & speed",
         "sound": "Sound, music & voice",
-        "video-remix": "Remix existing videos"
+        "video-remix": "Remix existing videos",
+        "comic-drama": "Comic dramas"
       },
       "storyboard-grid-25": {
         "name": "25-panel storyboard",
@@ -1660,7 +1662,7 @@
       "short-drama-episode": {
         "name": "Short drama episode",
         "description": "Three scenes from one script, joined",
-        "prompt": "(💡 Generate Cast sheet first)Scene 1 of 3 of the short drama written in [📎 Script]: play only scene 1 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. The characters, the place and the light are the ones the script gives. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends on a held look that leads into the next scene. No music, no text on screen.",
+        "prompt": "(💡 Generate Cast sheet first)Scene 1 of 3 of the short drama written in [📎 Script]: play only scene 1 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. The characters, the place and the light are the ones the script gives. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. Only the lines the script writes under Scene 1 are spoken, each once, as the script writes them and in its language; no line of scene 2 or 3 is said. It ends on a held look that leads into the next scene. No music, no text on screen.",
         "node": {
           "script": {
             "name": "Script",
@@ -1672,11 +1674,11 @@
           },
           "scene-2": {
             "name": "Scene 2",
-            "prompt": "(💡 Generate Cast sheet first)(💡 Generate the first scene first)Scene 2 of 3 of the short drama written in [📎 Script]: play only scene 2 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Short drama episode], which is scene 1: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends on a held look that leads into the next scene. No music, no text on screen."
+            "prompt": "(💡 Generate Cast sheet first)(💡 Generate the first scene first)Scene 2 of 3 of the short drama written in [📎 Script]: play only scene 2 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Short drama episode], which is scene 1: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. Only the lines the script writes under Scene 2 are spoken, each once, as the script writes them and in its language; no line of scene 1 or 3 is said. It ends on a held look that leads into the next scene. No music, no text on screen."
           },
           "scene-3": {
             "name": "Scene 3",
-            "prompt": "(💡 Generate Cast sheet first)(💡 Generate Scene 2 first)Scene 3 of 3 of the short drama written in [📎 Script]: play only scene 3 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Scene 2]: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends the episode: the camera holds on a face for a beat after the last line. No music, no text on screen."
+            "prompt": "(💡 Generate Cast sheet first)(💡 Generate Scene 2 first)Scene 3 of 3 of the short drama written in [📎 Script]: play only scene 3 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Scene 2]: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. Only the lines the script writes under Scene 3 are spoken, each once, as the script writes them and in its language; no line of scene 1 or 2 is said. It ends the episode: the camera holds on a face for a beat after the last line. No music, no text on screen."
           }
         },
         "input": {
@@ -1768,6 +1770,133 @@
             "name": "Third",
             "note": "Add a picture of the third character first, then generate."
           }
+        }
+      },
+      "mv-style-sheet": {
+        "name": "MV style board",
+        "description": "One look every section of the video shares",
+        "prompt": "A 16:9 style board for a music video, one look across the whole board, for a song that feels {✏️ the song's mood, e.g. bittersweet and restless, late-night city pop}. The visual direction: {✏️ the direction, e.g. neon light in the rain, wet asphalt, 1980s Tokyo}. Laid out as a clean moodboard on a neutral grey background: a strip of five colour swatches along the top; below it, six photographic frames showing the light, the materials and textures, the wardrobe and the locations, all in the same palette and light. Cinematic, with film grain. No text, no labels, no logos."
+      },
+      "mv-performer-sheet": {
+        "name": "MV performer sheet",
+        "description": "Your singer drawn in the video's look",
+        "prompt": "(💡 Generate Style board first)A 16:9 landscape sheet of the person in [📎 Performer], in the look of [📎 Style board]: on the left, the same person full body from the front, from the side and from the back in one row, standing straight, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin and build exactly as in [📎 Performer]. They wear {✏️ the outfit, e.g. a long black vinyl coat over a white shirt, silver rings}, in the palette, light and textures of [📎 Style board]; take nothing else from the board, none of its layout or swatches. Plain light grey background, even soft light. No text, no labels.",
+        "node": {
+          "style": {
+            "name": "Style board",
+            "prompt": "A 16:9 style board for a music video, one look across the whole board, for a song that feels {✏️ the song's mood, e.g. bittersweet and restless, late-night city pop}. The visual direction: {✏️ the direction, e.g. neon light in the rain, wet asphalt, 1980s Tokyo}. Laid out as a clean moodboard on a neutral grey background: a strip of five colour swatches along the top; below it, six photographic frames showing the light, the materials and textures, the wardrobe and the locations, all in the same palette and light. Cinematic, with film grain. No text, no labels, no logos."
+          }
+        },
+        "input": {
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer or character first, face in view, then generate the sheet."
+          }
+        }
+      },
+      "beat-synced-music-clip": {
+        "name": "Beat-synced clip",
+        "description": "A 15-second clip cut to your own song",
+        "prompt": "A 15-second widescreen music-video clip of the person in [📎 Performer], cut to [📎 Song clip]. [📎 Song clip] is the soundtrack and the clock: keep it exactly as it is, never change its timing, add no other music or sound. The scene: {✏️ the scene, e.g. a rooftop at dusk as the city lights come on}. The performer: {✏️ what they do, e.g. dances alone, then turns to the camera when the chorus hits}. Face, hair and build exactly as in [📎 Performer]. The energy follows the song, calmer where it is quiet and bigger where it builds. Cuts land on strong beats, not on every beat; the biggest change of shot is kept for the drop. The picture stops hard on the last note. No text on screen.",
+        "input": {
+          "song": {
+            "name": "Song clip",
+            "note": "Add a piece of your song of up to 15 seconds first; cut a longer song with Tools → Cut and use the cut clip. For a shorter piece, set the duration to its length."
+          },
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer or dancer first, face in view."
+          }
+        }
+      },
+      "music-first-mv": {
+        "name": "Music first, then video",
+        "description": "Music made first, then a clip cut to it",
+        "prompt": "A 15-second widescreen music-video clip of the person in [📎 Performer]. The soundtrack is {✏️ @ here the 15-second piece you cut from Music}: keep it exactly as it is and cut to it, on its strong beats, not on every beat, with the biggest change of shot on its biggest hit. The scene: {✏️ the scene, e.g. an empty bowling alley lit in pink and blue}. The performer: {✏️ what they do, e.g. dances down the lane, then freezes on the hit}. Face, hair and build exactly as in [📎 Performer]. No text on screen.",
+        "node": {
+          "music": {
+            "name": "Music",
+            "prompt": "Instrumental music for a 15-second music-video clip: {✏️ the genre and tempo, e.g. bright synth-pop at 120 BPM}, in one key, with a clear, steady beat, a short build and one big hit around the middle. No vocals."
+          }
+        },
+        "input": {
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer or dancer first, face in view."
+          }
+        },
+        "step": {
+          "trim": "The music comes out a few minutes long. Once it has generated, use Tools → Cut on it to cut a 15-second piece; connect the cut clip (named CUT-…) to the video and @ it where the prompt asks."
+        }
+      },
+      "song-with-lyrics": {
+        "name": "Song from my lyrics",
+        "description": "Your lyrics sung as a whole song",
+        "prompt": "A {✏️ the genre, e.g. dreamy indie pop} song at {✏️ the tempo, e.g. 96 BPM} in {✏️ the key, e.g. A minor}, with {✏️ the instruments, e.g. clean electric guitar, soft synth pads and live drums} and {✏️ the voice, e.g. a breathy female lead}. The verses stay low and close; the chorus opens up, louder and fuller, with harmonies.",
+        "node": {
+          "lyrics": {
+            "name": "Lyrics",
+            "text": "[Verse]\n{✏️ the first verse, e.g. Streetlights hum your name tonight / I walk the long way home}\n\n[Chorus]\n{✏️ the chorus, e.g. Stay, stay, just one more song / Stay till the morning comes}\n\n[Verse]\n{✏️ the second verse, e.g. Your jacket's still on my chair / Your voice is still in the room}\n\n[Chorus]\n{✏️ the chorus again, e.g. Stay, stay, just one more song / Stay till the morning comes}"
+          }
+        }
+      },
+      "mv-chorus-performance": {
+        "name": "Chorus lip-sync",
+        "description": "Your singer sings the chorus on camera",
+        "prompt": "(💡 Generate Performance still first, then pick it into the Character slot)The person sings the chorus to the camera, lips matching every word of the vocal, {✏️ the manner, e.g. eyes closed on the long notes, swaying gently, one hand on the microphone}. The camera holds still.",
+        "node": {
+          "look": {
+            "name": "Performance still",
+            "prompt": "A 16:9 widescreen still of the person in [📎 Performer] at a microphone, chest up, facing the camera, lips gently closed, about to sing, in {✏️ the place and look, e.g. a smoky jazz club lit by one warm spotlight, deep red and gold}. Face, hair, skin and build exactly as in the picture; they wear {✏️ the outfit, e.g. a black velvet suit}. Sharp focus on the face. No text."
+          }
+        },
+        "input": {
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer first, face in view, then generate Performance still."
+          },
+          "chorus": {
+            "name": "Chorus",
+            "note": "Add your song first, cut the chorus out of it with Tools → Cut, then pick the cut clip into the Driving audio slot."
+          }
+        }
+      },
+      "mv-full": {
+        "name": "Full music video",
+        "description": "Your performer sheet first, then four sections cut to your song",
+        "prompt": "(💡 Generate Style board first)A 16:9 landscape sheet of the person in [📎 Performer], in the look of [📎 Style board]: on the left, the same person full body from the front, from the side and from the back in one row, standing straight, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin and build exactly as in [📎 Performer]. They wear {✏️ the outfit, e.g. a long black vinyl coat over a white shirt, silver rings}, in the palette, light and textures of [📎 Style board]; take nothing else from the board, none of its layout or swatches. Plain light grey background, even soft light. No text, no labels.",
+        "node": {
+          "style": {
+            "name": "Style board",
+            "prompt": "A 16:9 style board for a music video, one look across the whole board, for a song that feels {✏️ the song's mood, e.g. bittersweet and restless, late-night city pop}. The visual direction: {✏️ the direction, e.g. neon light in the rain, wet asphalt, 1980s Tokyo}. Laid out as a clean moodboard on a neutral grey background: a strip of five colour swatches along the top; below it, six photographic frames showing the light, the materials and textures, the wardrobe and the locations, all in the same palette and light. Cinematic, with film grain. No text, no labels, no logos."
+          },
+          "section-1": {
+            "name": "Section 1",
+            "prompt": "(💡 Generate Style board first)(💡 Generate the performer sheet first)Section 1 of 4 of a widescreen music video, in the look of [📎 Style board]. The performer is the person on [📎 Full music video]: take from it only their face, hair, build and clothes, never the grey background or the layout. The soundtrack is {✏️ @ here the first piece you cut from your song}: keep it exactly as it is and cut on its strong beats, not on every beat. This section, {✏️ the part of the song, e.g. the first verse}: {✏️ what it shows, e.g. the singer walks alone through a night market, glancing at the camera}. One camera move only: {✏️ the move, e.g. a slow tracking shot alongside them}. No text on screen."
+          },
+          "section-2": {
+            "name": "Section 2",
+            "prompt": "(💡 Generate Style board first)(💡 Generate the performer sheet first)Section 2 of 4 of a widescreen music video, in the look of [📎 Style board]. The performer is the person on [📎 Full music video]: take from it only their face, hair, build and clothes, never the grey background or the layout. The soundtrack is {✏️ @ here the second piece you cut from your song}: keep it exactly as it is and cut on its strong beats, not on every beat. This section, {✏️ the part of the song, e.g. the first verse}: {✏️ what it shows, e.g. the singer walks alone through a night market, glancing at the camera}. One camera move only: {✏️ the move, e.g. a slow tracking shot alongside them}. No text on screen."
+          },
+          "section-3": {
+            "name": "Section 3",
+            "prompt": "(💡 Generate Style board first)(💡 Generate the performer sheet first)Section 3 of 4 of a widescreen music video, in the look of [📎 Style board]. The performer is the person on [📎 Full music video]: take from it only their face, hair, build and clothes, never the grey background or the layout. The soundtrack is {✏️ @ here the third piece you cut from your song}: keep it exactly as it is and cut on its strong beats, not on every beat. This section, {✏️ the part of the song, e.g. the first verse}: {✏️ what it shows, e.g. the singer walks alone through a night market, glancing at the camera}. One camera move only: {✏️ the move, e.g. a slow tracking shot alongside them}. No text on screen."
+          },
+          "section-4": {
+            "name": "Section 4",
+            "prompt": "(💡 Generate Style board first)(💡 Generate the performer sheet first)Section 4 of 4 of a widescreen music video, in the look of [📎 Style board]. The performer is the person on [📎 Full music video]: take from it only their face, hair, build and clothes, never the grey background or the layout. The soundtrack is {✏️ @ here the fourth piece you cut from your song}: keep it exactly as it is and cut on its strong beats, not on every beat. This section, {✏️ the part of the song, e.g. the first verse}: {✏️ what it shows, e.g. the singer walks alone through a night market, glancing at the camera}. One camera move only: {✏️ the move, e.g. a slow tracking shot alongside them}. It ends the video: the picture stops hard on the last note. No text on screen."
+          }
+        },
+        "input": {
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer or character first, face in view, then generate this sheet."
+          }
+        },
+        "step": {
+          "trim": "Add your song to the canvas. Once this sheet has generated, use Tools → Cut on the song to cut it where the music really changes (verse, chorus, bridge, drop, outro) into pieces of up to 15 seconds, one per section; set each section's duration to its piece's length, connect each cut clip (named CUT-…) to its section in order and @ it where that section's prompt asks.",
+          "more": "Need more sections? Copy Section 4, change its number and what it shows, connect Style board, this sheet and the next piece of the song to it, @ each where its prompt asks and generate it.",
+          "join": "Select the sections in order, right-click and choose Join, then play it through and check the beats at each seam."
         }
       },
       "product-ad-15s": {
@@ -2313,7 +2442,7 @@
       "talking-own-voice": {
         "name": "Talking in my own voice",
         "description": "Your photo speaks your own recording",
-        "prompt": "The person looks into the lens and says the recording, lips matching every word; {✏️ the manner, e.g. relaxed, with small natural nods}. The camera does not move.",
+        "prompt": "",
         "input": {
           "portrait": {
             "name": "Portrait",
@@ -2682,6 +2811,96 @@
         },
         "step": {
           "join": "Once it has generated, select Clip A, this transition and Clip B, right-click and choose Join; check the order runs Clip A, transition, Clip B."
+        }
+      },
+      "comic-drama-cast-sheet": {
+        "name": "Comic drama cast sheet",
+        "description": "Your main characters drawn once in the series' art style",
+        "prompt": "A 16:9 landscape cast sheet for a comic drama series, drawn in {✏️ the art style, e.g. Chinese 2D donghua, clean ink lines, soft cel shading, muted pastel colours}, on a plain light grey background.\nThe first character is the person in [📎 Lead], {✏️ who they are, e.g. Lin Xia, 19, a stubborn apprentice swordswoman in a white and teal robe}: face, hair, build and clothes as in the picture, redrawn in the art style, nothing of the picture's background.\nThe second character is the person in [📎 Partner], {✏️ who they are, e.g. Shen Mo, 22, a cold young sect master in black}: face, hair, build and clothes as in the picture, redrawn in the art style, nothing of the picture's background.\nEach character has one row: full body from the front, from the side and from the back, all at the same scale, then three head close-ups with a calm, an angry and a shocked face. The same line weight, colouring and light on every drawing. No text, no labels, no frames around the drawings.",
+        "input": {
+          "lead": {
+            "name": "Lead",
+            "note": "Add a picture of the main character first (a photo, a sketch or earlier art), then generate."
+          },
+          "partner": {
+            "name": "Partner",
+            "note": "Optional: add a picture of a second main character; leave it empty for a sheet of the lead alone."
+          }
+        }
+      },
+      "comic-drama-episode": {
+        "name": "Comic drama episode",
+        "description": "Three voiced scenes in your series' style, joined",
+        "prompt": "Scene 1 of 3 of the comic-drama episode written in [📎 Script]: play only scene 1 as the script gives it, 15 seconds, vertical, with sound. It is drawn and animated in the exact art style of [📎 Cast sheet] and its characters are the ones on that sheet: take their faces, hair, builds, clothes, line weight and colouring, never the grey background or the layout. The first three seconds already show the hook the script gives, close on the faces. Two or three cuts at most, faces large in frame, one light source. Only the lines the script writes under Scene 1 are spoken, each once, by the character it names, in a voice of their own and in the script's language, lips moving with the words; no line of scene 2 or 3 is said. It ends on a held look that leads into the next scene. No music, no text on screen, no speech bubbles.",
+        "node": {
+          "script": {
+            "name": "Script",
+            "text": "Episode: {✏️ the episode number and title, e.g. Episode 1: The Sealed Scroll}\nCast: {✏️ who is in it, as on the cast sheet, e.g. Lin Xia, a stubborn apprentice; Shen Mo, the cold sect master}\nPlace and light: {✏️ where and when, e.g. a mountain library at night, lit by paper lanterns}\n\nScene 1, the hook: {✏️ what grabs the viewer in the first three seconds, with the lines, e.g. Lin Xia pulls a glowing scroll from a sealed shelf. Shen Mo: \"Put it down.\"}\n\nScene 2, the turn: {✏️ what changes, with the lines, e.g. The scroll shows Lin Xia's own face. Lin Xia: \"Why am I in here?\"}\n\nScene 3, the cliffhanger: {✏️ the moment the episode stops on, with the lines, e.g. Shen Mo draws his sword on her. Shen Mo: \"Because you died here a hundred years ago.\"}"
+          },
+          "scene-2": {
+            "name": "Scene 2",
+            "prompt": "(💡 Generate the first scene first)Scene 2 of 3 of the comic-drama episode written in [📎 Script]: play only scene 2 as the script gives it, 15 seconds, vertical, with sound. It carries straight on from the last frame of [📎 Comic drama episode], which is scene 1: the same characters, clothes, place, light and voices. Art style and characters exactly as on [📎 Cast sheet], nothing of its background or layout. The scene turns once, where the script turns it. Two or three cuts at most, faces large in frame. Only the lines the script writes under Scene 2 are spoken, each once, by the character it names, in the same voice as in scene 1, lips moving with the words; no line of scene 1 or 3 is said. No music, no text on screen, no speech bubbles."
+          },
+          "scene-3": {
+            "name": "Scene 3",
+            "prompt": "(💡 Generate Scene 2 first)Scene 3 of 3 of the comic-drama episode written in [📎 Script]: play only scene 3 as the script gives it, 15 seconds, vertical, with sound. It carries straight on from the last frame of [📎 Scene 2]: the same characters, clothes, place, light and voices. Art style and characters exactly as on [📎 Cast sheet], nothing of its background or layout. Only the lines the script writes under Scene 3 are spoken, each once, by the character it names, in the same voices, lips moving with the words; no line of scene 1 or 2 is said. It builds to the cliffhanger the script gives and cuts to black on its most tense frame, mid-reaction, the question left open. No music, no text on screen, no speech bubbles."
+          }
+        },
+        "input": {
+          "cast": {
+            "name": "Cast sheet",
+            "note": "Add your series' cast sheet first (make one with the Comic drama cast sheet template), then generate the scenes in order."
+          }
+        },
+        "step": {
+          "more": "Need more scenes? Add the next scene to Script, copy Scene 3, change its scene number, wire the scene before and the cast sheet into it and generate it.",
+          "join": "Select the scenes in order, right-click and choose Join. The joined video is one episode; for the next episode, apply this template again with the same cast sheet."
+        }
+      },
+      "narrated-motion-comic": {
+        "name": "Narrated motion comic",
+        "description": "Comic panels that move under a narration",
+        "prompt": "(💡 Generate Panels first)(💡 Generate Narration first)A 15-second vertical motion comic of the four-panel strip in [📎 Panels], with [📎 Narration] as its only sound, played as it is from the first second. The camera travels down the strip one panel at a time, about the same time on each, in the panels' exact drawing style and colours. Inside each panel only small movements: hair and cloth in the wind, a blink, drifting rain or dust, a slow push-in; the drawings stay drawings and never turn into live action. Each new panel arrives on a pause in the narration. No added music, no other voice, no text, no speech bubbles.",
+        "node": {
+          "panels": {
+            "name": "Panels",
+            "prompt": "A vertical comic strip of four panels stacked top to bottom with thin white gutters, drawn in the exact art style of [📎 Cast sheet] and with its characters: faces, hair, clothes, line weight and colouring as on the sheet, nothing of its background or layout.\nPanel 1: {✏️ e.g. a wide shot of an empty night market in the rain, Lin Xia alone under a paper umbrella}\nPanel 2: {✏️ e.g. a close-up of her hand closing on a stolen jade token}\nPanel 3: {✏️ e.g. Shen Mo watching her from a rooftop, his face half in shadow}\nPanel 4: {✏️ e.g. her eyes widening as the token begins to glow}\nOne light logic across the strip. No speech bubbles, no captions, no text."
+          },
+          "narration": {
+            "name": "Narration",
+            "prompt": "{✏️ the narration, one sentence for each panel and about 40 words in all so it stays under 15 seconds, e.g. That night the market was empty. She had stolen the one thing she was told never to touch. Someone had seen her. And the token had begun to wake.}"
+          }
+        },
+        "input": {
+          "cast": {
+            "name": "Cast sheet",
+            "note": "Add your series' cast sheet first (make one with the Comic drama cast sheet template), then generate Panels."
+          }
+        },
+        "step": {
+          "more": "Need a longer story? Copy Panels, Narration and this video together, write the next four panels and the next narration, wire the cast sheet into the new Panels and generate them in the same order.",
+          "join": "Select the videos in order, right-click and choose Join."
+        }
+      },
+      "comic-drama-voice-line": {
+        "name": "Character voice line",
+        "description": "A character speaks in the same voice every episode",
+        "prompt": "(💡 Generate Line first, then pick it into the Driving audio slot)",
+        "node": {
+          "line": {
+            "name": "Line",
+            "prompt": "(💡 Generate Voice sample first, then pick it into the Voice sample slot. Once this line has generated, pick it into the video's Driving audio slot){✏️ the line, exactly the words to say, e.g. You should not have come back here.}"
+          },
+          "sample": {
+            "name": "Voice sample",
+            "prompt": "{✏️ five or six sentences in the character's own way of speaking, about 40 words, so the sample runs well over 10 seconds, e.g. I told you once already. This mountain does not forgive the curious. Every lantern you passed tonight was lit for someone who never came back. Turn around and walk down slowly. Forget the library, forget the scroll, and forget my name.}"
+          }
+        },
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of the character first (cut a close-up from your cast sheet), then pick it into the Character slot."
+          }
         }
       },
       "cinematic-15s-arc": {
@@ -3125,6 +3344,14 @@
         "pinch": "Pinch",
         "wheel": "Wheel"
       }
+    },
+    "textFullscreen": {
+      "edit": "Edit full screen",
+      "view": "View full screen",
+      "editPrompt": "Edit prompt full screen",
+      "exit": "Exit full screen",
+      "inProgress": "Editing in full screen",
+      "readOnly": "Read-only"
     }
   },
   "auth": {
@@ -3234,6 +3461,22 @@
       "haveCode": "Have a referral code?",
       "invalid": "This referral code is not valid. Change it, or clear it to continue.",
       "googleOnly": "Used when signing up with Google"
+    },
+    "desktop": {
+      "continueWithGoogle": "Continue with Google",
+      "waitingBrowser": "Continue in your browser",
+      "cancel": "Cancel",
+      "exchangeFailed": "Sign-in did not finish. Try again.",
+      "title": "Sign in to {app} desktop",
+      "signingInAs": "Signing in as {email}",
+      "continue": "Continue",
+      "switchAccount": "Use another account",
+      "handedTitle": "Back in {app} desktop",
+      "handedBody": "You can close this page. If the desktop app did not open, use the button below.",
+      "openApp": "Open {app} desktop",
+      "errorTitle": "Couldn't sign in to the desktop app",
+      "errorBody": "This sign-in link is invalid or has expired. Go back to the desktop app and press Continue with Google again.",
+      "retry": "Try again"
     }
   },
   "roleTag": {
@@ -5325,13 +5568,10 @@
     },
     "preview": {
       "playBlocked": "The browser blocked playback with sound. Press play to start.",
-      "mediaLoading": "{track}: {kind, select, video {video} image {image} audio {audio} text {text} other {video}} loading…",
       "fontFailed": "{track}: text fonts failed to load",
       "media": "{track}: {text}"
     },
     "media": {
-      "forbidden": "No permission to read this {kind, select, video {video} image {image} audio {audio} text {text} other {video}}",
-      "contactAdmin": "Contact the Studio Admin",
       "readFailed": "{kind, select, video {Video} image {Image} audio {Audio} text {Text} other {Video}} could not be read"
     },
     "text": {
@@ -5344,5 +5584,60 @@
       "gain": "Volume",
       "mute": "Mute"
     }
+  },
+  "desktop": {
+    "unreachable": {
+      "title": "Can't reach {product}",
+      "retry": "Retry",
+      "retrying": "Retrying automatically",
+      "unreachable": "Can't reach this address",
+      "certificate": "This server's certificate is not trusted. Trust it on this computer as the self-hosting guide describes.",
+      "redirected": "This address goes to {target}"
+    },
+    "menu": {
+      "file": "File",
+      "back": "Back",
+      "forward": "Forward",
+      "newWindow": "New Window",
+      "checkForUpdates": "Check for Updates…",
+      "help": "Help"
+    },
+    "leave": {
+      "message": "You have unsaved changes. Leave anyway?",
+      "leave": "Leave",
+      "stay": "Stay"
+    },
+    "updates": {
+      "ready": "New version {version} is ready",
+      "readyDetail": "Restart {product} to install it now, or it installs the next time you quit.",
+      "restart": "Restart now",
+      "later": "Later",
+      "upToDate": "{product} is up to date",
+      "failed": "Couldn't check for updates"
+    },
+    "downloads": {
+      "quitTitleOne": "{count} download is in progress",
+      "quitTitleOther": "{count} downloads are in progress",
+      "quitDetail": "Quitting cancels downloads in progress.",
+      "quit": "Quit",
+      "stay": "Stay"
+    }
+  },
+  "desktopDownloads": {
+    "title": "Downloads",
+    "running": "{count} downloading",
+    "failed": "{count} failed",
+    "runningFailed": "{running} downloading · {failed} failed",
+    "done": "Complete",
+    "showAll": "All {count}",
+    "showLatest": "Latest only",
+    "savedIn": "Saved in {folder}",
+    "revealMac": "Show in Finder",
+    "revealOther": "Show in folder",
+    "failedRow": "Download failed. Please download it again.",
+    "missing": "File moved or deleted",
+    "progress": "{received} / {total}",
+    "receivedOnly": "{received} downloaded",
+    "close": "Close"
   }
 }

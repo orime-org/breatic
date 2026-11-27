@@ -3,7 +3,7 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { ProjectRegisteredAsset, TimelineClientLimits } from '@breatic/shared';
+import type { ProjectAssetPage, ProjectRegisteredAsset, TimelineClientLimits } from '@breatic/shared';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { Doc } from 'yjs';
 import { expect, type Browser, type BrowserContext, type Locator, type Page, type Request, type Response } from 'playwright/test';
@@ -167,9 +167,31 @@ function isTimelineUploadRequest(request: Request): boolean {
 }
 
 /**
- * Upload the repository's real MP4 through Timeline's unmodified upload and authorization APIs.
+ * Find a registered video in the Project's media list by the address a Space stores for it (inner#2171).
+ * @param projectId - The Project whose media list is read.
+ * @param fileUrl - The video's stored address.
+ * @returns The listed video.
+ * @throws {Error} When the list cannot be read or does not hold the video.
+ */
+export async function projectVideoByUrl(page: Page, projectId: string, fileUrl: string): Promise<ProjectRegisteredAsset> {
+  let cursor: string | null = null;
+  do {
+    const params: Record<string, string> = cursor === null ? { kind: 'video' } : { kind: 'video', cursor };
+    const listed: ProjectAssetPage = await dataOf<ProjectAssetPage>(
+      await page.request.get(`/api/v1/projects/${projectId}/assets`, { params }), 'read the Project video list',
+    );
+    const found = listed.items.find((item) => item.fileUrl === fileUrl);
+    if (found !== undefined) return found;
+    cursor = listed.nextCursor;
+  } while (cursor !== null);
+  throw new Error(`The Project video list does not hold ${fileUrl}`);
+}
+
+/**
+ * Upload the repository's real MP4 through Timeline's unmodified upload, then read the registered video from the
+ * address the Timeline document stores for it and the Project's media list.
  * @param fixturePath - The existing MP4 fixture to upload; defaults to the ordinary Timeline sample.
- * @throws {Error} When upload, canonical resolution, placement acceptance or decoding fails.
+ * @throws {Error} When upload, registration, placement acceptance or decoding fails.
  */
 export async function uploadTimelineVideo(page: Page, projectId: string, fixturePath = resolve(__dirname, '../fixtures/media-history.mp4')): Promise<TimelineUpload> {
   const outlet = visibleSpace(page);
@@ -188,54 +210,49 @@ export async function uploadTimelineVideo(page: Page, projectId: string, fixture
     mimeType: 'video/mp4',
     buffer: readFileSync(fixturePath),
   });
-  const observation: { response?: Response; failure?: string } = {};
+  const observation: { failure?: string } = {};
   /** Record failures without including upload tokens, request bodies or signed query parameters. */
   const onFailed = (request: Request): void => {
     if (!isTimelineUploadRequest(request)) return;
     const url = new URL(request.url());
     observation.failure ??= `${request.method()} ${url.origin}${url.pathname}: ${request.failure()?.errorText ?? 'request failed'}`;
   };
-  /** Observe the browser's real response, rather than treating it as an APIRequestContext response. */
+  /** Record a refused upload request from the browser's real response. */
   const onResponse = (response: Response): void => {
     const request = response.request();
     const url = new URL(response.url());
-    const authorized = request.method() === 'GET' && url.pathname.startsWith(`/api/v1/projects/${projectId}/assets/`);
-    if (authorized) observation.response = response;
-    if (response.status() >= 400 && (authorized || isTimelineUploadRequest(request))) {
+    if (response.status() >= 400 && isTimelineUploadRequest(request)) {
       observation.failure ??= `${request.method()} ${url.origin}${url.pathname}: HTTP ${response.status()}`;
     }
   };
+  const clips = outlet.locator('[data-testid^="timeline-clip-"][data-track-id]');
   page.on('requestfailed', onFailed);
   page.on('response', onResponse);
-  let asset: ProjectRegisteredAsset;
   try {
     await dialog.getByTestId('timeline-confirm-material').click();
     await expect.poll(async () => {
       const error = dialog.getByTestId('timeline-material-error');
       if (await error.isVisible()) observation.failure ??= `Timeline upload: ${await error.innerText()}`;
-      return observation.failure !== undefined ? 'failed' : observation.response !== undefined ? 'authorized' : 'waiting';
+      if (observation.failure !== undefined) return 'failed';
+      // The placeholder becomes the registered video in place once its background upload writes the result.
+      return await clips.count() === 1 && await clips.getAttribute('data-kind') === 'video' ? 'registered' : 'waiting';
     }, {
       // Match watchQueuedFinish's asynchronous registration budget; transfer failures still terminate immediately.
       timeout: 120_000,
-      message: 'Timeline upload must authorize the registered asset or report its transfer failure',
+      message: 'Timeline upload must register the video or report its transfer failure',
     }).not.toBe('waiting');
-    expect(observation.failure, 'Timeline upload failed before Project asset authorization').toBeUndefined();
-    const response = observation.response;
-    if (response === undefined) throw new Error('Timeline upload ended without a Project asset response');
-    expect(response.ok(), `resolve uploaded Project video: HTTP ${response.status()} ${await response.text()}`).toBe(true);
-    const envelope = await response.json() as { data: ProjectRegisteredAsset };
-    asset = envelope.data;
+    expect(observation.failure, 'Timeline upload failed before the video registered').toBeUndefined();
   } finally {
     page.off('requestfailed', onFailed);
     page.off('response', onResponse);
   }
+  await expect(dialog).toHaveCount(0, { timeout: 60_000 });
+  const [clipId] = await timelineClipIds(page);
+  const fileUrl = await timelineVideoOf(page, clipId).getAttribute('src');
+  if (fileUrl === null) throw new Error('The registered placement has no video address');
+  const asset = await projectVideoByUrl(page, projectId, fileUrl);
   expect(asset.kind).toBe('video');
   expect(asset.assetId).toMatch(/^[0-9a-f-]{36}$/);
-  await expect(dialog).toHaveCount(0, { timeout: 60_000 });
-  await expect(outlet.locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(1);
-  // The placeholder becomes the registered video in place once its background upload writes the result.
-  await expect(outlet.locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveAttribute('data-kind', 'video', { timeout: 60_000 });
-  const [clipId] = await timelineClipIds(page);
   await selectTimelineClip(page, clipId);
   await expect(outlet.getByTestId('timeline-clip-start')).toHaveText('0');
   const durationFrames = Number(await outlet.getByTestId('timeline-clip-duration').inputValue());

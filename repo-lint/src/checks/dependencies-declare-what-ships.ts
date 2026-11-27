@@ -35,6 +35,17 @@ const FOR_TESTS = /__tests__\/|\.test\.|\.spec\.|\/tests\/|\/test-utils\/|\.conf
 const IMPORTS =
   /(?:from\s*|import\s*\(?\s*|@import\s*|require\(\s*)['"]([^'".][^'"]*)['"]/g;
 
+/**
+ * Packages a manifest may keep in devDependencies although its source imports
+ * them, because the packager supplies them and refuses them in dependencies.
+ * Electron is the desktop client's runtime: electron-builder rejects it in
+ * `dependencies` ("only allowed in devDependencies") and ships it inside the
+ * installer with its own LICENSE and LICENSES.chromium.html.
+ */
+const SUPPLIED_BY_PACKAGER: Readonly<Record<string, readonly string[]>> = {
+  "packages/desktop": ["electron"],
+};
+
 /** Prefixes that name something other than an installed package. */
 const NOT_A_PACKAGE = /^(@\/|#|node:|@breatic\/|@web\/|@shared\/|@core\/|@domain\/|@server\/|@worker\/|@collab\/)/;
 
@@ -109,6 +120,7 @@ export const dependenciesDeclareWhatShips = {
         if (specifier === undefined || NOT_A_PACKAGE.test(specifier)) continue;
         const name = packageNamed(specifier);
         if (declared.has(name) || !forDevelopment.has(name)) continue;
+        if (SUPPLIED_BY_PACKAGER[directory]?.includes(name)) continue;
 
         const seen = `${directory} ${name}`;
         if (reported.has(seen)) continue;

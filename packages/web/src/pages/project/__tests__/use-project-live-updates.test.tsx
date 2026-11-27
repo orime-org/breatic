@@ -151,7 +151,8 @@ describe('an upload\'s ending', () => {
     const s1: UploadStatus = {
       key: k1,
       state: 'completed',
-      result: { assetId: 'a-1', fileUrl: 'https://assets.example.test/k1.png', kind: 'image', width: 64, height: 48 },
+      result: { assetId: 'a-1', fileUrl: 'https://assets.example.test/k1.png', kind: 'image', width: 64, height: 48,
+        coverUrl: null, durationSeconds: null, mimeType: 'image/png', sizeBytes: 1024 },
     };
     const s2: UploadStatus = { key: k2, state: 'failed', reason: 'over_cap' };
     double.send({ t: 'upload:ended', key: k1, status: s1 });

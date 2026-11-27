@@ -138,6 +138,7 @@ describe('route table', () => {
         '/*',
         '/choose-slug',
         '/decision',
+        '/desktop/sign-in',
         '/forgot-password',
         '/login',
         '/project/:projectId/*',

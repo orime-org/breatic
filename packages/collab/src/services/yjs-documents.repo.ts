@@ -35,12 +35,12 @@ export interface MediaBackfillDocument { name: string; data: Uint8Array }
  * Scan live content rows in immutable-name order for media backfill.
  * @param cursor - The last emitted document name, or the first page.
  * @param limit - The configured bounded batch size.
- * @returns Live Space snapshots without Project meta rows.
+ * @returns Live canvas and Document snapshots, the only Spaces backfill reads media from (inner#2171 design §5.5).
  * @throws {Error} When the Yjs database read fails.
  */
 export async function scanMediaBackfillDocuments(cursor: string | null, limit: number): Promise<MediaBackfillDocument[]> {
   return yjsDb.select({ name: yjsDocuments.name, data: yjsDocuments.data }).from(yjsDocuments).where(and(
-    isNull(yjsDocuments.deletedAt), sql`${yjsDocuments.name} ~ '^project-[^/]+/(canvas|document|timeline)-[^/]+$'`,
+    isNull(yjsDocuments.deletedAt), sql`${yjsDocuments.name} ~ '^project-[^/]+/(canvas|document)-[^/]+$'`,
     cursor === null ? undefined : gt(yjsDocuments.name, cursor),
   )).orderBy(yjsDocuments.name).limit(limit);
 }
@@ -275,13 +275,11 @@ export async function restoreByName(name: string): Promise<boolean> {
  * full duplicate UX is reworked when the Studio page is built properly.
  * @param sourceId - Project being duplicated
  * @param newId - Freshly created destination project id
- * @param beforePublishContent - Accept the locked target bytes before making their meta visible.
- * @throws {Error} When copying or accepting the actual target content fails.
+ * @throws {Error} When copying the content fails.
  */
 export async function duplicateByProjectPrefix(
   sourceId: string,
   newId: string,
-  beforePublishContent?: (rows: readonly { name: string; data: Uint8Array }[]) => Promise<void>,
 ): Promise<void> {
   const oldPrefix = `project-${sourceId}/`;
   const newPrefix = `project-${newId}/`;
@@ -310,15 +308,6 @@ export async function duplicateByProjectPrefix(
         WHERE ${inArray(yjsDocuments.name, listed)}
         ON CONFLICT (name) DO NOTHING
       `);
-      if (beforePublishContent !== undefined) {
-        const targets = listed.map((name) => `${newPrefix}${name.slice(oldPrefix.length)}`);
-        const rows = await tx.select({ name: yjsDocuments.name, data: yjsDocuments.data })
-          .from(yjsDocuments)
-          .where(inArray(yjsDocuments.name, targets))
-          .orderBy(yjsDocuments.name)
-          .for("update");
-        await beforePublishContent(rows);
-      }
     }
     // Meta doc last, from the bytes read above, and it WINS over a racing
     // lazy-seed default so the copy reflects the source's Spaces.

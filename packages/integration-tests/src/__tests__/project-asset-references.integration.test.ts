@@ -257,6 +257,15 @@ async function withReferenceWriteFailure(projectId: string, run: () => Promise<v
   }
 }
 
+/**
+ * The Project's video list as a member reads it, the only read of a Project's media (inner#2171 design §5.6).
+ * @returns The listed media.
+ * @throws {Error} When the read fails.
+ */
+async function listed(projectId: string, userId: string): Promise<Awaited<ReturnType<typeof projectAssetReferenceService.listProjectMedia>>["items"]> {
+  return (await projectAssetReferenceService.listProjectMedia({ projectId, userId })).items;
+}
+
 describe("Project registered asset references", () => {
   it("keeps one persisted identity, first name, and first timestamp on repeated association", async () => {
     const fixture = await seedFixture();
@@ -342,19 +351,14 @@ describe("Project registered asset references", () => {
     const first = await projectAssetReferenceService.recordProjectAssetReferences({
       projectId: fixture.projectId, assetIds: [asset.id],
     });
-    await expect(projectAssetReferenceService.resolveProjectAsset({
-      projectId: otherProjectId, assetId: asset.id, userId: fixture.ownerId,
-    })).rejects.toBeInstanceOf(NotFoundError);
+    expect(await listed(otherProjectId, fixture.ownerId)).toEqual([]);
     const second = await projectAssetReferenceService.recordProjectAssetReferences({
       projectId: otherProjectId, assetIds: [asset.id],
     });
     expect(first).toHaveLength(1);
     expect(second).toHaveLength(1);
     expect(first[0]!.id).not.toBe(second[0]!.id);
-    const resolved = await projectAssetReferenceService.resolveProjectAsset({
-      projectId: otherProjectId, assetId: asset.id, userId: fixture.ownerId,
-    });
-    expect(resolved).toMatchObject({ assetId: asset.id, projectReferenceId: second[0]!.id, fileUrl: asset.fileUrl });
+    expect(await listed(otherProjectId, fixture.ownerId)).toEqual([expect.objectContaining({ assetId: asset.id, projectReferenceId: second[0]!.id, fileUrl: asset.fileUrl })]);
     const ledger = await sql<{ id: string }[]>`SELECT id FROM studio_assets WHERE id = ${asset.id}`;
     expect(ledger).toEqual([{ id: asset.id }]);
   });
@@ -376,9 +380,6 @@ describe("Project registered asset references", () => {
     const foreignAsset = await seedAsset(foreign);
     await sql`INSERT INTO project_asset_refs (id, project_id, asset_id)
       VALUES (${randomUUID()}, ${fixture.projectId}, ${foreignAsset.id})`;
-    await expect(projectAssetReferenceService.resolveProjectAsset({
-      projectId: fixture.projectId, assetId: foreignAsset.id, userId: fixture.ownerId,
-    })).rejects.toBeInstanceOf(NotFoundError);
     expect(await projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: fixture.ownerId,
     })).toEqual({ items: [], nextCursor: null });
@@ -394,9 +395,7 @@ describe("Project registered asset references", () => {
       projectId: fixture.projectId, assetIds: [asset.id], displayNames: { [asset.id]: "Invite video.mp4" },
     });
     expect(await sql`SELECT user_id FROM studio_members WHERE user_id = ${viewerId}`).toEqual([]);
-    const resolved = await projectAssetReferenceService.resolveProjectAsset({
-      projectId: fixture.projectId, assetId: asset.id, userId: viewerId,
-    });
+    const [resolved] = await listed(fixture.projectId, viewerId);
     expect(resolved).toMatchObject({
       assetId: asset.id, projectReferenceId: refs[0]!.id, displayName: "Invite video.mp4",
       kind: "video", fileUrl: asset.fileUrl, coverUrl: null,
@@ -409,16 +408,13 @@ describe("Project registered asset references", () => {
     expect(page.nextCursor).toBeNull();
   });
 
-  it("refuses both single-asset and list reads to a non-member", async () => {
+  it("refuses the list read to a non-member", async () => {
     const fixture = await seedFixture();
     const outsiderId = await seedUser();
     const asset = await seedAsset(fixture);
     await projectAssetReferenceService.recordProjectAssetReferences({
       projectId: fixture.projectId, assetIds: [asset.id],
     });
-    await expect(projectAssetReferenceService.resolveProjectAsset({
-      projectId: fixture.projectId, assetId: asset.id, userId: outsiderId,
-    })).rejects.toBeInstanceOf(ForbiddenError);
     await expect(projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: outsiderId,
     })).rejects.toBeInstanceOf(ForbiddenError);
@@ -433,15 +429,9 @@ describe("Project registered asset references", () => {
     await projectAssetReferenceService.recordProjectAssetReferences({
       projectId: fixture.projectId, assetIds: [asset.id],
     });
-    const before = await projectAssetReferenceService.resolveProjectAsset({
-      projectId: fixture.projectId, assetId: asset.id, userId: viewerId,
-    });
-    expect(before.assetId).toBe(asset.id);
+    expect((await listed(fixture.projectId, viewerId)).map((item) => item.assetId)).toEqual([asset.id]);
     await sql`UPDATE project_members SET deleted_at = now()
       WHERE project_id = ${fixture.projectId} AND user_id = ${viewerId}`;
-    await expect(projectAssetReferenceService.resolveProjectAsset({
-      projectId: fixture.projectId, assetId: asset.id, userId: viewerId,
-    })).rejects.toBeInstanceOf(ForbiddenError);
     await expect(projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: viewerId,
     })).rejects.toBeInstanceOf(ForbiddenError);
@@ -455,15 +445,12 @@ describe("Project registered asset references", () => {
     });
     if (scope === "project") await sql`UPDATE projects SET deleted_at = now() WHERE id = ${fixture.projectId}`;
     else await sql`UPDATE studios SET deleted_at = now() WHERE id = ${fixture.studioId}`;
-    await expect(projectAssetReferenceService.resolveProjectAsset({
-      projectId: fixture.projectId, assetId: asset.id, userId: fixture.ownerId,
-    })).rejects.toBeInstanceOf(ForbiddenError);
     await expect(projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: fixture.ownerId,
     })).rejects.toBeInstanceOf(ForbiddenError);
   });
 
-  it.each(["asset", "reference"] as const)("excludes a soft-deleted %s from both read paths", async (scope) => {
+  it.each(["asset", "reference"] as const)("excludes a soft-deleted %s from the list", async (scope) => {
     const fixture = await seedFixture();
     const asset = await seedAsset(fixture);
     const refs = await projectAssetReferenceService.recordProjectAssetReferences({
@@ -471,9 +458,6 @@ describe("Project registered asset references", () => {
     });
     if (scope === "asset") await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${asset.id}`;
     else await sql`UPDATE project_asset_refs SET deleted_at = now() WHERE id = ${refs[0]!.id}`;
-    await expect(projectAssetReferenceService.resolveProjectAsset({
-      projectId: fixture.projectId, assetId: asset.id, userId: fixture.ownerId,
-    })).rejects.toBeInstanceOf(NotFoundError);
     const page = await projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: fixture.ownerId,
     });
@@ -489,32 +473,24 @@ describe("Project registered asset references", () => {
     });
     await sql`UPDATE studio_assets SET width = 1280, height = 720, duration_seconds = 7.375
       WHERE id = ${asset.id}`;
-    const input = { projectId: fixture.projectId, assetId: asset.id, userId: fixture.ownerId };
-    const resolved = await projectAssetReferenceService.resolveProjectAsset(input);
+    const [resolved] = await listed(fixture.projectId, fixture.ownerId);
     expect(resolved).toMatchObject({
       assetId: asset.id, fileUrl: asset.fileUrl, coverUrl: cover.fileUrl,
       width: 1280, height: 720, durationSeconds: 7.375,
     });
     await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${cover.id}`;
-    expect(await projectAssetReferenceService.resolveProjectAsset(input)).toMatchObject({
+    expect((await listed(fixture.projectId, fixture.ownerId))[0]).toMatchObject({
       assetId: asset.id, coverUrl: null, width: 1280, height: 720, durationSeconds: 7.375,
     });
   });
 
-  it("preserves unknown metadata as null for both list and single-asset reads", async () => {
+  it("preserves unknown metadata as null in the list", async () => {
     const fixture = await seedFixture();
     const asset = await seedAsset(fixture, { width: null, height: null, durationSeconds: null });
     await projectAssetReferenceService.recordProjectAssetReferences({
       projectId: fixture.projectId, assetIds: [asset.id],
     });
-    const resolved = await projectAssetReferenceService.resolveProjectAsset({
-      projectId: fixture.projectId, assetId: asset.id, userId: fixture.ownerId,
-    });
-    expect(resolved).toMatchObject({ assetId: asset.id, width: null, height: null, durationSeconds: null });
-    const page = await projectAssetReferenceService.listProjectMedia({
-      projectId: fixture.projectId, userId: fixture.ownerId,
-    });
-    expect(page.items).toEqual([resolved]);
+    expect(await listed(fixture.projectId, fixture.ownerId)).toEqual([expect.objectContaining({ assetId: asset.id, width: null, height: null, durationSeconds: null })]);
   });
 
   it("lists only live registered videos associated with the requested Project", async () => {

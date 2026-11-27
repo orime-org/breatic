@@ -40,7 +40,7 @@ import { corsUrl } from '@web/lib/cors-url';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
-  return { ...actual, timelineApi: { ...actual.timelineApi, listVideos: vi.fn(), resolveAsset: vi.fn(), limits: vi.fn() } };
+  return { ...actual, timelineApi: { ...actual.timelineApi, listVideos: vi.fn(), limits: vi.fn() } };
 });
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
@@ -69,7 +69,8 @@ const LOCAL_ASSET: ProjectRegisteredAsset = {
   displayName: 'Local video.mp4', fileUrl: 'https://cdn.example/registered-local.mp4',
 };
 const SOURCE: TimelineVideoSource = {
-  id: '10000000-0000-4000-8000-000000000001', kind: 'video', assetId: ASSET.assetId,
+  id: '10000000-0000-4000-8000-000000000001', kind: 'video', url: ASSET.fileUrl, coverUrl: ASSET.coverUrl,
+  name: 'Product launch.mp4', mimeType: 'video/mp4', width: 1280, height: 720,
   timebase: SETTINGS.fps, extentFrames: 48, durationSeconds: '2', durationOrigin: 'registered',
 };
 const CLIP: TimelineVideoClip = {
@@ -280,7 +281,9 @@ function previewVideo(clipId: string): HTMLVideoElement {
 function captureVideoElements(): HTMLVideoElement[] {
   const createElement = document.createElement.bind(document);
   const videos: HTMLVideoElement[] = [];
-  vi.spyOn(document, 'createElement').mockImplementation((tagName, options) => {
+  // One signature: the overloads also list Electron's <webview> once Playwright loads its types.
+  const doc = document as unknown as { createElement: (tagName: string, options?: ElementCreationOptions) => HTMLElement };
+  vi.spyOn(doc, 'createElement').mockImplementation((tagName, options) => {
     const element = createElement(tagName, options);
     if (element instanceof HTMLVideoElement) videos.push(element);
     return element;
@@ -314,7 +317,6 @@ beforeEach(() => {
   for (const fn of Object.values(toast)) if (vi.isMockFunction(fn)) fn.mockClear();
   useSpaceOperationsStore.setState({ operations: {} });
   vi.mocked(timelineApi.listVideos).mockReset().mockResolvedValue({ items: [ASSET], nextCursor: null });
-  vi.mocked(timelineApi.resolveAsset).mockReset().mockImplementation(async (_projectId, assetId) => assetId === LOCAL_ASSET.assetId ? LOCAL_ASSET : ASSET);
   vi.mocked(timelineApi.limits).mockReset().mockResolvedValue({
     defaults: SETTINGS, assets: { pageSize: 50, pageMax: 100 },
     webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000 },
@@ -450,9 +452,20 @@ describe('TimelineSpace registered-video placement', () => {
     expect(clip).toEqual({ ...CLIP, id: clip?.id, sourceId: sourceIdOf(clip) });
     expect(Object.values(data.sources)).toHaveLength(1);
     expect(data.sources[sourceIdOf(clip) ?? '']).toEqual({ ...SOURCE, id: sourceIdOf(clip) });
-    expect(JSON.stringify(data)).not.toContain(ASSET.fileUrl);
-    expect(JSON.stringify(data)).not.toContain(ASSET.coverUrl);
     expect(await screen.findByTestId('timeline-clip-' + clip?.id)).toBeInTheDocument();
+  });
+  it('names a video without a display name the same in the list and on its clip (inner#2171 visual round 1)', async () => {
+    vi.mocked(timelineApi.listVideos).mockResolvedValue({ items: [{ ...ASSET, displayName: null }], nextCursor: null });
+    seedContent();
+    showTimeline();
+    const dialog = await openMaterial();
+    const choice = await within(dialog).findByTestId('timeline-project-video-' + ASSET.assetId);
+    expect(choice).toHaveTextContent('registered-launch.mp4');
+    fireEvent.click(choice);
+    fireEvent.click(screen.getByTestId('timeline-confirm-material'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBe(null));
+    const clip = Object.values(layout().clips)[0];
+    expect(await screen.findByTestId('timeline-clip-' + clip?.id)).toHaveTextContent('registered-launch.mp4');
   });
   it('uses the selected explicit integer start frame on a sub track', async () => {
     seedLayout([]);
@@ -578,7 +591,6 @@ describe('TimelineSpace browser metadata boundary', () => {
     magnet(false);
     const asset = { ...ASSET, durationSeconds: null };
     vi.mocked(timelineApi.listVideos).mockResolvedValue({ items: [asset], nextCursor: null });
-    vi.mocked(timelineApi.resolveAsset).mockResolvedValue(asset);
     const videos = captureVideoElements();
     const doc = seedContent();
     const before = Y.encodeStateAsUpdate(doc);
@@ -2482,7 +2494,6 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
   // The area the preview is fitted into, 1px border included on each side: the 1920 x 1080 frame shows at 960 x 540
   // (breatic#1502 design §6.2).
   const AREA = { width: 962, height: 542 };
-  const SOURCE_B: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002', assetId: LOCAL_ASSET.assetId };
 
   beforeEach(() => {
     resetMoveableMock();
@@ -2535,20 +2546,6 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     fireEvent.pointerUp(hit, { ...init, buttons: 0 });
     fireEvent.mouseUp(hit, { ...init, buttons: 0 });
     fireEvent.click(hit, { ...init, buttons: 0 });
-  }
-
-  /**
-   * Press a control the way a mouse does.
-   * @param element - The control.
-   * @throws {Error} When a handler throws.
-   */
-  function mouseClick(element: Element): void {
-    const init = { button: 0, buttons: 1, isPrimary: true, pointerId: 1 };
-    fireEvent.pointerDown(element, init);
-    fireEvent.mouseDown(element, init);
-    fireEvent.pointerUp(element, { ...init, buttons: 0 });
-    fireEvent.mouseUp(element, { ...init, buttons: 0 });
-    fireEvent.click(element, { ...init, buttons: 0 });
   }
 
   /**
@@ -2874,23 +2871,6 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     expect(selectedOnTrack(X)).toBe('false');
     await handlesShown();
     // Selected from its track, the failed layer still gets no handles.
-    fireEvent.click(screen.getByTestId('timeline-clip-' + X));
-    expect(selectedOnTrack(X)).toBe('true');
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
-    expect(moveableMock.mounted).toBe(0);
-  });
-
-  it('selects nothing for a click on a video whose asset is still loading, and gives it no handles (§4.2)', async () => {
-    const pending = deferred<ProjectRegisteredAsset>();
-    vi.mocked(timelineApi.resolveAsset).mockImplementation(async (_projectId, assetId) => assetId === LOCAL_ASSET.assetId ? pending.promise : ASSET);
-    seedPipOwnAsset(false);
-    showTimeline();
-    const notes = await screen.findByTestId('timeline-preview-notes');
-    await waitFor(() => within(notes).getByTestId('timeline-preview-note-' + X));
-    clickPreview(PIP_CENTRE);
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
-    expect(selectedOnTrack(X)).toBe('false');
-    expect(screen.getByText(t('timeline.selectClip'))).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('timeline-clip-' + X));
     expect(selectedOnTrack(X)).toBe('true');
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });

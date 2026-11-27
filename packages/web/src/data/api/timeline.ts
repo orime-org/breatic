@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import type { ProjectAssetPage, ProjectRegisteredAsset, TimelineClientLimits, TimelineWebResolution } from '@breatic/shared';
+import type { ProjectAssetPage, TimelineClientLimits, TimelineWebResolution } from '@breatic/shared';
 import type { z } from 'zod';
 import type {
   WebAnimationExecutionRequestSchema, WebAnimationListGroup, WebAnimationListPage, WebAnimationListScope, WebAnimationRowView,
@@ -37,17 +37,6 @@ export const timelineApi = {
    */
   listVideos(projectId: string, cursor?: string, signal?: AbortSignal, kind: 'video' | 'image' | 'audio' = 'video'): Promise<ProjectAssetPage> {
     return apiGet(`/projects/${projectId}/assets`, { params: { kind, cursor }, signal });
-  },
-  /**
-   * Resolve a clip's fixed registered asset through current Project access.
-   * @param projectId - The Project whose relationship is required.
-   * @param assetId - The source's stable asset identity.
-   * @param signal - Cancellation for this read.
-   * @returns The current canonical media projection.
-   * @throws {ApiException} When the asset is unavailable or the request fails.
-   */
-  resolveAsset(projectId: string, assetId: string, signal?: AbortSignal): Promise<ProjectRegisteredAsset> {
-    return apiGet(`/projects/${projectId}/assets/${assetId}`, { signal });
   },
   /**
    * Read authorized creation defaults and asset paging settings.

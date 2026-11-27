@@ -2,80 +2,35 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as Y from "yjs";
-import { z } from "zod";
 import type { SpaceType } from "@shared/types/space.js";
 import { CANVAS_NODES_KEY } from "@shared/types/canvas-node.js";
 import { existingDocumentBodyFragment } from "@shared/document-body.js";
-import { timelineRecordJson } from "@shared/timeline/document.js";
-import { isTimelineSchemaVersion, TimelineSourceSchema } from "@shared/timeline/schema.js";
 
 const PHYSICAL_NODE_TYPES = new Set(["image", "audio", "video", "3d"]);
 const CANVAS_NODE_TYPES = new Set([...PHYSICAL_NODE_TYPES, "text", "web", "annotation", "group"]);
 const IMAGE_FIELDS = ["firstFrameUrl", "endFrameUrl", "characterImageUrl", "moodImageUrl"] as const;
 const VIDEO_FIELDS = ["drivingVideo", "sourceVideo", "soundVideo"] as const;
-/** A registered asset id as a 3D scene stores it. */
-const AssetIdSchema = z.string().uuid();
-
 const AUDIO_FIELDS = ["drivingAudio", "refAudio", "leftAudio", "rightAudio", "musicSong", "coverSong", "musicMelody", "musicVocal"] as const;
 
-/** Registered identities and physical-media URLs explicitly used by a Space. */
-export interface SpaceMediaReferences { assetIds: string[]; urls: string[] }
+/** Physical-media URLs explicitly used by a Space. */
+export interface SpaceMediaReferences { urls: string[] }
 
 /**
- * Read semantic media references without modifying the content document.
+ * Read semantic media references without modifying the content document. Only canvas and Document content is read:
+ * Timeline and 3D media are related to their Project where they enter it (inner#2171 design §5.5).
  * @param kind - The content document's actual Space kind.
  * @param doc - The actual loaded or captured document.
- * @returns Deduplicated identities and URLs in stored media fields.
+ * @returns Deduplicated URLs in stored media fields.
  * @throws {never} Never.
  */
 export function readSpaceMediaReferences(kind: SpaceType, doc: Y.Doc): SpaceMediaReferences {
-  const assetIds = new Set<string>();
   const urls = new Set<string>();
-  switch (kind) {
-    case "canvas":
-      readCanvasReferences(doc, urls);
-      break;
-    case "document": {
-      const body = existingDocumentBodyFragment(doc);
-      if (body !== undefined) readDocumentReferences(body, urls);
-      break;
-    }
-    case "timeline": {
-      if (!isTimelineSchemaVersion(existingMap(doc, "timeline")?.get("schemaVersion"))) break;
-      const sources = existingMap(doc, "sources");
-      if (sources === undefined) break;
-      for (const value of sources.values()) {
-        const parsed = TimelineSourceSchema.safeParse(timelineRecordJson(value));
-        if (parsed.success) assetIds.add(parsed.data.assetId);
-      }
-      break;
-    }
-    case "3d":
-      read3dReferences(doc, assetIds);
-      break;
+  if (kind === "canvas") readCanvasReferences(doc, urls);
+  if (kind === "document") {
+    const body = existingDocumentBodyFragment(doc);
+    if (body !== undefined) readDocumentReferences(body, urls);
   }
-  return { assetIds: [...assetIds].sort(), urls: [...urls].sort() };
-}
-
-/**
- * Read a 3D scene's registered assets: each object record's imported model and its part pictures, stored as the
- * `model` value and `look.<part>.map` keys (packages/shared/src/scene.ts). The keys are read here directly, so this
- * subpath does not take in the scene module the main entry gives web.
- * @param doc - The scene document.
- * @param assetIds - Where found ids are added.
- * @throws {never} Never.
- */
-function read3dReferences(doc: Y.Doc, assetIds: Set<string>): void {
-  const objects = existingMap(doc, "objects");
-  if (objects === undefined) return;
-  for (const record of objects.values()) {
-    if (!(record instanceof Y.Map)) continue;
-    const model = record.get("model") as { kind?: unknown; assetId?: unknown } | undefined;
-    if (model?.kind === "asset" && AssetIdSchema.safeParse(model.assetId).success) assetIds.add(model.assetId as string);
-    for (const [key, value] of record.entries()) {
-      if (key.startsWith("look.") && key.endsWith(".map") && AssetIdSchema.safeParse(value).success) assetIds.add(value as string);
-    }
-  }
+  return { urls: [...urls].sort() };
 }
 
 /**

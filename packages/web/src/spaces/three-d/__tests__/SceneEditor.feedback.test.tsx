@@ -27,7 +27,6 @@ vi.mock('@web/data/api/scene', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/scene')>()),
   listSpaceTasks: vi.fn(async () => ({ serverNow: new Date().toISOString(), tasks: [] })),
   getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1, import: IMPORT_LIMITS })),
-  resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary', sizeBytes: 100 })),
 }));
 vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: (props: SceneViewportProps): React.JSX.Element => { viewportInputs(props); return <div data-testid='scene-viewport-boundary' />; },
@@ -124,7 +123,7 @@ describe('scene command failure feedback (inner#1724)', () => {
     await screen.findByTestId('scene-tasks-panel');
     const next = viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps;
     expect(next.objects[0].name).toBe('Peer name');
-    for (const key of ['onSelect', 'onGestureStart', 'onGestureChange', 'onGestureEnd', 'onViewChange', 'onError', 'onModelStateChange', 'resolveAsset'] as const) {
+    for (const key of ['onSelect', 'onGestureStart', 'onGestureChange', 'onGestureEnd', 'onViewChange', 'onError', 'onModelStateChange'] as const) {
       expect(next[key]).toBe(initial[key]);
     }
     act(() => { initial.onSelect(null, false); });

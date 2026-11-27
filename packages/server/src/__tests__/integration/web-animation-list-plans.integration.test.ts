@@ -15,8 +15,9 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { db, initCore, loadLocales } from "@breatic/core";
 import { sql as drizzleSql } from "drizzle-orm";
-import * as webAnimationListRepo from "@server/modules/web-animation/web-animation-grants.repo.js";
-import type { ListScope } from "@server/modules/web-animation/web-animation-grants.repo.js";
+import { webAnimationGrantRepo as webAnimationListRepo } from "@breatic/domain";
+
+type ListScope = webAnimationListRepo.ListScope;
 
 let pg: ReturnType<typeof postgres>;
 const ROWS = 600;

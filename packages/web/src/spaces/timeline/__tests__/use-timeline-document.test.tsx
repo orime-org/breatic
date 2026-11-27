@@ -16,7 +16,12 @@ const SETTINGS = { width: 1920, height: 1080, fps: { num: 24, den: 1 } };
 const SOURCE: TimelineVideoSource = {
   id: '10000000-0000-4000-8000-000000000001',
   kind: 'video',
-  assetId: '20000000-0000-4000-8000-000000000001',
+  url: 'https://cdn.example/assets/clip.mp4',
+  coverUrl: null,
+  name: 'clip.mp4',
+  mimeType: 'video/mp4',
+  width: 1920,
+  height: 1080,
   timebase: SETTINGS.fps,
   extentFrames: 48,
   durationSeconds: '2',

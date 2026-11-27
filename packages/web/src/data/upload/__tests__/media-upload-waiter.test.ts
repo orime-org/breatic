@@ -44,7 +44,8 @@ function ticket(extra: Partial<UploadTicket> & { taskId?: string } = {}): Upload
 function completed(key: string): Extract<UploadStatus, { state: 'completed' }> {
   return {
     key, state: 'completed',
-    result: { assetId: `asset-${key}`, fileUrl: `https://assets.example.test/${key}`, kind: 'image', width: 64, height: 48 },
+    result: { assetId: `asset-${key}`, fileUrl: `https://assets.example.test/${key}`, kind: 'image', width: 64, height: 48,
+      coverUrl: null, durationSeconds: null, mimeType: 'image/png', sizeBytes: 1024 },
   };
 }
 
@@ -176,7 +177,8 @@ describe('taking the registration back', () => {
 
 describe('answers that move no bytes', () => {
   it('J-09 a copy the studio already holds registers nothing', async () => {
-    const d = deps({ alreadyExists: true, assetId: 'a-old', fileUrl: 'https://assets.example.test/old.png', kind: 'image', width: 1, height: 1 });
+    const d = deps({ alreadyExists: true, assetId: 'a-old', fileUrl: 'https://assets.example.test/old.png', kind: 'image', width: 1, height: 1,
+      coverUrl: null, durationSeconds: null, mimeType: 'image/png', sizeBytes: 1024 });
     const before = waitingUploadKeys().length;
     await runMediaUpload(FILE, CONTEXT, d);
     expect(waitingUploadKeys()).toHaveLength(before);

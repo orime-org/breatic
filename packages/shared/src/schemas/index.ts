@@ -21,6 +21,8 @@ export {
   STUDIO_SLUG_BOUNDS,
   loginSchema,
   googleAuthSchema,
+  desktopHandoffSchema,
+  desktopExchangeSchema,
   chatMessageSchema,
   spaceRequestInputSchema,
   sharedSpaceSchema,

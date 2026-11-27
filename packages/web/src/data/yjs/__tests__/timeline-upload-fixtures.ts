@@ -22,6 +22,10 @@ export const UPLOAD_SECONDS = 2.5;
 export const UPLOAD_FRAMES = 60;
 /** The asset the upload registers as. */
 export const ASSET_ID = '20000000-0000-4000-8000-0000000000a1';
+/** Where each kind of registered upload is stored, and its cover when it is a video (inner#2171). */
+export const MEDIA_URL = { video: 'https://cdn.example/beach.mp4', image: 'https://cdn.example/beach.png', audio: 'https://cdn.example/beach.mp3' } as const;
+export const COVER_URL = 'https://cdn.example/beach.jpg';
+const MEDIA_TYPE = { video: 'video/mp4', image: 'image/png', audio: 'audio/mpeg' } as const;
 
 /**
  * A placeholder clip of an upload.
@@ -78,16 +82,21 @@ export function addUpload(clip: TimelineUploadClip, placement: TimelineEditPlace
  */
 export function completedUpload(durationSeconds: number | null, kind: 'video' | 'image' | 'audio' = 'video', uploadId = UPLOAD_ID): {
   type: 'timeline-upload'; docName: string; uploadId: string; state: 'completed';
-  result: { assetId: string; kind: 'video' | 'image' | 'audio'; durationSeconds: number | null; width: number | null; height: number | null };
+  result: {
+    kind: 'video' | 'image' | 'audio'; url: string; coverUrl: string | null; mimeType: string; durationSeconds: number | null; width: number | null; height: number | null;
+  };
 } {
   return {
     type: 'timeline-upload', docName: 'project-p/timeline', uploadId, state: 'completed',
-    result: { assetId: ASSET_ID, kind, durationSeconds: kind === 'image' ? null : durationSeconds, width: 1920, height: 1080 },
+    result: {
+      kind, url: MEDIA_URL[kind], coverUrl: kind === 'video' ? COVER_URL : null, mimeType: MEDIA_TYPE[kind],
+      durationSeconds: kind === 'image' ? null : durationSeconds, width: kind === 'audio' ? null : 1920, height: kind === 'audio' ? null : 1080,
+    },
   };
 }
 
 /**
- * What `timelineApi.resolveAsset` answers for the registered upload.
+ * The registered upload as the Project media list holds it.
  * @param durationSeconds - The registered duration; null when the server could not read one.
  * @param fields - Overrides such as `kind`.
  * @returns The asset.

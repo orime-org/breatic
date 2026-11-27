@@ -1,14 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-/** Part picture sizes (inner#1693 design 3.5): read from file headers, cached per asset, one set per Project. */
+/** Part picture sizes (inner#1693 design 3.5): read from file headers, cached per address, one set per Project. */
 
 import { describe, expect, it, vi } from 'vitest';
 
 import * as sizeModule from '@web/spaces/three-d/look-picture-size';
 
 const CAP = 8 * 1024 * 1024;
-const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const A = 'https://assets.example.test/a.png';
 
 /** A PNG header for a picture of this size: signature, IHDR length, type, width, height. */
 function pngHeader(width: number, height: number): Uint8Array<ArrayBuffer> {
@@ -19,22 +19,21 @@ function pngHeader(width: number, height: number): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-/** A resolver and a stream serving a PNG header, recording whether the stream was cancelled. */
-function deps(width = 512, height = 256): { resolve: ReturnType<typeof vi.fn>; open: ReturnType<typeof vi.fn>; cancelled: () => boolean } {
+/** A stream serving a PNG header, recording whether the stream was cancelled. */
+function deps(width = 512, height = 256): { open: ReturnType<typeof vi.fn>; cancelled: () => boolean } {
   let cancelled = false;
   const stream = (): ReadableStream<Uint8Array> => new ReadableStream({
     pull(controller) { controller.enqueue(pngHeader(width, height)); },
     cancel() { cancelled = true; },
   });
   return {
-    resolve: vi.fn(async () => 'https://assets.example.test/a.png'),
     open: vi.fn(async () => stream()),
     cancelled: () => cancelled,
   };
 }
 
 describe('LookPictureSizes', () => {
-  it('reads a size from the file header, stops the download there and caches it per asset', async () => {
+  it('reads a size from the file header, stops the download there and caches it per address', async () => {
     const d = deps(512, 256);
     const sizes = new sizeModule.LookPictureSizes(d);
     expect(await sizes.size(A, CAP)).toEqual({ width: 512, height: 256, type: 'png' });
@@ -60,11 +59,10 @@ describe('LookPictureSizes', () => {
 });
 
 describe('page picture access', () => {
-  it('hands the panel and the lazy viewport the same sizes for a Project, and other sizes for another', () => {
-    const access = sizeModule.pageLookPictureAccess('project-a');
-    expect(sizeModule.pageLookPictureAccess('project-a')).toBe(access);
-    expect(sizeModule.pageLookPictureSizes('project-a')).toBe(access.sizes);
-    expect(sizeModule.pageLookPictureSizes('project-b')).not.toBe(access.sizes);
+  it('hands the panel and the lazy viewport the same sizes, so each address is read once on the page', () => {
+    const access = sizeModule.pageLookPictureAccess();
+    expect(sizeModule.pageLookPictureAccess()).toBe(access);
+    expect(sizeModule.pageLookPictureSizes()).toBe(access.sizes);
   });
 });
 

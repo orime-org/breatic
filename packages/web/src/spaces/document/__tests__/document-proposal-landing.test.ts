@@ -15,6 +15,8 @@ import { Awareness } from 'y-protocols/awareness';
 import { deriveId, type DocumentProposal } from '@breatic/shared';
 
 import { assetsApi } from '@web/data/api/assets';
+import { _resetForTests, getDoc } from '@web/data/yjs/manager';
+import { canvasApi } from '@web/data/api/canvas';
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { commentsOn } from '@web/spaces/document/document-comment-extension';
 import {
@@ -29,6 +31,7 @@ import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 afterEach(() => {
   _resetDocumentEditorCacheForTests();
+  _resetForTests();
   document.body.innerHTML = '';
 });
 
@@ -36,11 +39,14 @@ afterEach(() => {
  * A mounted document holding some Markdown, with comments and undo wired the
  * way a document Space gets them.
  * @param markdown - What it holds.
+ * @param inProject - Whether the body is open as a Space of a Project.
  * @returns The handle.
  */
-async function open(markdown: string): Promise<DocumentEditorHandle> {
-  const doc = new Y.Doc();
-  const handle = getDocumentEditor(doc, `project-p/document-${String(Math.random())}`, {
+async function open(markdown: string, inProject = false): Promise<DocumentEditorHandle> {
+  const name = `project-p/document-${String(Math.random())}`;
+  // A body open in this tab, as a Space is, names its Project through the document manager.
+  const doc = inProject ? getDoc(name) : new Y.Doc();
+  const handle = getDocumentEditor(doc, name, {
     caretProvider: { awareness: new Awareness(doc) },
     readWho: () => ({ role: 'editor', viewerId: 'user-1' }),
     editable: true,
@@ -422,12 +428,14 @@ describe('a proposal of nothing but outside media (inner#1509, design §5.7)', (
   });
 });
 
-describe('our own media in a proposal (review round 4)', () => {
-  it('lands once our address is known, even when it was not known yet at the press', async () => {
-    const ours = 'https://cdn.example/';
+describe('our own media in a proposal (review round 4; inner#2171 design §5.2)', () => {
+  const ours = 'https://cdn.example/';
+
+  it('lands our media on the address paste answers for this Project, once our address is known', async () => {
     const spy = vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({ assetUrlPrefix: ours } as never);
+    const paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: { [`${ours}a.png`]: `${ours}a-copy.png` }, media: {} } as never);
     try {
-      const handle = await open('One.');
+      const handle = await open('One.', true);
 
       await landProposal(
         handle,
@@ -436,11 +444,38 @@ describe('our own media in a proposal (review round 4)', () => {
         () => ({ available: true, writeAccess: 'granted' }),
       );
 
+      expect(paste).toHaveBeenCalledTimes(1);
+      expect(paste.mock.calls[0]![0]).toMatchObject({ urls: [`${ours}a.png`], pairs: [], history: [] });
       const images = (handle.editor.document as Array<{ type: string; props: { url?: string } }>).filter((b) => b.type === 'image');
-      expect(images.map((b) => b.props.url)).toEqual([`${ours}a.png`]);
+      expect(images.map((b) => b.props.url)).toEqual([`${ours}a-copy.png`]);
     } finally {
       spy.mockRestore();
+      paste.mockRestore();
     }
+  });
+
+  it('writes nothing and says it failed when paste is refused', async () => {
+    const spy = vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({ assetUrlPrefix: ours } as never);
+    const paste = vi.spyOn(canvasApi, 'paste').mockRejectedValue(new Error('offline'));
+    try {
+      const handle = await open('One.', true);
+
+      const result = await landProposal(handle, proposalOn(handle, 0, { body: `![own](${ours}a.png)` }), 'write', () => ({ available: true, writeAccess: 'granted' }));
+
+      expect(result).toEqual({ outcome: 'failed' });
+      expect(blocks(handle).map((b) => b.text)).toEqual(['One.']);
+    } finally {
+      spy.mockRestore();
+      paste.mockRestore();
+    }
+  });
+
+  it('asks paste nothing for a proposal holding no media of ours', async () => {
+    const paste = vi.spyOn(canvasApi, 'paste');
+    const handle = await open('One.');
+    await landProposal(handle, proposalOn(handle, 0, { body: 'Two.' }), 'write', () => ({ available: true, writeAccess: 'granted' }));
+    expect(paste).not.toHaveBeenCalled();
+    paste.mockRestore();
   });
 });
 

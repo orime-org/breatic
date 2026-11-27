@@ -9,7 +9,6 @@ import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 
 const projectAssets = new Hono<{ Variables: AuthVariables }>();
 const projectParams = z.object({ projectId: z.uuid() });
-const assetParams = projectParams.extend({ assetId: z.uuid() });
 const mediaQuery = z.object({
   kind: z.enum(["image", "video", "audio"]).default("video"),
   cursor: z.string().min(1).max(512).optional(),
@@ -21,12 +20,6 @@ projectAssets.get("/:projectId/assets", requireAuth, validate("param", projectPa
   const { kind, cursor, limit } = c.req.valid("query");
   const page = await projectAssetReferenceService.listProjectMedia({ projectId, userId: c.get("user").id, kind, cursor, limit });
   return c.json({ data: page });
-});
-
-projectAssets.get("/:projectId/assets/:assetId", requireAuth, validate("param", assetParams), async (c) => {
-  const { projectId, assetId } = c.req.valid("param");
-  const asset = await projectAssetReferenceService.resolveProjectAsset({ projectId, assetId, userId: c.get("user").id });
-  return c.json({ data: asset });
 });
 
 projectAssets.get("/:projectId/timeline-limits", requireAuth, validate("param", projectParams), async (c) => {

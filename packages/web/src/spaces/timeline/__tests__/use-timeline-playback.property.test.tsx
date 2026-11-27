@@ -330,7 +330,12 @@ function timelineDocument(lanes: readonly LaneSpec[]): TimelineDocumentV1 {
   const sources: TimelineVideoSource[] = lanes.map((_, index) => ({
     id: `10000000-0000-4000-8000-00000000000${index + 1}`,
     kind: 'video',
-    assetId: `20000000-0000-4000-8000-00000000000${index + 1}`,
+    url: `https://cdn.example/assets/lane-${index + 1}.mp4`,
+    coverUrl: null,
+    name: `lane-${index + 1}.mp4`,
+    mimeType: 'video/mp4',
+    width: 1920,
+    height: 1080,
     timebase: { num: FPS, den: 1 },
     // The registered duration covers every clip; the element's own duration decides the tail (#1410 design §6.3).
     extentFrames: 2400,
@@ -377,7 +382,7 @@ function renderPlayback(document: TimelineDocumentV1, lanes: readonly LaneSpec[]
     const layersNow = Object.values(view.clips)
       .filter((clip) => frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - PREMOUNT_FRAMES)
       .sort((a, b) => (a.trackId === 'visual-1' ? 0 : 1) - (b.trackId === 'visual-1' ? 0 : 1))
-      .map((clip) => ({ clipId: clip.id, fileUrl: `https://cdn.test/${clip.id}.mp4`, coverUrl: null, state: 'ready' as const }));
+      .map((clip) => ({ clipId: clip.id, fileUrl: `https://cdn.test/${clip.id}.mp4`, coverUrl: null }));
     const signature = JSON.stringify(layersNow);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the layer set changes only when its content does.
     const videoLayers = React.useMemo(() => layersNow, [signature]);

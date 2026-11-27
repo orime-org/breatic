@@ -5,7 +5,8 @@ Breatic itself is distributed under the Breatic Source-Available License 2.0
 licence each one carries, and where to obtain its source.
 
 A component is listed here when we distribute it — in a published container
-image, or inside a front-end bundle served to a browser. Components used only
+image, inside a front-end bundle served to a browser, or in a desktop client
+installer. Components used only
 to build or test Breatic are listed separately at the end, because copyleft
 obligations attach to distribution.
 
@@ -14,7 +15,8 @@ package in the front-end bundle and the text of every licence, is served
 beside the bundle at `/third-party-licences.txt`. The attribution for the built-in
 3D figure and the pose bone names is served at `/model-import-third-party-licences.txt`,
 and the one for the film styles of the generation templates at
-`/template-styles-third-party-licences.txt`.
+`/template-styles-third-party-licences.txt`. The desktop client's installers
+carry their own list; see [the desktop client installers](#the-desktop-client-installers).
 
 ## Programs in our container images
 
@@ -419,6 +421,24 @@ it.
 | Package | Version | Reached through | Licence | Source |
 |---|---|---|---|---|
 | `pako` | `1.0.11` | `mammoth` → `jszip` | **MIT AND Zlib** — its own code under MIT, the parts ported from zlib under Zlib. Both ask only that the notice travel along | https://github.com/nodeca/pako |
+
+## The desktop client installers
+
+The desktop client (`packages/desktop`) is packaged with Electron for macOS,
+Windows and Linux. Each installer carries Electron's licence
+(`LICENSE.electron.txt`) and the licences of everything Chromium bundles
+(`LICENSES.chromium.html`), in the app's resources folder on macOS and next to
+the executable on Windows and Linux. In the resources folder on every platform
+it carries the machine-generated list of the npm packages in the client's main
+process with their licence texts (`third-party-licences.txt`, generated into
+`packages/desktop/resources/third-party-licences.txt`).
+
+| Component | Version | Licence | Source |
+|---|---|---|---|
+| Electron | `45.3.2` | **MIT** | https://github.com/electron/electron |
+| Chromium, inside Electron | `156.0.8078.100` | **BSD-3-Clause** and the licences of the components it bundles, listed in `LICENSES.chromium.html` | https://chromium.googlesource.com/chromium/src |
+| Node.js, inside Electron | `24.22.2` | **MIT** | https://github.com/nodejs/node |
+| FFmpeg, inside Electron | Chromium's FFmpeg at that Chromium version | **LGPL-2.1-or-later**; built without the optional GPL parts. It ships as its own shared library (`libffmpeg.dylib`, `ffmpeg.dll`, `libffmpeg.so`), so it can be replaced | https://chromium.googlesource.com/chromium/third_party/ffmpeg |
 
 ## Reported as production, not distributed
 

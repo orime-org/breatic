@@ -19,7 +19,6 @@ import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-la
 import { formatTimelineTimecode } from '@web/spaces/timeline/timeline-timecode';
 import { timelineClipKind, timelineClipName } from '@web/spaces/timeline/timeline-clip-name';
 import { TIMELINE_TRACK_HEADER_PX, timelineRulerStep } from '@web/spaces/timeline/timeline-zoom';
-import { timelineMediaProblem, useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 import { timelineUploadText, type TimelineUploadView } from '@web/spaces/timeline/use-timeline-upload-views';
 
 const DRAG_ACTIVATION_PX = 3;
@@ -68,7 +67,6 @@ export interface TimelineWebClipView {
 
 /** What the track area needs from the editor. */
 interface TimelineTrackAreaProps {
-  projectId: string;
   /** The page's view document (inner#1709). */
   document: TimelineDocumentV1;
   labels: TimelineTrackLabels;
@@ -98,9 +96,9 @@ interface Gesture { mode: TimelineGestureMode; clipId: string; preview: Timeline
 
 /** One clip on its track row. */
 interface ClipProps {
-  projectId: string;
   clip: TimelineClipRecord;
-  assetId: string;
+  /** A video, picture or sound's source name; null when its source is gone. */
+  sourceName: string | null;
   webView: TimelineWebClipView | undefined;
   uploadView: TimelineUploadView | undefined;
   selected: boolean;
@@ -131,9 +129,8 @@ function TrimHandle({ clipId, mode }: { clipId: string; mode: 'trim-start' | 'tr
 /**
  * One placed clip: click selects, drag moves, the selected clip shows trim handles.
  * @param props - The clip and its state.
- * @param props.projectId - The authorizing Project.
  * @param props.clip - The placement.
- * @param props.assetId - Its registered asset.
+ * @param props.sourceName - A video's source name, or null when its source is gone.
  * @param props.webView - What a web-animation copy shows.
  * @param props.uploadView - What an upload placeholder shows.
  * @param props.selected - Whether it is selected.
@@ -146,19 +143,19 @@ function TrimHandle({ clipId, mode }: { clipId: string; mode: 'trim-start' | 'tr
  * @returns The clip.
  * @throws {never} Never.
  */
-const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId, webView, uploadView, selected, elementFailed, dragging, readOnly, pixelsPerFrame, fps, onSelect }: ClipProps): React.JSX.Element {
+const TimelineClip = React.memo(function TimelineClip({ clip, sourceName, webView, uploadView, selected, elementFailed, dragging, readOnly, pixelsPerFrame, fps, onSelect }: ClipProps): React.JSX.Element {
   const t = useTranslation();
-  const asset = useTimelineAsset(projectId, assetId);
   const isWeb = clip.kind === 'web-animation';
   const kind = timelineClipKind(clip);
   const upload = clip.kind === 'upload' ? uploadView ?? null : null;
-  const name = timelineClipName(clip, { assetName: asset.data?.displayName ?? null, webTitle: webView?.title ?? null }, t);
-  const problem = assetId === '' ? null : timelineMediaProblem(asset, elementFailed);
+  const name = timelineClipName(clip, { assetName: sourceName, webTitle: webView?.title ?? null }, t);
+  // Media is read straight from its stored address, so the only way it cannot be read is its element failing (inner#2171).
+  const problem = elementFailed ? 'readFailed' as const : null;
   const status = isWeb && (webView?.state === 'pending' || webView?.state === 'failed') ? webView.status : null;
   const phase = status === 'running' ? webView?.phase ?? null : null;
   // A failure's reason, which names the file, is read in the properties; the track keeps the short status.
   const detail = upload !== null ? upload.state === 'failed' ? t('timeline.upload.failed') : timelineUploadText(t, upload, name)
-    : problem !== null ? t(problem === 'forbidden' ? 'timeline.media.forbidden' : 'timeline.media.readFailed', { kind })
+    : problem !== null ? t('timeline.media.readFailed', { kind })
       : status === null ? formatTimelineTimecode(clip.durationFrames, fps)
         : phase === null ? t(`timeline.webAnimation.status.${status}`) : `${t(`timeline.webAnimation.status.${status}`)} · ${t(`timeline.webAnimation.phase.${phase}`)}`;
   const failedCopy = (isWeb && webView?.state === 'failed') || upload?.state === 'failed';
@@ -244,7 +241,7 @@ function previewOf(view: DragView, data: { mode: TimelineGestureMode; clipId: st
  * @throws {never} Never.
  */
 export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Element {
-  const { projectId, document, labels, failedIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, web, webClips, uploads, onSelect, onSeek, onCommit, onVanished, onDraggingChange, viewportRef } = props;
+  const { document, labels, failedIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, web, webClips, uploads, onSelect, onSeek, onCommit, onVanished, onDraggingChange, viewportRef } = props;
   const t = useTranslation();
   const [gesture, setGesture] = React.useState<Gesture | null>(null);
   const cancelled = React.useRef(false);
@@ -360,7 +357,7 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
               {!isMain && !readOnly && clips.length === 0 && <DeleteTrackButton trackId={track.id} placement={placement} onCommit={onCommit} />}
             </div>
             <div data-testid={`timeline-lane-${track.id}`} className='relative flex-1' onPointerDown={clearOnBlank}>
-              {clips.map((clip) => <TimelineClip key={clip.id} projectId={projectId} clip={clip} assetId={timelineClipSource(document.sources, clip)?.assetId ?? ''}
+              {clips.map((clip) => <TimelineClip key={clip.id} clip={clip} sourceName={timelineClipSource(document.sources, clip)?.name ?? null}
                 webView={webClips.get(clip.id)} uploadView={uploads.get(clip.id)} selected={selectedId === clip.id} elementFailed={failedIds.has(clip.id)} dragging={gesture?.clipId === clip.id && preview !== null}
                 readOnly={readOnly} pixelsPerFrame={pixelsPerFrame} fps={document.settings.fps} onSelect={onSelect} />)}
               {showGhost && preview !== null && <>

@@ -20,11 +20,11 @@ import { timelineApi } from '@web/data/api/timeline';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
+import { timelineVideoName } from '@web/spaces/timeline/prepare-media-placement';
 import { timelineClipName } from '@web/spaces/timeline/timeline-clip-name';
 import type { TimelineMediaDraft } from '@web/spaces/timeline/timeline-media-draft';
 import type { TimelineUploadKind } from '@web/spaces/timeline/timeline-uploads';
 import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
-import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 
 /** A visible view of the document-owned material workflow. */
 interface TimelineMaterialDialogProps {
@@ -62,7 +62,7 @@ function ProjectVideoChoice({ asset, selected, disabled, onSelect }: ProjectVide
     {asset.kind === 'audio' ? <Music className='size-10 shrink-0 text-muted-foreground' />
       : asset.coverUrl === null ? <Film className='size-10 shrink-0 text-muted-foreground' /> : <img src={asset.coverUrl} alt='' className='h-10 w-16 shrink-0 rounded-content-xs object-cover' />}
     <span className='flex min-w-0 flex-1 flex-col gap-1'>
-      <span className='min-w-0 truncate leading-normal'>{asset.displayName || t('timeline.video', { kind: asset.kind })}</span>
+      <span className='min-w-0 truncate leading-normal'>{timelineVideoName(asset) ?? t('timeline.video', { kind: asset.kind })}</span>
       {asset.kind === 'image'
         ? asset.width !== null && asset.height !== null && <span className='text-xs tabular-nums text-muted-foreground'>{t('timeline.material.size', { width: asset.width, height: asset.height })}</span>
         : <span className='text-xs text-muted-foreground'>{asset.durationSeconds === null ? t('timeline.material.durationPending') : t('timeline.material.duration', { seconds: asset.durationSeconds })}</span>}
@@ -111,9 +111,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
   const mainClips = React.useMemo(() => orderedTimelineClips(document.clips, TIMELINE_MAIN_TRACK_ID), [document.clips]);
   const showsHint = placement.magnet && state.trackId === TIMELINE_MAIN_TRACK_ID && Number.isSafeInteger(startFrame) && startFrame >= 0;
   const before = showsHint ? mainClips[timelineInsertionIndex(mainClips, startFrame) - 1] : undefined;
-  const beforeAssetId = before === undefined ? '' : timelineClipSource(document.sources, before)?.assetId ?? '';
-  const beforeAsset = useTimelineAsset(projectId, beforeAssetId);
-  const beforeName = before === undefined ? '' : timelineClipName(before, { assetName: beforeAsset.data?.displayName ?? null, webTitle: null }, t);
+  const beforeName = before === undefined ? '' : timelineClipName(before, { assetName: timelineClipSource(document.sources, before)?.name ?? null, webTitle: null }, t);
   const trackKnown = state.trackId === 'new' || document.tracks[state.trackId] !== undefined;
   return <Dialog open onOpenChange={changeOpen}>
     <DialogContent onCloseAutoFocus={returnFocus} className='flex h-[min(36rem,85vh)] flex-col gap-0 p-0'>

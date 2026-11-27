@@ -73,6 +73,17 @@ describe('Button loading', () => {
     expect(el).toHaveClass('opacity-50', 'cursor-not-allowed');
   });
 
+  it('lets classes from the caller replace the faded look, for a wait whose label is the instruction to read', () => {
+    render(
+      <Button loading className='opacity-100'>
+        Continue in your browser
+      </Button>,
+    );
+    const el = screen.getByRole('button', { name: 'Continue in your browser' });
+    expect(el).toHaveClass('opacity-100', 'cursor-not-allowed');
+    expect(el).not.toHaveClass('opacity-50');
+  });
+
   it('puts a spinner before the label when there is no icon', () => {
     render(<Button loading>Save</Button>);
     const el = screen.getByRole('button');

@@ -348,7 +348,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      */
     function advanceSeek(lane: MediaLane): void {
       const element = lane.element;
-      if (!lane.awaitingSeek || element.readyState < 1 || lane.layer.fileUrl === null) return;
+      if (!lane.awaitingSeek || element.readyState < 1) return;
       try {
         if (!lane.seekAssigned) {
           lane.seekAssigned = true;
@@ -371,7 +371,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      */
     function ready(lane: MediaLane): boolean {
       const element = lane.element;
-      if (lane.layer.state !== 'ready' || lane.layer.fileUrl === null || lane.fresh || lane.awaitingSeek) return false;
+      if (lane.fresh || lane.awaitingSeek) return false;
       if (inTail(lane)) {
         // At the file end HAVE_FUTURE_DATA is never reached (#1410 design §6.3).
         return atFileEnd(element) && (element.ended || element.readyState >= 2);

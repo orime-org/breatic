@@ -882,7 +882,7 @@ describe('planTimelineEdit leaves sources to the writer (inner#1708 Q1)', () => 
 
   it('adds a new source and keeps a stored one unchanged for every kind of edit', () => {
     const current = timeline([clip(A, MAIN, 0, 48), clip(X, V2, 100, 20, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE, SHORT_SOURCE]);
-    const fresh = { ...SOURCE, id: '10000000-0000-4000-8000-000000000099', assetId: '20000000-0000-4000-8000-000000000099' };
+    const fresh = { ...SOURCE, id: '10000000-0000-4000-8000-000000000099', url: 'https://cdn.example/assets/fresh-99.mp4' };
     for (const command of [
       split(A, 10, cid(40), ON), duplicate(X, cid(41), OFF), remove(A, ON), move(X, 300, OFF), setRange(X, 100, 0, 10, OFF),
       addVideo(clip(cid(42), V2, 400, 10), OFF),

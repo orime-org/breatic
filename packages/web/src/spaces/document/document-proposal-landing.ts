@@ -19,16 +19,17 @@
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 import { yUndoPluginKey } from 'y-prosemirror';
-import { occurrences, type DocumentProposal } from '@breatic/shared';
+import { occurrences, parseDocName, type DocumentProposal } from '@breatic/shared';
 
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
+import { canvasApi } from '@web/data/api/canvas';
 import { docNameOf } from '@web/data/yjs/manager';
 import { checkAdd, type SpaceRefusal } from '@web/data/yjs/space-write';
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { blockPlainRuns, blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { commentOn, type CommentAim } from '@web/spaces/document/document-comment-post';
 import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
-import { ourMediaPrefixReady, ownMediaOnly, type WrittenBlock } from '@web/spaces/document/document-external-media';
+import { mediaUrlsOf, ourMediaPrefixReady, ownMediaOnly, withMediaUrls, type WrittenBlock } from '@web/spaces/document/document-external-media';
 import { threadRangesByThread } from '@web/spaces/document/document-comment-ranges';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import { markdownBlocks, type MarkdownBlock } from '@web/spaces/document/document-markdown';
@@ -314,16 +315,23 @@ function withinBodyLevels(blocks: readonly WrittenBlock[]): WrittenBlock[] {
 
 /**
  * Markdown read into the blocks a write puts into the body: outside media
- * left out the way a paste leaves them out, headings brought within the
- * body's levels. Only new payload data; target checks wait for the
- * synchronous commit.
+ * left out the way a paste leaves them out, our media registered for this
+ * Project through the paste request and written on the addresses it answers
+ * (inner#2171 design §5.2), headings brought within the body's levels. Only
+ * new payload data; target checks wait for the synchronous commit.
  * @param markdown - What is about to be written.
+ * @param projectId - The Project the body belongs to, or null when the body is not open in this tab.
  * @returns Its filtered blocks and omitted media count.
- * @throws {Error} If Markdown parsing fails.
+ * @throws {Error} If Markdown parsing fails, or our media cannot be registered.
  */
-async function prepareWrittenBlocks(markdown: string): Promise<{ blocks: WrittenBlock[]; leftOut: number }> {
+async function prepareWrittenBlocks(markdown: string, projectId: string | null): Promise<{ blocks: WrittenBlock[]; leftOut: number }> {
   const parsed = await markdownBlocks(markdown);
-  return keepWritable(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
+  const kept = keepWritable(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
+  const urls = [...new Set(mediaUrlsOf(kept.blocks))];
+  if (urls.length === 0) return kept;
+  if (projectId === null) throw new Error('A proposal body with media has no Project');
+  const { map } = await canvasApi.paste({ project_id: projectId, urls, pairs: [], history: [] });
+  return { ...kept, blocks: withMediaUrls(kept.blocks, map) };
 }
 
 /**
@@ -478,7 +486,14 @@ export async function landProposal(
     const result = currentResult(handle, proposal, readAdmission);
     return result ?? { outcome: 'changed' };
   }
-  const prepared = await prepareWrittenBlocks(proposal.body);
+  const name = docNameOf(handle.undoManager.doc);
+  let prepared: Awaited<ReturnType<typeof prepareWrittenBlocks>>;
+  try {
+    prepared = await prepareWrittenBlocks(proposal.body, name === null ? null : parseDocName(name)?.projectId ?? null);
+  } catch {
+    // Media of ours that could not join this Project are not written (inner#2171 design §10).
+    return { outcome: 'failed' };
+  }
   const ready = currentResult(handle, proposal, readAdmission);
   if (ready !== null) return ready;
   const leftOut = prepared.leftOut;

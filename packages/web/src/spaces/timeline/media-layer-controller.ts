@@ -18,19 +18,18 @@ import {
 
 import { corsUrl } from '@web/lib/cors-url';
 
-/** One visible or premounted video or sound clip as the Space hands it over, with its asset state. */
+/** One visible or premounted video or sound clip as the Space hands it over, read from the source the document holds. */
 export interface TimelineMediaLayer {
   clipId: string;
   /** A `<video>` or an `<audio>`; a video by default. */
   kind?: 'video' | 'audio';
-  /** The file address once the asset is ready. */
-  fileUrl: string | null;
+  /** The source's stored address. */
+  fileUrl: string;
   coverUrl: string | null;
-  state: 'loading' | 'ready' | 'failed';
 }
 
 /** What a media layer's preview note shows. */
-export type TimelineMediaLayerState = TimelineMediaLayer['state'];
+export type TimelineMediaLayerState = 'ready' | 'failed';
 
 /** One media lane: an element and what the playback asked of it. */
 export interface MediaLane {
@@ -141,7 +140,7 @@ export function mediaLaneMapping(clip: MediaLaneClip['clip']): string {
 }
 
 /**
- * Whether a lane failed: only its asset or its element's error count (#1410 design §6.2); `networkState` 3 right after
+ * Whether a lane failed: only its element's error counts (#1410 design §6.2); `networkState` 3 right after
  * a new src is not a failure (`media.js:157-159` uses it only to skip one play()).
  * @param lane - The lane.
  * @returns Whether it failed.
@@ -149,7 +148,7 @@ export function mediaLaneMapping(clip: MediaLaneClip['clip']): string {
  */
 export function mediaLaneFailed(lane: MediaLane): boolean {
   // jsdom reports a missing error as undefined, the platform as null.
-  return lane.layer.state === 'failed' || Boolean(lane.element.error);
+  return Boolean(lane.element.error);
 }
 
 /**
@@ -213,10 +212,8 @@ export function createMediaLayerController(options: MediaLayerControllerOptions)
    */
   function attach(lane: MediaLane, layer: TimelineMediaLayer): void {
     // Web Audio reads the samples only from a CORS-mode response (design §5.2); a refused one is an element error.
-    if (layer.fileUrl !== null) {
-      const src = corsUrl(layer.fileUrl);
-      if (lane.element.src !== src) lane.element.src = src;
-    }
+    const src = corsUrl(layer.fileUrl);
+    if (lane.element.src !== src) lane.element.src = src;
     if (!(lane.element instanceof HTMLVideoElement)) return;
     if (layer.coverUrl !== null) lane.element.poster = layer.coverUrl;
     else lane.element.removeAttribute('poster');
@@ -261,7 +258,7 @@ export function createMediaLayerController(options: MediaLayerControllerOptions)
           configureLane(lane);
           for (const event of MEDIA_EVENTS) element.addEventListener(event, options.onChange);
         } else {
-          const fileChanged = layer.fileUrl !== null && layer.fileUrl !== lane.layer.fileUrl;
+          const fileChanged = layer.fileUrl !== lane.layer.fileUrl;
           const coverChanged = layer.coverUrl !== lane.layer.coverUrl;
           lane.layer = layer;
           if (fileChanged || coverChanged) attach(lane, layer);
@@ -285,7 +282,7 @@ export function createMediaLayerController(options: MediaLayerControllerOptions)
     lanes: () => [...lanes.values()],
     states(): ReadonlyMap<string, TimelineMediaLayerState> {
       const states = new Map<string, TimelineMediaLayerState>();
-      for (const lane of lanes.values()) states.set(lane.clipId, mediaLaneFailed(lane) ? 'failed' : lane.layer.state);
+      for (const lane of lanes.values()) states.set(lane.clipId, mediaLaneFailed(lane) ? 'failed' : 'ready');
       return states;
     },
     configure(): void {

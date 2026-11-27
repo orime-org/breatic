@@ -12,7 +12,7 @@
  * (asset.service.resolveOwnerStudioId); this repo is attribution-agnostic.
  */
 
-import { and, desc, eq, gt, isNotNull, isNull, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, type DbTx } from "@core/db/client.js";
 import { projectAssetRefs, projects, studioAssets } from "@core/db/schema.js";
@@ -353,26 +353,24 @@ export async function setCoverAsset(
 }
 
 /**
- * The live cover a video points at, or null when it has none (#173).
- *
- * The dedup paths read a cover through this: they resolve to an existing video
- * row and hold nothing else that names its cover. A cover that has been
- * soft-deleted reads as absent rather than as a row nobody may serve.
- * @param videoAssetId - The video row to read the cover of.
- * @returns The cover's `StudioAssetEntity`, or null when there is none.
+ * The address of a video's live cover in its own Studio, as every entry hands a video's media facts out; null for
+ * anything that is not a video or has no such cover.
+ * @param asset - The asset's id and kind.
+ * @param asset.id - Its id.
+ * @param asset.kind - Its kind; only a video has a cover.
+ * @returns The cover's address, or null.
  * @throws {Error} When the database query fails.
  */
-export async function findCoverOf(
-  videoAssetId: string,
-): Promise<StudioAssetEntity | null> {
+export async function findCoverUrlOf(asset: { id: string; kind: string }): Promise<string | null> {
+  if (asset.kind !== "video") return null;
   const cover = alias(studioAssets, "cover");
   const rows = await db
-    .select({ cover })
+    .select({ fileUrl: cover.fileUrl })
     .from(studioAssets)
     .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
-    .where(and(eq(studioAssets.id, videoAssetId), isNull(cover.deletedAt)))
+    .where(and(eq(studioAssets.id, asset.id), isNull(cover.deletedAt), eq(cover.studioId, studioAssets.studioId)))
     .limit(1);
-  return rows[0] ? toEntity(rows[0].cover) : null;
+  return rows[0]?.fileUrl ?? null;
 }
 
 /**
@@ -678,6 +676,8 @@ export async function readProjectMedia(input: ProjectMediaQuery, tx?: DbTx): Pro
     eq(studioAssets.studioId, input.studioId),
     isNull(projectAssetRefs.deletedAt),
     isNull(studioAssets.deletedAt),
+    // A video's cover is shown with its video, never as media of its own (inner#2171 design §5.7).
+    ne(studioAssets.source, "cover"),
   ];
   if (input.assetId !== undefined) conditions.push(eq(studioAssets.id, input.assetId));
   else conditions.push(eq(studioAssets.kind, input.kind ?? "video"));

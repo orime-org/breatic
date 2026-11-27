@@ -3,7 +3,7 @@
 
 import type * as Y from 'yjs';
 import type { ProjectRegisteredAsset, TimelineRate } from '@breatic/shared';
-import { durationToFrames } from '@breatic/shared';
+import { assetNameFromUrl, durationToFrames } from '@breatic/shared';
 import { readTimelineDocument } from '@web/data/yjs/timeline-document';
 import { TIMELINE_DEFAULT_PLACEMENT, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
@@ -56,6 +56,8 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
   const current = readTimelineDocument(doc);
   const fps = current.settings.fps;
   const newTrack = input.newTrackId === undefined ? {} : { newTrackId: input.newTrackId };
+  // The picked list item's address and media facts, as a canvas node stores them (inner#2171 design §4).
+  const name = timelineSourceName(timelineVideoName(asset), asset.kind);
   const placed = { id: input.clipId, trackId: input.trackId, sourceId: input.sourceId, startFrame: input.startFrame, sourceInFrame: 0, ...TIMELINE_DEFAULT_PLACEMENT };
   if (asset.kind === 'image') {
     const seconds = input.imageDurationSeconds;
@@ -65,7 +67,7 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
     return { ok: true, command: {
       operation: 'add_media',
       parameters: {
-        source: { id: input.sourceId, kind: 'image', assetId: asset.assetId, width: asset.width, height: asset.height },
+        source: { id: input.sourceId, kind: 'image', url: asset.fileUrl, name, mimeType: asset.mimeType, width: asset.width, height: asset.height },
         clip: { ...placed, kind: 'image', sourceInFrame: 0, durationFrames },
         ...newTrack,
       },
@@ -76,12 +78,39 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
   if (duration === undefined || !Number.isFinite(duration) || duration <= 0) return { ok: false, reason: 'metadata_unavailable' };
   const extentFrames = framesOf(duration, fps);
   if (extentFrames === null) return { ok: false, reason: 'invalid_range' };
-  const source = {
-    id: input.sourceId, assetId: asset.assetId, timebase: fps, extentFrames, durationSeconds: String(duration),
+  const measured = {
+    id: input.sourceId, url: asset.fileUrl, name, mimeType: asset.mimeType, timebase: fps, extentFrames, durationSeconds: String(duration),
     durationOrigin: asset.durationSeconds === null ? 'decoded' as const : 'registered' as const,
   };
   const command: TimelineEditCommand = asset.kind === 'video'
-    ? { operation: 'add_media', parameters: { source: { ...source, kind: 'video' }, clip: { ...placed, kind: 'video', durationFrames: extentFrames }, ...newTrack }, placement: input.placement }
-    : { operation: 'add_media', parameters: { source: { ...source, kind: 'audio' }, clip: { ...placed, kind: 'audio', durationFrames: extentFrames }, ...newTrack }, placement: input.placement };
+    ? { operation: 'add_media', parameters: {
+      source: { ...measured, kind: 'video', coverUrl: asset.coverUrl, width: asset.width, height: asset.height },
+      clip: { ...placed, kind: 'video', durationFrames: extentFrames }, ...newTrack,
+    }, placement: input.placement }
+    : { operation: 'add_media', parameters: { source: { ...measured, kind: 'audio' }, clip: { ...placed, kind: 'audio', durationFrames: extentFrames }, ...newTrack }, placement: input.placement };
   return { ok: true, command };
+}
+
+/**
+ * What a Project video, picture or sound is called in the Timeline, in its list and on its clip alike: its display
+ * name, else the file name its address ends in.
+ * @param asset - The listed medium.
+ * @param asset.displayName - Its display name, which may be missing or empty.
+ * @param asset.fileUrl - Its address.
+ * @returns The name, or null when neither gives one.
+ * @throws {never} Never.
+ */
+export function timelineVideoName(asset: { displayName: string | null; fileUrl: string }): string | null {
+  return asset.displayName || assetNameFromUrl(asset.fileUrl);
+}
+
+/**
+ * The name a Timeline source or upload carries: within the schema's 255 characters, its kind when there is none.
+ * @param name - The display name, file name or name read off the address.
+ * @param kind - What it is, named when nothing else names it.
+ * @returns The name to store.
+ * @throws {never} Never.
+ */
+export function timelineSourceName(name: string | null, kind: 'video' | 'image' | 'audio' = 'video'): string {
+  return (name ?? '').slice(0, 255) || kind;
 }

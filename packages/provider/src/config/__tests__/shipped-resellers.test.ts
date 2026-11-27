@@ -102,8 +102,7 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
 
 const config = shipped();
 const catalogModels = new Map(catalog().models.map((m) => [m.name, m]));
-// A retired model's bindings are checked only for staying bound (gemini-3.8-tts.test.ts).
-const models = Object.fromEntries(Object.entries(config.media.models).filter(([model]) => catalogModels.has(model)));
+const models = config.media.models;
 
 /** What a condition names besides params: JSONata's operators and literals, `get_duration` and its keyword args. */
 const CONDITION_WORDS = new Set(["and", "or", "not", "in", "true", "false", "null", "get_duration", "min", "max", "total"]);

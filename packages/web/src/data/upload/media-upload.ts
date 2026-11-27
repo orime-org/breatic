@@ -353,6 +353,10 @@ async function deliverTicket(
       kind: answer.kind,
       width: answer.width,
       height: answer.height,
+      coverUrl: answer.coverUrl,
+      durationSeconds: answer.durationSeconds,
+      mimeType: answer.mimeType,
+      sizeBytes: answer.sizeBytes,
     });
     return;
   }

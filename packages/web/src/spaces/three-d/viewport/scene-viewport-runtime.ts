@@ -319,7 +319,7 @@ export class SceneViewportRuntime {
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.receiveShadow = true;
     this.scene.add(this.ambient, this.keyLight, this.ground);
-    this.resources = new ModelResourceCache((source, signal) => loadSceneModel(source, signal, this.props.resolveAsset, this.token('--color-muted-foreground'), this.props.importLimits, this.renderer));
+    this.resources = new ModelResourceCache((source, signal) => loadSceneModel(source, signal, this.token('--color-muted-foreground'), this.props.importLimits, this.renderer));
     this.controls.addEventListener('mouseDown', this.onGestureStart);
     this.controls.addEventListener('objectChange', this.onGestureChange);
     this.controls.addEventListener('mouseUp', this.onGestureCommit);

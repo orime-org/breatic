@@ -164,7 +164,8 @@ export const BASELINE_TOOLS: readonly string[] = [
   UNDERSTAND_MEDIA,
   ASK_USER,
   REQUEST_SPACE_CONTENT,
-  JUDGE_LIKELIHOOD,
+  // JUDGE_LIKELIHOOD stays registered in TOOL_MAP but is not offered until
+  // the product decides whether and how the Agent uses it (inner#2178).
   // The user's own records: about the project, not the Space in front of
   // them, so offered whatever is open.
   ...RECORD_TOOL_NAMES,

@@ -20,6 +20,7 @@ import {
   announceSpaceUploadAsset,
   announceFocusImage,
   announceFocusImageUploading,
+  assetRepo,
   assetService,
   type GrantFocusImage,
   emitSceneLookPicture,
@@ -130,6 +131,11 @@ export type TicketOutcome =
       assetKind: string;
       width: number | null;
       height: number | null;
+      /** The media facts a Space stores beside the address, as a finished upload's result carries them (inner#2171). */
+      coverUrl: string | null;
+      durationSeconds: number | null;
+      mimeType: string;
+      sizeBytes: number;
     }
   | { kind: "refused"; reason: "too_large" | "storage" }
   | {
@@ -325,7 +331,7 @@ async function prepareUpload(
     const sceneLook = sceneLookOf(item);
     if (sceneLook !== null && projectId !== undefined && item.space_id !== undefined) {
       await emitSceneLookPicture({
-        projectId, spaceId: item.space_id, target: sceneLook, picture: dedupHit.assetId, userId, uploadKey: crypto.randomUUID(),
+        projectId, spaceId: item.space_id, target: sceneLook, picture: dedupHit.fileUrl, userId, uploadKey: crypto.randomUUID(),
       });
     }
     // A Space placeholder receives a hit the way a node does: the server announces the asset and collab writes the
@@ -355,6 +361,7 @@ async function prepareUpload(
       });
       await publishSpaceTasksQuietly(projectId, item.space_id);
     }
+    const coverUrl = await assetRepo.findCoverUrlOf({ id: dedupHit.assetId, kind: dedupHit.kind });
     return {
       kind: "alreadyExists",
       assetId: dedupHit.assetId,
@@ -363,6 +370,10 @@ async function prepareUpload(
       assetKind: dedupHit.kind,
       width: dedupHit.width,
       height: dedupHit.height,
+      coverUrl,
+      durationSeconds: dedupHit.durationSeconds,
+      mimeType: dedupHit.mimeType,
+      sizeBytes: dedupHit.sizeBytes,
     };
   }
 

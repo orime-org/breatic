@@ -33,7 +33,6 @@ vi.mock('@web/data/api/scene', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/scene')>()),
   listSpaceTasks: vi.fn(async () => ({ serverNow: new Date().toISOString(), tasks: h.tasks })),
   getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1, import: IMPORT_LIMITS, progressPublishMs: 1000 })),
-  resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary', sizeBytes: 100 })),
 }));
 vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: function ViewportStandIn(props: SceneViewportProps): React.JSX.Element {
@@ -58,6 +57,8 @@ vi.mock('@web/lib/toast', async (importOriginal) => {
 const CONNECTION = { status: 'connected', synced: true } as const;
 const PEERS = [] as const;
 const ASSET = '55555555-5555-4555-8555-555555555555';
+/** The model file the task list carries for the finished row (inner#2171 design §4, §10). */
+const MODEL_FILE = { url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary', sizeBytes: 100 };
 
 /** Treat keyboard targets as owned by this active Space. */
 function ownsKeyboard(): boolean { return true; }
@@ -85,7 +86,7 @@ const owners: { doc: Y.Doc; session: SceneSession }[] = [];
  */
 async function placeable(label = 'Barn lamp'): Promise<SceneSession> {
   h.tasks = [{ id: 'task-1', label, status: 'done', startedByUserId: 'alice', startedAt: new Date().toISOString(),
-    deadlineAt: new Date(Date.now() + 7_200_000).toISOString(), errorMessage: null, assetId: ASSET }];
+    deadlineAt: new Date(Date.now() + 7_200_000).toISOString(), errorMessage: null, assetId: ASSET, modelFile: MODEL_FILE }];
   const doc = new Y.Doc();
   doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const session = new SceneSession(doc, 'project-p1/3d-s1');
@@ -121,7 +122,7 @@ describe('placing a finished model from the task list (inner#1690)', () => {
     await pressPlace();
 
     const objects = readSceneDocument(session.doc).objects;
-    expect(objects).toEqual([{ id: expect.any(String), name: 'Barn lamp', model: { kind: 'asset', assetId: ASSET },
+    expect(objects).toEqual([{ id: expect.any(String), name: 'Barn lamp', model: { kind: 'asset', ...MODEL_FILE },
       position: [2, 0.5, 2], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false }]);
     expect(session.getSnapshot().selectedIds).toEqual([objects[0]!.id]);
     expect(screen.getByTestId('scene-tasks-panel')).toBeVisible();
