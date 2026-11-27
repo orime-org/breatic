@@ -34,6 +34,8 @@ export interface NodeTaskCounts {
 /** A task row as the list endpoint hands it out. */
 export interface NodeTaskRow {
   id: string;
+  /** Persistent parent job identity, distinct from this node-task row. */
+  taskId: string | null;
   projectId: string;
   spaceId: string;
   /** Null on a 3D Space's own row (inner#1690), which no node carries. */
@@ -53,8 +55,6 @@ export interface NodeTaskRow {
   assetId: string | null;
   /** Since when its task waits for a free running slot; null once it runs (inner#1968). Every read sets it. */
   waitingSince?: Date | null;
-  /** The AIGC job the row runs as; null on an upload. Every read sets it. */
-  taskId?: string | null;
   /** The running-task limit its task waits under (inner#1968); null when it does not wait. The list reads set it. */
   slotWaitLimit?: number | null;
 }
@@ -95,6 +95,8 @@ export interface NodeTaskListRow extends NodeTaskRow {
   duration: number | null;
   mimeType: string | null;
   size: number | null;
+  /** A video focus crop's frozen source node name, the row's title beside its tool id (frames-split §5.5); null otherwise. */
+  sourceName: string | null;
 }
 
 /**
@@ -105,6 +107,7 @@ export interface NodeTaskListRow extends NodeTaskRow {
 function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
   return {
     id: row.id,
+    taskId: row.taskId,
     projectId: row.projectId,
     spaceId: row.spaceId,
     nodeId: row.nodeId,
@@ -120,7 +123,6 @@ function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
     nodeHistoryId: row.nodeHistoryId,
     assetId: row.assetId,
     waitingSince: row.waitingSince,
-    taskId: row.taskId,
   };
 }
 
@@ -223,6 +225,15 @@ function notWaitingForSlot(): SQL {
 }
 
 /**
+ * A row that is not a planned video tool run's while that run is still open: such a run alone decides its end (worker
+ * pickup, failed-job cleanup, sweep), and its terminal commit settles every row of it at once (frames-split §7.19).
+ * @returns The condition.
+ */
+function notOpenPlannedRun(): SQL {
+  return sql`not exists (select 1 from ${tasks} where ${tasks.id} = ${nodeTasks.taskId} and ${tasks.status} in ('pending', 'running') and ${tasks.source} = 'mini_tool' and ${tasks.params} ? 'miniToolExecution')`;
+}
+
+/**
  * Move every row on one node that outran its budget to `expired`.
  *
  * This is the whole of judging a task dead (#186, design §4.6): there is no
@@ -256,6 +267,7 @@ export async function harvestExpired(
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
         notWaitingForSlot(),
+        notOpenPlannedRun(),
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )
@@ -461,8 +473,13 @@ export async function listLive(
   projectId: string,
   nodeId: string,
 ): Promise<NodeTaskListRow[]> {
+  const execution = sql`${tasks.params}->'miniToolExecution'`;
   const rows = await db
-    .select({ task: nodeTasks, history: nodeHistory, limit: tasks.slotWaitLimit })
+    .select({
+      task: nodeTasks, history: nodeHistory, limit: tasks.slotWaitLimit,
+      // A video focus crop freezes its source node's name in its plan's draft (frames-split §5.5 admission row).
+      sourceName: sql<string | null>`CASE WHEN ${execution}->>'tool' = 'video.focus-crop' THEN ${execution}->'draft'->'params'->>'sourceName' END`,
+    })
     .from(nodeTasks)
     .leftJoin(nodeHistory, eq(nodeHistory.id, nodeTasks.nodeHistoryId))
     .leftJoin(tasks, eq(tasks.id, nodeTasks.taskId))
@@ -475,9 +492,10 @@ export async function listLive(
     )
     .orderBy(sql`${nodeTasks.startedAt} DESC`);
 
-  return rows.map(({ task, history, limit }) => ({
+  return rows.map(({ task, history, limit, sourceName }) => ({
     ...rowOf(task),
     slotWaitLimit: task.waitingSince === null ? null : limit,
+    sourceName: sourceName ?? null,
     content: history?.content ?? null,
     coverUrl: history?.thumbnailUrl ?? null,
     mediaWidth: history?.mediaWidth ?? null,
@@ -574,6 +592,7 @@ export async function harvestExpiredInSpace(projectId: string, spaceId: string):
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
         notWaitingForSlot(),
+        notOpenPlannedRun(),
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )

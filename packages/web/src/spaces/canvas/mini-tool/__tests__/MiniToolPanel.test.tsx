@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { cleanup as cleanupAll, fireEvent, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { ADJUST_RANGES, defaultAdjustValue, setLocale, type ModelEntry, type ParamDescriptor } from '@breatic/shared';
 
@@ -77,10 +78,13 @@ function mount(over: Partial<MiniToolPanelProps> = {}): MiniToolPanelProps {
     onClose: vi.fn(),
     ...over,
   };
+  // The range bar reads the video's presentation through the account query client, as in the app.
   render(
-    <TooltipProvider>
-      <MiniToolPanel {...props} />
-    </TooltipProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <TooltipProvider>
+        <MiniToolPanel {...props} />
+      </TooltipProvider>
+    </QueryClientProvider>,
   );
   return props;
 }
@@ -128,6 +132,22 @@ describe('MiniToolPanel', () => {
     mount({ spec: tool('image.crop'), params: { aspect: 'free', rect: null } });
     expect(screen.getByTestId('mini-tool-rect-w')).toHaveValue('1600');
     expect(screen.getByTestId('mini-tool-rect-h')).toHaveValue('1000');
+  });
+
+  it('names the two size fields width and height in the user language, with nothing between them', () => {
+    mount({ spec: tool('image.crop'), params: { aspect: 'free', rect: null } });
+    expect(screen.getByLabelText('W')).toBe(screen.getByTestId('mini-tool-rect-w'));
+    expect(screen.getByLabelText('H')).toBe(screen.getByTestId('mini-tool-rect-h'));
+    expect(screen.queryByText('×')).toBeNull();
+    cleanupAll();
+    setLocale('zh-CN');
+    try {
+      mount({ spec: tool('image.crop'), params: { aspect: 'free', rect: null } });
+      expect(screen.getByLabelText('宽')).toBe(screen.getByTestId('mini-tool-rect-w'));
+      expect(screen.getByLabelText('高')).toBe(screen.getByTestId('mini-tool-rect-h'));
+    } finally {
+      setLocale('en');
+    }
   });
 
   // A9: clearing a side to type a new one leaves the field empty until the

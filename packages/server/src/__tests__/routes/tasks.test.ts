@@ -453,7 +453,7 @@ describe("Tasks routes", () => {
         const res = await send();
         expect(res.status).toBe(201);
         expect(mocks.creditHoldService.reserveCredits).toHaveBeenCalledWith(
-          expect.objectContaining({ projectId: PID, actorUserId: "user-1", amount: 12, ttlMs: expect.any(Number) }),
+          expect.objectContaining({ projectId: PID, actorUserId: "user-1", amount: 12, ttlMs: expect.any(Number) }), undefined,
         );
         expect(mocks.taskService.create.mock.calls[0]?.[8]).toBe(heldKey());
         expect(mocks.creditHoldService.releaseHold).not.toHaveBeenCalled();

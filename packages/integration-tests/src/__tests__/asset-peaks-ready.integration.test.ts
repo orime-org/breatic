@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * An audio row's peaks, once read, are announced to every live Project that references the audio (#1580): the worker
+ * An audio row's peaks, once read, are announced to every live Project that references a live row stored under the
+ * audio's storage key, in any studio (#1580, frames-split §7.20): the worker
  * publishes `asset-peaks:ready` with the audio's own address on each such Project's control channel, so a page waiting
  * for that waveform reads it once instead of on a timer. Only the peaks read itself is stubbed; the references, the
  * Projects and the control channel are real.
@@ -86,16 +87,16 @@ async function project(studioId: string, admin: string, state: "live" | "archive
   return row!.id;
 }
 
-/** A registered audio row in `studioId`. */
-async function audio(studioId: string, producer: string): Promise<{ id: string; fileUrl: string }> {
+/** A registered audio row in `studioId`, under its own storage key unless one is given (a paste reuses the source's). */
+async function audio(studioId: string, producer: string, sharedKey?: string): Promise<{ id: string; fileUrl: string; storageKey: string }> {
   const id = randomUUID();
-  const storageKey = `test-media/${id}.mp3`;
+  const storageKey = sharedKey ?? `test-media/${id}.mp3`;
   const fileUrl = (await getStorageAdapter()).publicUrl(storageKey);
   await sql`
     insert into studio_assets (id, studio_id, content_hash, storage_key, file_url, size_bytes, mime_type, kind, source, produced_by_user_id, duration_seconds)
-    values (${id}, ${studioId}, ${createHash("sha256").update(id).digest("hex")}, ${storageKey}, ${fileUrl}, 4096, 'audio/mpeg', 'audio', 'upload', ${producer}, 3.5)
+    values (${id}, ${studioId}, ${createHash("sha256").update(storageKey).digest("hex")}, ${storageKey}, ${fileUrl}, 4096, 'audio/mpeg', 'audio', 'upload', ${producer}, 3.5)
   `;
-  return { id, fileUrl };
+  return { id, fileUrl, storageKey };
 }
 
 /** `projectId` references `assetId`, live unless the reference was removed. */
@@ -104,7 +105,7 @@ async function reference(projectId: string, assetId: string, removed = false): P
 }
 
 /** An audio row referenced by two live Projects of one studio. */
-async function sharedAudio(): Promise<{ asset: { id: string; fileUrl: string }; p1: string; p2: string }> {
+async function sharedAudio(): Promise<{ asset: { id: string; fileUrl: string; storageKey: string }; p1: string; p2: string }> {
   const admin = await user();
   const s = await studio(admin);
   const asset = await audio(s, admin);
@@ -141,22 +142,30 @@ async function announced(assetId: string, projectIds: readonly string[]): Promis
 }
 
 describe("the Projects referencing an asset", () => {
-  it("G-01 are the live Projects with a live reference, whatever their studio", async () => {
+  it("G-01 are the live Projects referencing any live row stored under it, in any studio (frames-split §7.20)", async () => {
     const admin = await user();
     const s = await studio(admin);
     const other = await studio(admin);
+    const third = await studio(admin);
     const asset = await audio(s, admin);
+    const pasted = await audio(other, admin, asset.storageKey);
+    const gone = await audio(third, admin, asset.storageKey);
+    await sql`update studio_assets set deleted_at = now() where id = ${gone.id}`;
     const p1 = await project(s, admin);
-    const p2 = await project(s, admin);
-    const p3 = await project(s, admin, "archived");
-    const p4 = await project(s, admin, "deleted");
+    const p2 = await project(s, admin, "archived");
+    const p3 = await project(s, admin, "deleted");
     const q1 = await project(other, admin);
+    const q2 = await project(other, admin);
+    const r1 = await project(third, admin);
+    const unrelated = await project(s, admin);
     await reference(p1, asset.id);
-    await reference(p2, asset.id, true);
+    await reference(p2, asset.id);
     await reference(p3, asset.id);
-    await reference(p4, asset.id);
-    await reference(q1, asset.id);
-    expect([...(await assetRepo.listProjectsReferencingAsset(asset.id))].sort()).toEqual([p1, q1].sort());
+    await reference(q1, pasted.id);
+    await reference(q2, pasted.id, true);
+    await reference(r1, gone.id);
+    await reference(unrelated, (await audio(s, admin)).id);
+    expect([...(await assetRepo.listProjectsReferencingStorageKey(asset.storageKey))].sort()).toEqual([p1, q1].sort());
   });
 });
 
@@ -168,6 +177,19 @@ describe("a peaks read that settled", () => {
     const got = await announced(asset.id, [p1, p2]);
     expect(got.map((g) => g.projectId).sort()).toEqual([p1, p2].sort());
     for (const g of got) expect(g.message).toMatchObject({ projectId: g.projectId, assetId: asset.id, url: asset.fileUrl });
+  });
+
+  it("G-06 announces to a Project in another studio whose pasted row shares the audio's storage key", async () => {
+    const { asset, p1, p2 } = await sharedAudio();
+    const admin = await user();
+    const other = await studio(admin);
+    const pasted = await audio(other, admin, asset.storageKey);
+    const q1 = await project(other, admin);
+    await reference(q1, pasted.id);
+    readAudioPeaks.mockResolvedValue("generated");
+    await runAudioPeaks(job(asset.id));
+    const got = await announced(asset.id, [p1, p2, q1]);
+    expect(got.map((g) => g.projectId).sort()).toEqual([p1, p2, q1].sort());
   });
 
   it.each(["gone", "none"] as const)("G-03 and G-04 announce nothing when the read came to %s", async (result) => {

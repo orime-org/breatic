@@ -86,7 +86,7 @@ EMAIL_BACKEND=console
 ```json
 [
   {
-    "AllowedOrigins": ["http://localhost:8000"],
+    "AllowedOrigins": ["*"],
     "AllowedMethods": ["GET", "HEAD"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag"],
@@ -330,6 +330,6 @@ ZIP 用户需下载新版本并保留自己的 `.env`、Ingest 配置与密钥�
 
 ## Google 登录（可选）
 
-创建 Google OAuth「Web 应用」Client ID，将前端的完整来源（协议、域名、端口，不含路径）添加到授权 JavaScript 来源；开发通常为 `http://localhost:8000`。在 `.env` 设置 `GOOGLE_CLIENT_ID`，前端和后端必须相同。官方按钮使用弹窗返回 ID Token，后端验签后发会话 Cookie；不需要 Client Secret，也不需要后端 redirect URI。未配置时隐藏按钮。
+创建 Google OAuth「Web 应用」Client，在「已获授权的重定向 URI」里每个部署登记一个：设了 `COOKIE_DOMAIN` 时是 `<ALLOWED_ORIGINS 第一项>/api/v1/auth/google/callback`，没设时是每个要用 Google 登录的来源各一个 `<来源>/api/v1/auth/google/callback`（API 单独一个主机时，用 `API_PUBLIC_URL` 代替 `<来源>/api/v1`）。开发登记 `http://localhost:8000/api/v1/auth/google/callback`。在 `.env` 设置 `GOOGLE_CLIENT_ID` 和 `GOOGLE_CLIENT_SECRET`，两项都只给服务端读，两项都设了登录页和注册页才显示按钮。
 
-开发修改变量后重启前后端。Docker 前端必须重新构建，例如 `docker build -f Dockerfile.web --build-arg GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com -t breatic-web:google .`，然后将 Compose 的 web 服务镜像改为该镜像再启动；只修改容器环境不会改变已构建页面。Google 在线 SDK/账号页面需要客户端网络可访问；无法访问时仍可使用邮箱登录。普通 HTTP 局域网 IP 不符合 Google Web 来源要求，请用允许的 localhost 或 HTTPS 来源。
+Google 登录经服务端整页跳转，改这两项只需重启服务端，不用重新构建前端。Google 不接受裸 IP 作重定向地址（localhost 除外），请用 localhost 或 HTTPS 域名。Google 不可达时仍可用邮箱登录。

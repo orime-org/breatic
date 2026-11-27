@@ -8,7 +8,7 @@ export const ERA_WALKTHROUGH_MONTAGE: GenerationTemplate = {
   id: "era-walkthrough-montage",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "16:9", duration: 12, generate_audio: true } },
+    { key: "result", role: "generate", type: "video", mode: "ref", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "16:9", duration: 12, generate_audio: true } },
     { key: "silent", role: "generate", type: "image", mode: "i2i", model: "nano-banana-pro-edit-ultra", params: { aspect_ratio: "16:9" } },
     { key: "widescreen", role: "generate", type: "image", mode: "i2i", model: "nano-banana-pro-edit-ultra", params: { aspect_ratio: "16:9" } },
     { key: "nineties", role: "generate", type: "image", mode: "i2i", model: "nano-banana-pro-edit-ultra", params: { aspect_ratio: "16:9" } },

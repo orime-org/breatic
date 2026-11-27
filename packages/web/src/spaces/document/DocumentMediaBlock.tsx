@@ -36,6 +36,8 @@ import { cn } from '@web/lib/utils';
 import { BUBBLE_BAR_CLASS, BUBBLE_ICON_BUTTON_SIZE, PRESSED_CLASS } from '@web/spaces/document/document-tool-button';
 import { useMediaFullscreen } from '@web/spaces/canvas/nodes/_shared/use-media-fullscreen';
 import { MediaPlayer, type MediaPlayerHandle } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { PresentedMediaPlayer } from '@web/spaces/canvas/nodes/_shared/PresentedMediaPlayer';
+import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
 import { DocumentMediaImage } from '@web/spaces/document/DocumentMediaImage';
 import { Popover, PopoverTrigger, PopoverContent } from '@web/components/ui/popover';
 import { MediaControlsPortal, type VideoControlsTarget } from '@web/spaces/canvas/nodes/_shared/media-video-controls';
@@ -376,6 +378,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     },
   });
   const openFullscreenOn = fullscreen.open;
+  const projectId = useDocumentProjectId();
   const openFullscreen = React.useCallback((): void => {
     if (type === 'audio') return;
     const held = document.activeElement;
@@ -389,8 +392,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             : held instanceof HTMLElement
               ? held
               : null;
-    openFullscreenOn({ kind: type, src: props.url, size: storedSize });
-  }, [actions, panelShown, props.url, storedSize, type, openFullscreenOn]);
+    openFullscreenOn({ kind: type, src: props.url, size: storedSize, ...(projectId === null ? {} : { projectId }) });
+  }, [actions, panelShown, props.url, storedSize, type, openFullscreenOn, projectId]);
   // Above the media, unless the scroller has no room there — then on the
   // media itself, along its top, or in a table cell under it (`below`). In
   // the body never under it: below the media sit its caption and the next
@@ -650,6 +653,9 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         onSettle={setSettledFor}
         onDoubleClick={openFullscreen}
       />
+    ) : type === 'video' && projectId !== null ? (
+      // A video block reads the presentation query the canvas node does (frames-split §7.8 surface list).
+      <PresentedMediaPlayer ref={player} projectId={projectId} src={props.url} size={mediaSize} videoControls={videoControls} />
     ) : (
       <MediaPlayer ref={player} modality={type} src={props.url} size={mediaSize} videoControls={type === 'video' ? videoControls : undefined} />
     );

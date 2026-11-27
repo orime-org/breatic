@@ -46,11 +46,24 @@ export interface CanvasLimits {
   waveformMaxSeconds: number;
   /** The largest audio file the cut band downloads to decode, in bytes. */
   waveformMaxBytes: number;
+  /** How long a video tool panel's priced inputs hold still before it asks for a quote (config `quote_debounce_ms`). */
+  quoteDebounceMs?: number;
+  /** The most outputs one run creates, per configured planned tool (config `executions[tool].max_outputs`). */
+  maxOutputs?: Partial<Record<string, number>>;
   /**
    * The most clips one join takes, its source included (inner#1825 §6.3);
    * absent from a server that predates the join, which then leaves the list uncapped here.
    */
   joinMaxClips?: number;
+}
+
+/**
+ * Query options for the canvas limits, read once per page through the same cache as {@link canvasApi.fetchLimits}.
+ * @returns The key and fetcher.
+ * @throws {never} Never.
+ */
+export function canvasLimitsQuery(): { queryKey: readonly ['canvas', 'limits']; queryFn: () => Promise<CanvasLimits>; staleTime: number } {
+  return { queryKey: ['canvas', 'limits'] as const, queryFn: () => canvasApi.fetchLimits(), staleTime: Infinity };
 }
 
 /**

@@ -119,6 +119,16 @@ function quoted(message: string): string {
 }
 
 /**
+ * How many segments one split run makes in this deployment.
+ * @returns The clause with its leading separator, empty where the deployment offers no split.
+ * @throws {Error} When `config/mini-tools.yaml` cannot be read.
+ */
+function splitLimit(): string {
+  const split = getMiniToolsConfig().executions["video.split"];
+  return split === undefined ? "" : `; one run makes up to ${String(split.max_outputs)} segments, and with more the panel says the limit in red and Run says it instead of running`;
+}
+
+/**
  * Where pasted content lands in the document, one sentence per rule. Each id
  * has a paste beside the same sentence in the web examples
  * (`packages/web/src/spaces/document/__tests__/document-paste-guide.test.ts`),
@@ -714,7 +724,10 @@ export function renderProductGuide(): string {
       "dark backdrop, a video going on from where it was, and an X at the top right of the screen, Escape or " +
       "a click on the dark area closes it. The large preview that pops up on hovering a small picture or video " +
       "anywhere (a generate panel slot, an @ reference, node history, a chat attachment) has the same button " +
-      "at its top-right corner.",
+      "at its top-right corner. Hovering a video node's player also shows a camera button at the end of its controls; " +
+      `its menu offers ${quoted(t("canvas.miniTool.videoUI.first"))}, ${quoted(t("canvas.miniTool.videoUI.last"))} and ` +
+      `${quoted(t("canvas.miniTool.videoUI.current"))}, and choosing one opens ${quoted(t("canvas.miniTool.video.extract-frames.label"))} ` +
+      "on that node with that frame chosen.",
     "Every picture, video, sound and text node shows its name just above its top-left corner, after a type " +
     "icon. A node the user makes is named Text, Image, Audio or Video in every language, and a node placed " +
       "from a proposal card has the name the card showed. A copied node or group is named COPY- followed by the " +
@@ -915,7 +928,8 @@ export function renderProductGuide(): string {
       "writes that style's description as a paragraph after the template's own words in the prompt; picking another style " +
       "for the same node replaces it, as picking a template again does. Picking a template sets " +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
-      "template's; nothing asks first. A template with a shot list switches a video node to its multi-shot mode " +
+      "template's; nothing asks first. A template with a shot list picks " +
+      `${quoted(t("canvas.generatePanel.storyboard.multi"))} in a video node's Shots pill ` +
       "and writes the shots in place of the prompt, each with its seconds and its words. A dialogue template " +
       "writes its lines in place of the prompt, each for its speaker. The pictures it needs are " +
       "@'d in the prompt: a picture already " +
@@ -963,7 +977,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.refuseExecuteNoVoice"))} or ` +
       `${quoted(t("canvas.generatePanel.errorNoSourceImage"))} The music modes may ask ` +
       `${quoted(t("canvas.generatePanel.refuseExecuteNoStyle"))}, ${quoted(t("canvas.generatePanel.lyricsMissing"))} ` +
-      `or ${quoted(t("canvas.generatePanel.refuseExecuteNoReference"))}. In the video panel's Multi-Shot mode ` +
+      `or ${quoted(t("canvas.generatePanel.refuseExecuteNoReference"))}. On the video panel's ` +
+      `${quoted(t("canvas.generatePanel.storyboard.multi"))} ` +
       "(the Inside the generation panel section), the shots take the prompt's place, and pressing it may say " +
       `${quoted(t("canvas.generatePanel.refuseStoryboardShotEmpty", { shot: 2 }))}, ` +
       `${quoted(t("canvas.generatePanel.refuseStoryboardShotTooLong", { shot: 2, limit: 512 }))}, ` +
@@ -1000,11 +1015,15 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.task.kind.upload"))} with an up arrow, followed by the file's name; ` +
       `${quoted(t("canvas.task.kind.generate"))} with a sparkle, ${quoted(t("canvas.task.kind.understand"))}, ` +
       `or ${quoted(t("canvas.task.kind.transcribe"))} with a caption icon, each ` +
-      "followed by the model's name; or a tool's own icon and name, with nothing after it. At the line's right end is who started it, " +
+      "followed by the model's name; or a tool's own icon and name, with nothing after it. A video focus crop's row sits on the node " +
+      `whose panel made the crop and reads ${quoted(t("canvas.generatePanel.focusCropTag"))} with a crop icon, followed by the ` +
+      "source node's name. At the line's right end is who started it, " +
       `${quoted(t("canvas.task.you"))} for your own. A done row offers ` +
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
-      `hand, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
+      `hand, and ${quoted(t("canvas.task.action.clear"))}; a video tool's failed row (including one that says ` +
+      `${quoted(t("canvas.task.failure.cancelled"))}) or expired row offers only ${quoted(t("canvas.task.action.clear"))}; ` +
+      "run the tool again from its panel; any other expired one offers " +
       `${quoted(t("canvas.task.action.view"))} when a late result came, which opens the node's history at that ` +
       `result so you can restore it, and ${quoted(t("canvas.task.action.clear"))}.`,
     "Each person runs only so many tasks at once, a number that comes with the membership of the Studio's admin; " +
@@ -1123,12 +1142,19 @@ export function renderProductGuide(): string {
       "command that would not replace a pick greys out. " +
       "The picks show as their bracket beside the count at the bottom. " +
       `${quoted(t("canvas.generatePanel.cameraCommandsInsert"))} writes the picks into the prompt as one bracket, ` +
-      "such as [Push in,Zoom out], at the caret last left in the prompt box, or at its end if none was; in " +
-      "Multi-Shot it goes into the open shot. The bracket is ordinary text " +
+      "such as [Push in,Zoom out], at the caret last left in the prompt box, or at its end if none was; on " +
+      `${quoted(t("canvas.generatePanel.storyboard.multi"))} it goes into the open shot. The bracket is ordinary text ` +
       "that can be edited or deleted. Inserting again adds another bracket, and separate brackets run in the order " +
       "they appear in the prompt.",
-    `- Multi-Shot, a mode in the video panel's mode picker: the prompt box gives way to one card per shot, and ` +
-      "switching into it with no shots lays out two, splitting the video's length. A card, such as " +
+    "- Shots, a pill right of the settings pill in the video panel, shown where the model takes shots in the mode: " +
+      "text to video, image to video and reference to video on the models that take shots, never in first-last frame, " +
+      `image animation or talking head. It reads ${quoted(t("canvas.generatePanel.storyboard.single"))}, ` +
+      `${quoted(t("canvas.generatePanel.storyboard.multi"))} or, on the Kling models, ` +
+      `${quoted(t("canvas.generatePanel.storyboard.auto"))}, and is outlined while it is not ` +
+      `${quoted(t("canvas.generatePanel.storyboard.single"))}, which sends the prompt box as one shot. ` +
+      `${quoted(t("canvas.generatePanel.storyboard.multi"))} (${t("canvas.generatePanel.storyboard.multiHint")}): ` +
+      "the prompt box gives way to one card per shot, and " +
+      "picking it with no shots lays out two, splitting the video's length. A card, such as " +
       `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +
       `seconds, ${quoted(t("canvas.generatePanel.storyboard.removeShot"))}, and a box, ` +
       `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt. ` +
@@ -1143,7 +1169,7 @@ export function renderProductGuide(): string {
       "the shot after it, or to the one before it on the last shot, so the minus is greyed at one second or " +
       "when there is only one shot, and the plus is greyed when no other shot has a second to spare. In the " +
       "settings pill a duration shorter than the number of shots is greyed, and picking another one, or another " +
-      "model, re-splits the shots. A duration shortened in another mode can leave fewer seconds than shots; " +
+      "model, re-splits the shots. A duration shortened while the shots were not showing can leave fewer seconds than shots; " +
       "they then stay as they were and pressing generate says they do not add up: remove shots until there are " +
       "no more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number " +
       `of shots. When no shot can be added, ${quoted(t("canvas.generatePanel.storyboard.addShot"))} gives way to ` +
@@ -1152,10 +1178,11 @@ export function renderProductGuide(): string {
       "there are shots; " +
       `${quoted(t("canvas.generatePanel.storyboard.removeShot"))} is greyed while only one shot is left. ` +
       "An image-to-video model also shows its first frame slot here, and a reference model takes the nodes the " +
-      "shots mention. The run sends the shots and the nodes mentioned in them; switching to another mode brings " +
-      "that mode's prompt box back with its words, and the shots are kept for next time. On the Kling models, " +
-      `text to video and image to video have a ${quoted(t("canvas.generatePanel.param.auto_shots"))} switch in ` +
-      "the settings pill: on, the model splits the prompt into shots itself.",
+      "shots mention. The run sends the shots and the nodes mentioned in them. Picking " +
+      `${quoted(t("canvas.generatePanel.storyboard.single"))} brings the prompt box back with its words, and the ` +
+      "shots are kept for next time; a mode or model that takes no shots hides the pill and the shots, and one " +
+      `that takes them shows them again. ${quoted(t("canvas.generatePanel.storyboard.auto"))} ` +
+      `(${t("canvas.generatePanel.storyboard.autoHint")}) keeps the prompt box, and the model splits the prompt into shots itself.`,
     `- Sound panel: tool ${quoted(t("canvas.generatePanel.reference"))}, then the source slots. Here only a ` +
       "connected text node can be mentioned; a connected sound, video or picture shows as a faded chip; these go in " +
       "through a slot where the model has one. On a model with voices the settings pill shows a speaker icon and the current voice and " +
@@ -1255,13 +1282,61 @@ export function renderProductGuide(): string {
       `scissors at its middle, right-click it and choose ${quoted(t("canvas.edge.delete"))}, or press the X on ` +
       "its chip in the panel. Removing a connection also removes every mention of that node from the prompt: " +
       "at once from every box of the mode on screen, folded ones included, and from another mode's prompt, or " +
-      "from the shots while another mode is showing, the next time that box is shown.",
+      "from the shots while they are not showing, the next time that box is shown.",
     "",
     "## Mini-tools",
     `Right-click a picture, video or sound node and point at ${quoted(t("canvas.nodeMenu.tools"))}: a list opens to ` +
       "its right with every tool for that kind of node, each an icon and a name. Text, 3D and web nodes, groups and " +
       "notes have no such row. The tools are:",
     ...miniToolLines(),
+    "Video tools keep their settings when their panel is closed and reopened; undo and redo restore parameter edits. " +
+      `A saved setting that cannot be read shows ${quoted(t("canvas.miniTool.videoUI.unsupportedDraft"))} with ` +
+      `${quoted(t("canvas.miniTool.videoUI.rebuildDraft"))}. A changed source shows ` +
+      `${quoted(t("canvas.miniTool.videoUI.sourceChanged"))} with ${quoted(t("canvas.miniTool.videoUI.useCurrentSource"))}; ` +
+      "review the settings after switching to the current source. A source that cannot be read shows " +
+      `${quoted(t("canvas.miniTool.videoUI.sourceUnavailable"))}. Settings saved on an earlier version of the same video ` +
+      `keep their values and show ${quoted(t("canvas.miniTool.videoUI.videoUpdated"))} at the top of the panel with ` +
+      `${quoted(t("canvas.miniTool.videoUI.applyToVideo"))}; until it is pressed the tool cannot run or detect scenes. Pressing ` +
+      `it while a cut lies past the updated video's end shows ${quoted(t("canvas.miniTool.videoUI.settingsOutOfRange"))} and ` +
+      "marks that cut's row red; move or remove the cut, then press it again.",
+    `While a video is being prepared, its tools show ${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} and ` +
+      "cannot run yet; the node plays the original meanwhile when the browser can, and otherwise shows its cover with " +
+      `${quoted(t("canvas.miniTool.videoUI.preparingVideo"))}. The node shows a preparation failure itself too, with the same ` +
+      "words and Retry as the panel, and a prepared video whose playback cannot load shows " +
+      `${quoted(t("canvas.miniTool.videoUI.mediaError"))} with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
+      `A tool panel's heading says how many outputs a run makes, such as ${quoted(t("canvas.miniTool.videoUI.outputCount", { count: 3 }))}; ` +
+      `a time that cannot be read shows ${quoted(t("canvas.miniTool.videoUI.invalidNumber"))} and the tool cannot run until it is fixed; ` +
+      `while the connection is lost the panel says ${quoted(t("canvas.miniTool.videoUI.connectionUnavailable"))} and takes no edits. ` +
+      "If preparing fails for a reason " +
+      `that may pass, the panel shows ${quoted(t("canvas.miniTool.videoUI.preparationFailed"))}, or ` +
+      `${quoted(t("canvas.miniTool.videoUI.mediaError"))} when the prepared video cannot be shown, with ` +
+      `${quoted(t("canvas.task.action.retry"))}; Retry stays busy until the video's facts have refreshed, and ` +
+      "closing the panel does not cancel accepted work. A video longer than can be prepared shows " +
+      `${quoted(t("canvas.miniTool.videoUI.tooLongToPrepare"))} and other unusable content shows ` +
+      `${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))}, both without Retry.`,
+    `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.first"))}, ` +
+      `${quoted(t("canvas.miniTool.videoUI.last"))} and ${quoted(t("canvas.miniTool.videoUI.current"))} sit side by side in one row, ` +
+      "and, once the tool has settings for this video, stay choosable while it is being prepared; only Run waits for it. " +
+      `Current requires an actually displayed frame. Until one is available, ` +
+      `${quoted(t("canvas.miniTool.videoUI.currentFrameUnavailable"))} explains why Current cannot run; ` +
+      `the other modes can still run. ` +
+      "The current-frame mode uses the frame actually shown by the player. One preview of the selected frame fills " +
+      "the row below the modes; click it to move the player there; if it cannot be read it shows " +
+      `${quoted(t("canvas.miniTool.videoUI.mediaError"))} with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
+      `In ${quoted(t("canvas.miniTool.video.split.label"))}, ${quoted(t("canvas.miniTool.videoUI.detectScenes"))} ` +
+      `finds candidate cut points within this same tool; after a detection the button reads ${quoted(t("canvas.miniTool.videoUI.detectAgain"))}, and a detection that failed shows ` +
+      `${quoted(t("canvas.miniTool.videoUI.detectionError"))} with ${quoted(t("canvas.task.action.retry"))}, which detects again. Below the button, once the video's frames are read, each cut is a numbered ` +
+      "handle on the filmstrip: drag it, or click it and move it one frame with the arrow keys or remove it with Delete; " +
+      "clicking the strip elsewhere moves the player there. With no cuts the panel says " +
+      `${quoted(t("canvas.miniTool.videoUI.noCuts"))} A detection that finishes after the cuts were edited leaves the edit ` +
+      `as it is and says ${quoted(t("canvas.miniTool.videoUI.detectionSuperseded"))} ` +
+      "Under the strip a line counts the cut points and segments, " +
+      `${quoted(t("canvas.miniTool.videoUI.atCursor"))} adds a cut at the player cursor (greyed where one already is), each cut's ` +
+      "seconds can be edited in its own numbered row, and the bin beside a cut removes it. A bar below has one numbered " +
+      "button per segment, as wide as its share of the video; clicking one plays exactly that segment in the node's player, " +
+      `with ${quoted(t("canvas.miniTool.videoUI.stopPreview"))} beside its range while it plays. ` +
+      "The segment count reflects the complete split plan" + splitLimit() + ". " +
+      `A segment that cannot play says ${quoted(t("canvas.miniTool.videoUI.mediaError"))}.`,
     "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +
       "together. The panel is headed with the tool's name and holds that tool's settings, a box to pick a second " +
       "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +
@@ -1356,13 +1431,15 @@ export function renderProductGuide(): string {
       `With one clip the panel says ${quoted(t("canvas.miniTool.panel.joinNeedsClip"))} and the arrow stays greyed out. ` +
       `Opened on more clips than a join takes, it says how many it takes, such as ${quoted(t("canvas.miniTool.panel.joinTooMany", { n: joinCap }))}, under the row and again on pressing the arrow, until clips are taken out. The result is ` +
       "one new node to the right of the clip furthest right, connected to every clip still on the canvas. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
-      `grid split are free, the tools marked (${BILLED_BY_RUN_TIME}) in this section's list are billed that way, and the others show an ` +
-      "estimate. The X, Esc or a click on empty canvas closes the panel; in " +
+      `grid split are free, ${quoted(t("canvas.miniTool.video.extract-frames.label"))} uses no credits and its bottom line shows ` +
+      `${quoted(t("canvas.miniTool.panel.free"))}, the tools marked (${BILLED_BY_RUN_TIME}) in this section's list are billed that way, ` +
+      "and the others show an estimate. The X, Esc or a click on empty canvas closes the panel; in " +
       `${quoted(t("canvas.miniTool.image.mark.label"))}, Esc first leaves the text being typed, then lets go of ` +
       "the selected object, and only then closes the panel. While a tool that draws on the picture itself is open " +
       "(a crop box, an expand frame, the grid's lines and tiles, markup or a drawing), and during a focus crop, the " +
       "arrow keys pressed on the node and Cmd or Ctrl with C, V or D do nothing, so the node stays put and the panel " +
-      "stays open; text being typed and the controls on the node, such as a player's seek bar, keep their own keys. " +
+      "stays open; text being typed keeps its own keys. A video's player bar is hidden while a crop box is on it, " +
+      "and on every video during a focus crop. " +
       "Pressing the arrow puts the result in new nodes to " +
       "the right of the source, joined to it by a line and named after it (such as CROP- followed by its name); " +
       `${quoted(t("canvas.miniTool.image.grid.label"))} cuts only the picked tiles and lays each out at the row and ` +
@@ -1387,7 +1464,15 @@ export function renderProductGuide(): string {
       "choose the frame, and the crop is a still picture of that frame. After " +
       `${quoted(t("canvas.generatePanel.focusConfirm"))}, the crop joins the strip above the prompt as a chip ` +
       "with a crop icon before the source node's name (a spinner shows while it uploads); if it cannot be made, " +
-      `a message says so, such as ${quoted(t("canvas.generatePanel.focusExportFailed"))} If the source node ` +
+      `a message says so, such as ${quoted(t("canvas.generatePanel.focusExportFailed"))} A video crop is taken in ` +
+      "the background from the full-quality video and uses no credits: after confirming, it waits as a card in that " +
+      "strip until the frame is ready, and a message still says when it finishes into a full pool or fails, even with " +
+      "the panel closed. While the video is still being prepared, the bar shows " +
+      `${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} in place of its timeline, and neither a ratio nor the crop can be ` +
+      `chosen; if preparing fails it shows ${quoted(t("canvas.miniTool.videoUI.preparationFailed"))} (or ` +
+      `${quoted(t("canvas.miniTool.videoUI.sourceUnavailable"))} when the video could not be read) with ` +
+      `${quoted(t("canvas.task.action.retry"))}, or ${quoted(t("canvas.miniTool.videoUI.tooLongToPrepare"))} or ` +
+      `${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))} without it. If the source node ` +
       "is replaced, starts processing or is deleted while you crop it, the bar under it closes and a " +
       `message says what happened, such as ${quoted(t("canvas.generatePanel.focusSourceDeleted"))} Picking goes ` +
       "on: click a source node again. If the picture changed just as you pressed " +
@@ -1476,7 +1561,8 @@ export function renderProductGuide(): string {
       "zooming out only as far as that takes; with several, the group is selected and the user " +
       `right-clicks each node and chooses ${quoted(t("canvas.nodeMenu.generate"))}.`,
     "Each generating node arrives empty, with its mode, model and the settings the proposal chose already set " +
-      "and, when the model has a prompt box, its prompt written. A video node in Multi-Shot arrives with its " +
+      "and, when the model has a prompt box, its prompt written. A video node the proposal gives shots arrives on " +
+      `${quoted(t("canvas.generatePanel.storyboard.multi"))} with its ` +
       "shots, each with its words and seconds written, and its panel opens on them. The prompt goes into the " +
       "proposal's mode only, so switching mode shows that mode's own box. Where the model has no prompt box, a picture or video " +
       `panel shows ${quoted(t("canvas.generatePanel.promptNotUsed"))} in place of the box, and a sound panel ` +
@@ -1484,7 +1570,7 @@ export function renderProductGuide(): string {
       "A node holding material the user gave -- a file uploaded in this chat, or a picture saved with " +
       `${SAVE_IMAGE} -- arrives with it in, and a slot the proposal filled from such a node already holds it in ` +
       "the panel, so there is nothing to pick there; one wired into the reference pool is already @'d in its prompt, " +
-      "or in its shot on a node in Multi-Shot. " +
+      `or in its shot on a node on ${quoted(t("canvas.generatePanel.storyboard.multi"))}. ` +
       "The user generates the nodes in the order the card's arrows run, and waits for each to show its result " +
       "before generating the node it feeds: a node still generating lends nothing, or its previous result, and " +
       "where that source is optional the run goes ahead without it.",
@@ -1668,6 +1754,8 @@ export function renderProductGuide(): string {
     "Videos, pictures, texts, sounds and web animation copies play together on one clock, and every video and sound at the playhead is heard at the same time, each at its own volume. " +
       "A video, picture or sound whose file cannot be read is noted at the top right of the preview with its track and why, the same reason its clip shows under its name and its properties panel shows: " +
       `${quoted(t("timeline.media.readFailed", { kind: "audio" }))}, with ${quoted(t("timeline.retry"))} in the note and the panel; ` +
+      `a video still being prepared that the browser cannot play is noted there as ${quoted(t("canvas.miniTool.videoUI.preparingVideo"))}, and one whose ` +
+      `preparation failed says why, with ${quoted(t("timeline.retry"))} when trying again can help; ` +
       "the other layers keep playing, and a retry reloads only that layer, with the preview waiting for it before going on together. " +
       `A text whose fonts fail to load is still drawn, in a fallback font, and noted there with its track as its fonts having failed to load, with ${quoted(t("timeline.retry"))}; ` +
       "playback goes on. " +

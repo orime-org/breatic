@@ -59,7 +59,8 @@ function putVideo(source: Y.Doc, id: string, durations: readonly number[]): void
   node.set('type', 'video');
   node.set('position', { x: 0, y: 0 });
   data.set('name', id);
-  data.set('mode', 'multi_shot');
+  data.set('mode', 't2v');
+  data.set('multiShot', true);
   data.set('shots', shots);
   node.set('data', data);
   source.getMap<Y.Map<unknown>>('nodesMap').set(id, node);

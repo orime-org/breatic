@@ -20,6 +20,7 @@ import {
 
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { SCENE_ANALYSIS_APPLIED_PREFIX } from '@web/data/yjs/canvas-field-keys';
 import { runHistoryStep } from '@web/data/yjs/history-step';
 import {
   usableUrls,
@@ -223,6 +224,7 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
         trackedOrigins: new Set([CANVAS_UNDO]),
         captureTimeout: 0,
         captureTransaction: (tr) => !tr.meta.has(CANVAS_ROLLED_BACK),
+        deleteFilter: (item) => typeof item.parentSub !== 'string' || !item.parentSub.startsWith(SCENE_ANALYSIS_APPLIED_PREFIX),
       }),
   );
   undoManager.on('stack-item-added', () => {
@@ -640,7 +642,7 @@ export function useCanvasSpace(
  * style brief (#1960, #2218). Seeded empty; {@link getLyricsFragment} only
  * reads.
  *
- * `shots` — the video node's shots, empty, which only the multi-shot mode
+ * `shots` — the video node's shots, empty, which only Multi-shot
  * uses; `node-storyboard.ts` reads and edits it.
  * @param data - The plain wire data fields to write.
  * @param type - The node's modality, which decides which containers are
@@ -709,7 +711,7 @@ function buildDataMap(
   // Every audio mode gets lyrics: which modes' models take them is a catalog
   // fact this birth does not know, and a container born later would race.
   if (type === 'audio') map.set('lyrics', fragmentsFor(AUDIO_GENERATION_MODES));
-  // The multi-shot mode's shots. Each shot is inserted whole with its own
+  // Multi-shot's shots. Each shot is inserted whole with its own
   // fragment, so concurrent adds both survive.
   if (type === 'video') map.set('shots', new Y.Array<Y.Map<unknown>>());
   // Same reasoning as the crops container, and the same race #1880 recorded:
@@ -1215,6 +1217,36 @@ export function setNodeParams(
   const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => data.set('paramsByModel', paramsByModel), CANVAS_UNDO);
+  });
+}
+
+/**
+ * Writes a video node's Shots choice (inner#2192): whether it writes its shots
+ * out, and the per-model records carrying the model's own auto switch, in one
+ * transaction so one undo takes back both.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The video node.
+ * @param multiShot - Whether the node writes its shots out.
+ * @param paramsByModel - Every per-model record to persist, written whole as {@link setNodeParams} does; left as it is when absent.
+ */
+export function setNodeShots(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  multiShot: boolean,
+  paramsByModel?: Record<string, Record<string, unknown>>,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const node = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId);
+  const data = node?.get('data');
+  if (!(data instanceof Y.Map)) return;
+  const { name, options } = canvasWrite(projectId, spaceId, 'edit');
+  writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      data.set('multiShot', multiShot);
+      if (paramsByModel !== undefined) data.set('paramsByModel', paramsByModel);
+    }, CANVAS_UNDO);
   });
 }
 

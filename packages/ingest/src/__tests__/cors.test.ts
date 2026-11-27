@@ -26,13 +26,14 @@ async function fromOrigin(
   origin: string,
   init: RequestInit & { method: string },
   path = "/uploads",
+  bindings: typeof env = env,
 ): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("origin", origin);
   const ctx = createExecutionContext();
   const response = await worker.fetch(
     new Request(`https://ingest.example.com${path}`, { ...init, headers }),
-    env,
+    bindings,
     ctx,
   );
   await waitOnExecutionContext(ctx);
@@ -200,5 +201,53 @@ describe("the preflight each endpoint answers", () => {
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-origin")).toBe(ALLOWED);
     expect(response.headers.get("access-control-allow-methods")).toContain(method);
+  });
+});
+
+/**
+ * Influencer sites (inner#2157 design 7.5): every `<label>.partner.<domain>`
+ * site uploads here, and opening one must not need a Worker redeploy (V7).
+ * Parts are authorised by their ticket, so one wildcard entry,
+ * `https://*.partner.<domain>`, admits them all; it reaches exactly one label
+ * down and keeps its scheme.
+ */
+describe("a wildcard influencer entry in ALLOWED_ORIGINS", () => {
+  const withPartners: typeof env = {
+    ...env,
+    ALLOWED_ORIGINS: "https://app.test.example, https://*.partner.test.example",
+  };
+  const PART = "/uploads/abc/parts/1";
+  const PREFLIGHT = {
+    method: "OPTIONS",
+    headers: {
+      "access-control-request-method": "PUT",
+      "access-control-request-headers": "x-upload-token",
+    },
+  };
+
+  it("answers the preflight of an influencer site one label below the partner domain", async () => {
+    const site = "https://alice.partner.test.example";
+    const response = await fromOrigin(site, PREFLIGHT, PART, withPartners);
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe(site);
+  });
+
+  it("still answers the exact entry beside the wildcard", async () => {
+    const response = await fromOrigin(ALLOWED, PREFLIGHT, PART, withPartners);
+
+    expect(response.headers.get("access-control-allow-origin")).toBe(ALLOWED);
+  });
+
+  it.each([
+    "https://partner.test.example",
+    "https://a.alice.partner.test.example",
+    "http://alice.partner.test.example",
+    "https://alice.test.example",
+    "https://alice.partner.test.example.attacker.test",
+  ])("gives %s nothing it can use", async (origin) => {
+    const response = await fromOrigin(origin, PREFLIGHT, PART, withPartners);
+
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
   });
 });

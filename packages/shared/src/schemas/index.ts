@@ -20,7 +20,7 @@ export {
   RESERVED_STUDIO_SLUGS,
   STUDIO_SLUG_BOUNDS,
   loginSchema,
-  googleAuthSchema,
+  googleBeginSchema,
   desktopHandoffSchema,
   desktopExchangeSchema,
   chatMessageSchema,

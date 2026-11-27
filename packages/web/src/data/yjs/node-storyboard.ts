@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * A video node's shots, which only the multi-shot mode uses.
+ * A video node's shots, which only Multi-shot uses (`data.multiShot`).
  *
  * The shape, born with the node in `canvas-space.ts`:
  * `data.shots: Y.Array<Y.Map{ id, prompt, duration }>`.
@@ -123,7 +123,7 @@ function writeDurations(shots: Y.Array<Y.Map<unknown>>, durations: readonly numb
 }
 
 /**
- * What entering the multi-shot mode produces: laying out the two first shots
+ * What picking Multi-shot produces: laying out the two first shots
  * is an add, re-splitting existing ones an edit.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
@@ -136,7 +136,7 @@ export function storyboardEntryKind(projectId: string, spaceId: string, nodeId: 
 }
 
 /**
- * Enters the multi-shot mode: two shots when there are none, the existing
+ * Lays out the shots for Multi-shot: two when there are none, the existing
  * ones re-split to the total when they drifted from it.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
@@ -228,7 +228,7 @@ export function removeStoryboardShot(
 
 /**
  * Re-splits the shots to a new total. The panel calls it only while the
- * multi-shot mode is showing them.
+ * shots are showing on Multi-shot.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.

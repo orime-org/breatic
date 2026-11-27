@@ -10,6 +10,7 @@
 import { originalUrlFor } from '@breatic/shared';
 
 import type { CropHandle } from '@web/lib/crop-math';
+import { videoOfDisplay } from '@web/spaces/canvas/video-presentation/video-display-geometry';
 
 /** A node's croppable media, one selector per element kind. */
 const MEDIA_SELECTORS = ['[data-testid=image-node-img]', '[data-testid=media-element]'] as const;
@@ -52,6 +53,31 @@ export function isCropSource(el: Element | null): el is CropSourceEl {
 }
 
 /**
+ * A node's media as a crop reads it: the element on screen, where the box is measured and whose canonical address it
+ * carries, and the element the size and the clock come from. They are one element except for a transparent video,
+ * whose screen element is the packed renderer's canvas and whose clock is the binding's native video; a video's
+ * pixels come from the backend, never from the screen (frames-split §7.8 focus crop row).
+ */
+export interface CropMedia {
+  readonly shown: HTMLElement;
+  readonly source: CropSourceEl;
+}
+
+/**
+ * The crop media behind a matched element: an image or a video as it is, or a canonical display surface with the
+ * native video it shows. An audio element is neither.
+ * @param el - The element the selector matched, if any.
+ * @returns The crop media, or null when there is none to crop.
+ * @throws {never} Never.
+ */
+export function cropMediaOf(el: Element | null): CropMedia | null {
+  if (isCropSource(el)) return { shown: el, source: el };
+  if (!(el instanceof HTMLElement) || !el.hasAttribute('data-canonical-video-display')) return null;
+  const video = videoOfDisplay(el);
+  return video === null ? null : { shown: el, source: video };
+}
+
+/**
  * The source's pixel size — the space crop rects are expressed in.
  *
  * An image node showing its preview declares the original's size in its
@@ -60,6 +86,8 @@ export function isCropSource(el: Element | null): el is CropSourceEl {
  * original, whose natural size is its own. Zero means "not decodable yet": a
  * bitmap still loading, a broken URL, or a video whose metadata has not
  * arrived.
+ * A video's own size is the played file's; the crop tools frame it through `useMediaGeometry` in the selected
+ * version's display or, with none, the size the upload was registered at (frames-split §5.5, §7.8).
  * @param el - The crop source.
  * @returns The original's size, possibly `0 × 0`.
  */
@@ -88,11 +116,15 @@ export function whenDecoded(el: Element | null, then: () => void): boolean {
 
 /**
  * The address of the original the element shows, with any preview suffix
- * removed: a preview falling back to its original is the same picture.
- * @param el - The crop source.
+ * removed: a preview falling back to its original is the same picture, and a
+ * video playing its presentation carrier is the original the player marks it
+ * with (frames-split §5.5).
+ * @param el - The element on screen.
  * @returns The original's address, or null when the element has none.
  */
-export function originalSrc(el: CropSourceEl): string | null {
+export function originalSrc(el: Element): string | null {
+  const canonical = el.getAttribute('data-canonical-video-display');
+  if (canonical !== null) return canonical;
   const src = el.getAttribute('src');
   return src === null ? null : originalUrlFor(src);
 }

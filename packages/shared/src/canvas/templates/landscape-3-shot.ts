@@ -12,7 +12,7 @@ export const LANDSCAPE_3_SHOT: GenerationTemplate = {
       key: "result",
       role: "generate",
       type: "video",
-      mode: "multi_shot",
+      mode: "t2v",
       model: "gemini-omni-1.1-flash-text-to-video",
       params: { aspect_ratio: "16:9", duration: 9 },
       shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }],

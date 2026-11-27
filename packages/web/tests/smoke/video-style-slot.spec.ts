@@ -107,14 +107,14 @@ async function catchSubmit(page: Page): Promise<() => Record<string, unknown> | 
   return () => body;
 }
 
-test('picks up to three style pictures for a text-to-video model and sends them', async ({ page }) => {
+test('picks up to three style pictures for Seedance 2.5 in reference to video and sends them as its source', async ({ page }) => {
   const { target, pictures } = await seedBoard();
   await openGenerate(target, 'generate-video-execute');
-  await choose(page, 't2v', 'seedance-2.5-text-to-video');
+  await choose(page, 'ref', 'seedance-2.5-text-to-video');
 
   const add = page.getByTestId('generate-tool-style');
   await expect(add).toContainText('Style');
-  // Text-to-video draws no source slot, so the style area's divider is the row's only one.
+  // Reference to video draws no source slot, so the style area's divider is the row's only one.
   await expect(page.getByTestId('generate-video-tool-style-sep')).toBeVisible();
   const toolRow = page.getByTestId('generate-video-tool-reference').locator('xpath=..');
   await expect(toolRow.getByRole('separator')).toHaveCount(1);
@@ -206,26 +206,27 @@ test('style pictures alone do not stand in for a reference', async ({ page }) =>
   expect(sent()).toBeUndefined();
 });
 
-test('a model without the slot hides it, ends its pick, and the pictures come back', async ({ page }) => {
+test('a mode without the slot hides it, ends its pick, and the pictures come back', async ({ page }) => {
   const { target, pictures } = await seedBoard();
   await openGenerate(target, 'generate-video-execute');
-  await choose(page, 't2v', 'seedance-2.5-text-to-video');
+  await choose(page, 'ref', 'seedance-2.5-text-to-video');
 
   await page.getByTestId('generate-tool-style').click();
   await clickNode(page, pictures[0]);
   await expect(page.getByTestId('reference-pick-banner')).toBeVisible();
 
-  // Switching to a model that takes no style pictures mid-pick ends the pick.
-  await page.getByTestId('generate-model-trigger').click();
-  await page.getByTestId('generate-model-option-minimax-h3-text-to-video').click();
+  // Seedance 2.5 takes style pictures in reference to video only (inner#2192):
+  // switching to text to video mid-pick ends the pick.
+  await page.getByTestId('generate-video-mode-trigger').click();
+  await page.getByTestId('generate-video-mode-t2v').click();
   await expect(page.getByTestId('generate-tool-style')).toHaveCount(0);
   await expect(page.getByTestId('generate-style-thumbnail-0')).toHaveCount(0);
   await expect(page.getByTestId('generate-video-tool-style-sep')).toHaveCount(0);
   await expect(page.getByTestId('reference-pick-banner')).toHaveCount(0);
   await expect(page.locator('[data-sonner-toast]').first()).toContainText('Selection ended.');
 
-  await page.getByTestId('generate-model-trigger').click();
-  await page.getByTestId('generate-model-option-seedance-2.5-text-to-video').click();
+  await page.getByTestId('generate-video-mode-trigger').click();
+  await page.getByTestId('generate-video-mode-ref').click();
   await expect(page.getByTestId('generate-style-thumbnail-0')).toBeVisible();
   await expect(page.getByTestId('generate-tool-style')).toContainText('1/3');
 });

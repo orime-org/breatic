@@ -472,6 +472,7 @@ export function ProjectActivityButton({
                         kind={media.kind}
                         src={media.src}
                         poster={media.poster}
+                        projectId={projectId}
                       >
                         {thumb}
                       </HoverPreview>

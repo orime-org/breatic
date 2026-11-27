@@ -17,6 +17,8 @@ export interface TimelineMediaPlacementInput {
   canWrite: boolean;
   placement: TimelineEditPlacement;
   newTrackId?: string;
+  /** The selected version's grid length (frames-split §7.14 Tv); it wins over the registered duration. */
+  presentedDurationSeconds?: number;
   decodedDurationSeconds?: number;
   /** How long a new picture lasts, from the Timeline limits (inner#1709). */
   imageDurationSeconds?: number;
@@ -43,7 +45,8 @@ function framesOf(seconds: number, fps: TimelineRate): number | null {
 
 /**
  * Build the native command for a fixed registered video, picture or sound placement; the edit itself validates and
- * plans it (inner#1709). A video or sound lasts its file; a picture lasts the configured picture length.
+ * plans it (inner#1709). A video lasts its selected version's grid length, else its file, a sound its file and a
+ * picture the configured picture length.
  * @param doc - The actual current Timeline content document.
  * @param input - The fixed draft and current authority to write.
  * @returns The prepared native command or a recoverable refusal.
@@ -74,13 +77,15 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
       placement: input.placement,
     } };
   }
-  const duration = asset.durationSeconds === null ? input.decodedDurationSeconds : asset.durationSeconds;
+  // A video's selected version plays at its grid length (frames-split §7.14 Tv), which wins over the registered duration.
+  const presented = asset.kind === 'video' ? input.presentedDurationSeconds : undefined;
+  const duration = presented ?? (asset.durationSeconds === null ? input.decodedDurationSeconds : asset.durationSeconds);
   if (duration === undefined || !Number.isFinite(duration) || duration <= 0) return { ok: false, reason: 'metadata_unavailable' };
   const extentFrames = framesOf(duration, fps);
   if (extentFrames === null) return { ok: false, reason: 'invalid_range' };
   const measured = {
     id: input.sourceId, url: asset.fileUrl, name, mimeType: asset.mimeType, timebase: fps, extentFrames, durationSeconds: String(duration),
-    durationOrigin: asset.durationSeconds === null ? 'decoded' as const : 'registered' as const,
+    durationOrigin: presented === undefined && asset.durationSeconds !== null ? 'registered' as const : 'decoded' as const,
   };
   const command: TimelineEditCommand = asset.kind === 'video'
     ? { operation: 'add_media', parameters: {

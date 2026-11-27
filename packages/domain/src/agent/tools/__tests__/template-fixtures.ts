@@ -96,12 +96,12 @@ export const STEPPED: GenerationTemplate = {
   triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
 };
 
-/** A fixture whose anchor runs in the multi_shot mode, with a generated still in its pool. */
+/** A fixture whose anchor writes its shots out in reference to video, with a generated still in its pool. */
 export const SHOTS: GenerationTemplate = {
   id: "fixture-shots",
   anchor: "clip",
   nodes: [
-    { key: "clip", role: "generate", type: "video", mode: "multi_shot", model: SHOT_MODEL, params: {} },
+    { key: "clip", role: "generate", type: "video", mode: "ref", model: SHOT_MODEL, params: {}, shots: [{ seconds: 2 }, { seconds: 3 }] },
     { key: "still", role: "generate", type: "image", mode: "t2i", model: T2I, params: {} },
   ],
   edges: [{ from: "still", to: "clip", into: "pool" }],
@@ -184,7 +184,7 @@ export const CAST: GenerationTemplate = {
       key: "clip",
       role: "generate",
       type: "video",
-      mode: "multi_shot",
+      mode: "ref",
       model: "seedance-2.5-text-to-video",
       params: { aspect_ratio: "9:16", duration: 10 },
       shots: [{ seconds: 5 }, { seconds: 5 }],
@@ -213,9 +213,9 @@ export const SCRIPTED: GenerationTemplate = {
   id: "fixture-scripted",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "9:16", duration: 15, generate_audio: true } },
+    { key: "result", role: "generate", type: "video", mode: "ref", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "9:16", duration: 15, generate_audio: true } },
     { key: "script", role: "written", type: "text" },
-    { key: "scene-2", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "9:16", duration: 15, generate_audio: true } },
+    { key: "scene-2", role: "generate", type: "video", mode: "ref", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "9:16", duration: 15, generate_audio: true } },
   ],
   edges: [
     { from: "script", to: "result", into: "pool" },

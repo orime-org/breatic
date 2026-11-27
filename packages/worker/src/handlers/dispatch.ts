@@ -4,10 +4,13 @@
 /**
  * BullMQ job handlers for task execution.
  *
- * Three execution paths:
- * 1. Mini-tool → a model run through provider, or a container job
- * 2. Understand → media analysis / ASR
- * 3. Generation → a model run through provider
+ * Task execution paths:
+ * 1. Mini-tool analysis → its SQL-owned analysis lifecycle
+ * 2. Planned mini-tool → its SQL-owned execution lifecycle
+ * 3. Mini-tool → a model run through provider, or a container job
+ * 4. Understand → media analysis / ASR
+ * 5. Generation → a model run through provider
+ * 6. Mini-tool delivery and delivery discovery → runMiniToolDeliveryJob
  *
  * Anything else throws.
  */
@@ -15,6 +18,11 @@
 
 import { DelayedError, type Job } from "bullmq";
 import { runContainerJob } from "@worker/handlers/container/run-container-job.js";
+import { runMiniToolAnalysisTask } from "@worker/handlers/mini-tool/run-analysis-task.js";
+import { runMiniToolExecutionTask } from "@worker/handlers/mini-tool/run-execution-task.js";
+import { runMiniToolContainerAnalysis } from "@worker/handlers/mini-tool/run-container-analysis.js";
+import { runMiniToolDeliveryJob } from "@worker/handlers/mini-tool/delivery-worker.js";
+import { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, type MiniToolDeliveryWake, type MiniToolDeliveryDiscovery } from "@breatic/core";
 import { assertBeforeDeadline, DeadlinePassed } from "@breatic/shared";
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
@@ -23,7 +31,7 @@ import { announceSpaceTasksVersion, getStreamRedis, getWorkerConfig, projectActi
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { accountKeyFailureIn, costsOf, type Cost, type KeySet } from "@breatic/provider";
-import { failureOutcome, keyOwnerOf, runningSlotService, taskRepo, taskService, upstreamStepRepo } from "@breatic/domain";
+import { failureOutcome, keyOwnerOf, taskRepo, taskService, upstreamStepRepo, type MiniToolAnalysisJob, type MiniToolExecutionJob } from "@breatic/domain";
 import { creditHoldService, creditLotService, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
 import {
@@ -60,8 +68,8 @@ import {
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName, NO_CONSENT, threeDSpaceDocName, type ConsentSnapshot, type GenerationSource } from "@breatic/shared";
-import { catalogEntryOf, isModelTool, miniToolById, modelOf } from "@breatic/shared/mini-tools";
-import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
+import { MINI_TOOL_ANALYSIS_JOB, catalogEntryOf, isModelTool, miniToolById, modelOf } from "@breatic/shared/mini-tools";
+import type { NodeTaskCountsEvent, NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { logger } from "@breatic/core";
 import { abandonedCosts, runModelTask, type ModelTask } from "@worker/handlers/model-task.js";
 import { MediaRunFailed, type MediaRunDone } from "@worker/handlers/media-run.js";
@@ -91,6 +99,7 @@ import {
 } from "@worker/handlers/transcribe-question.js";
 import { reportFirstGeneration } from "@worker/handlers/first-generation.js";
 import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
+import { passRunningGate } from "@worker/handlers/running-gate.js";
 
 /** The task types that run a catalog model. */
 const MODEL_TASK_TYPES: ReadonlySet<string> = new Set(["image", "audio", "video", "tts", "three_d"]);
@@ -214,6 +223,11 @@ export interface TaskJobData {
    */
   retryReported?: number;
 }
+
+/** Task-identified computation producers retain their original execution payloads. */
+export type TasksJobData = TaskJobData | MiniToolAnalysisJob | MiniToolExecutionJob;
+/** The existing tasks queue also transports pure delivery and discovery identities. */
+export type TasksQueueJobData = TasksJobData | MiniToolDeliveryWake | MiniToolDeliveryDiscovery;
 
 /**
  * Whether a failure in the currently-running attempt leaves no retry
@@ -385,16 +399,30 @@ export function runContextOf(data: TaskJobData, streamRedis: ReturnType<typeof g
  * A node carries several tasks at once (#186), so a job claims nothing on
  * the node it writes to: every task reaches an end of its own and the user
  * decides on the node's task list which result to keep.
- * @param job - BullMQ job carrying the TaskJobData payload to execute
+ * @param job - BullMQ job carrying its producer's original execution payload
  * @param token - This attempt's lock token (2nd Processor argument);
  *   threaded to the zombie fence before the billing critical section
  * @returns The result dict on success, or a failure status marker (e.g. `{ failed: true, reason }`)
  */
 export async function runTask(
-  job: Job<TaskJobData>,
+  job: Job<TasksQueueJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  return await runWithConsent(job.data.analyticsConsent ?? NO_CONSENT, () => runTaskBody(job, token));
+  if (job.name === MINI_TOOL_DELIVERY_JOB || job.name === MINI_TOOL_DELIVERY_DISCOVERY_JOB) return runMiniToolDeliveryJob(job);
+  const analyticsConsent = "analyticsConsent" in job.data ? job.data.analyticsConsent : undefined;
+  return await runWithConsent(analyticsConsent ?? NO_CONSENT, () => {
+    if (job.name === MINI_TOOL_ANALYSIS_JOB) {
+      return runMiniToolAnalysisTask(job as Job<MiniToolAnalysisJob>, token, runMiniToolContainerAnalysis);
+    }
+    if ("executionKind" in job.data) {
+      if (job.name !== "execute-mini-tool" || job.data.executionKind !== "planned" || job.data.source !== "mini_tool") {
+        throw new Error("Planned execution requires its original queue discriminator");
+      }
+      return runMiniToolExecutionTask(job as Job<MiniToolExecutionJob>, token);
+    }
+    if ("hostNodeId" in job.data) throw new Error("Analysis execution requires its job discriminator");
+    return runTaskBody(job as Job<TaskJobData>, token);
+  });
 }
 
 /**
@@ -442,6 +470,7 @@ async function runTaskBody(
   //       markCompletedAndBill failed, etc). Per policy, no further
   //       retries — mark failed and release the node without charging.
   const existing = await taskService.getByIdInternal(taskId);
+  if (existing?.params?.miniToolExecution !== undefined) throw new Error("Planned execution cannot enter the legacy task lane");
   if (existing?.billedAt) {
     logger.info(
       { taskId, billedCredits: existing.billedCredits },
@@ -570,18 +599,7 @@ async function runTaskBody(
   if (existing === null || existing.status === "running") {
     startedAt = await taskService.markRunning(taskId, job.id ?? "", new Date());
   } else {
-    let gate: Awaited<ReturnType<typeof runningSlotService.startWithinLimit>>;
-    try {
-      gate = await runningSlotService.startWithinLimit({ id: taskId, jobId: job.id ?? "" });
-    } catch (err) {
-      if (err instanceof StillRunning && token !== undefined) {
-        logPublishFailures(taskId, err.publishFailures);
-        await job.moveToDelayed(err.resumeAt, token);
-        throw new DelayedError();
-      }
-      throw err;
-    }
-    logPublishFailures(taskId, gate.publishFailures);
+    const gate = await passRunningGate(job, token, taskId);
     if (gate.outcome === "ended") {
       // A task the old code failed while a retry was due: its open upstream steps end with it.
       if (gate.failed === true) await upstreamStepRepo.failOpenSteps(taskId, existing?.errorMessage ?? "internal");
@@ -1430,6 +1448,8 @@ const NO_RESULT: TaskFailureReason = "no_result";
  *   idempotently). When false (terminal crash-net, no retry left), the
  *   failure is best-effort/swallowed. The settle that carries the result
  *   follows the same rule, being the only path the result takes to the node.
+ * @param opts.onHistoryRecorded - Observe the persisted history before attempting publication.
+ * @param opts.onNodeSettled - Observe the original verdict after successful publication, including an absent row.
  * @returns Resolves once every node has been recorded + emitted.
  */
 export async function recordGenerationForNodes(
@@ -1461,8 +1481,13 @@ export async function recordGenerationForNodes(
     duration?: number | null;
     mimeType?: string | null;
     size?: number | null;
+    resultOrigin?: NodeTaskCountsEvent["resultOrigin"];
   }>,
-  opts: { rethrowOnRecordFailure?: boolean } = {},
+  opts: {
+    rethrowOnRecordFailure?: boolean;
+    onHistoryRecorded?: () => void;
+    onNodeSettled?: (verdict: { landed: boolean } | null) => void;
+  } = {},
 ): Promise<void> {
   for (const o of outputs) {
     const content = typeof o.content === "string" ? o.content : null;
@@ -1495,6 +1520,7 @@ export async function recordGenerationForNodes(
           media: result,
         });
         historyId = entry.id;
+        opts.onHistoryRecorded?.();
       } catch (err) {
         // #1618 A: a billed generation MUST land in node_history. On a live run
         // (rethrowOnRecordFailure) re-throw so BullMQ redelivers and the
@@ -1524,9 +1550,11 @@ export async function recordGenerationForNodes(
             outcome: "done",
             ...(historyId !== undefined && { nodeHistoryId: historyId }),
             result,
+            ...(o.resultOrigin !== undefined && { resultOrigin: o.resultOrigin }),
           };
     try {
-      await settleTaskForNode(streamRedis, docName, ending);
+      const verdict = await settleTaskForNode(streamRedis, docName, ending);
+      opts.onNodeSettled?.(verdict ?? null);
     } catch (err) {
       // This call is the only way the result reaches the node, so on a live
       // run it fails the job: BullMQ redelivers, and `settle` reports the
@@ -1576,16 +1604,6 @@ export async function settleSceneRow(
     // The row is settled; a member's list catches up on its next read.
     logger.error({ err, taskId, sceneRowId, projectId: row.projectId, spaceId: row.spaceId }, "space_tasks_publish_failed");
   }
-}
-
-/**
- * Log the canvas signals the running-task gate could not send: the rows are
- * written, and a node's counts catch up on its next change.
- * @param taskId - The task.
- * @param failures - What failed.
- */
-function logPublishFailures(taskId: string, failures: readonly unknown[]): void {
-  for (const err of failures) logger.error({ err, taskId }, "running_slot_publish_failed");
 }
 
 // ─── Failure-path helpers ────────────────────────────────────────────
@@ -1911,6 +1929,8 @@ const EXTENSION_OF_TYPE: Readonly<Record<string, string>> = {
   "audio/mp4": ".m4a",
   "audio/webm": ".webm",
 };
+
+
 
 /**
  * Put every output of a generation into R2, through the ingest Worker.

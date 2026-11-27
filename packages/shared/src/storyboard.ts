@@ -2,26 +2,25 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The multi-shot mode's storyboard: what a model says about its
- * shots in that mode, and what a run sends for them.
+ * Multi-shot, a control inside the video modes (inner#2192): which modes a
+ * model can write shots in, which of single shot, multi-shot and auto
+ * multi-shot a node is on, and what a run sends for the shots.
  *
- * A node keeps one list of shots, and only the multi-shot mode uses it. A
- * model takes shots through a `fill: storyboard` list param declared for that
- * mode. Kling has a field for them upstream (`multi_prompt`, beside `shot_type`,
- * which offers the one value a run sends); a model with no such field declares `into_prompt`, and
+ * A node keeps one list of shots across its modes. A model takes shots
+ * through a `fill: storyboard` list param declared for the modes it takes them
+ * in. Kling has a field for them upstream (`multi_prompt`, beside `shot_type`,
+ * which offers the one value a run sends) and a `shots_auto` switch that lets
+ * it plan the shots itself; a model with no field declares `into_prompt`, and
  * its shots are written into the prompt instead.
  */
 
 import { appliesInMode } from "@shared/param-modes.js";
 import type { ParamDescriptor } from "@shared/types/model-catalog.js";
 
-/** The mode a node's shots belong to. */
-export const MULTI_SHOT_MODE = "multi_shot";
-
-/** The most shots the multi-shot mode takes, whatever a model allows. */
+/** The most shots a run takes, whatever a model allows. */
 export const MULTI_SHOT_MAX_SHOTS = 6;
 
-/** A model's storyboard in the multi-shot mode, as its catalog entry declares it. */
+/** A model's storyboard in a mode, as its catalog entry declares it. */
 export interface StoryboardSpec {
   /** The list param the shots go out in, or are read from for the prompt. */
   readonly shotsParam: string;
@@ -43,21 +42,26 @@ export interface StoryboardSpec {
   readonly maxChars: number | undefined;
   /** The template a shot is written into the prompt with, for a model with no field for shots. */
   readonly intoPrompt: string | undefined;
+  /**
+   * The model's own switch for letting it plan the shots itself (Kling's
+   * `auto_shots`, declared `shots_auto`). Undefined for a model without one.
+   */
+  readonly autoParam: string | undefined;
 }
 
 /**
  * The storyboard a model declares for a mode: its `fill: storyboard` list
- * param and the single-valued `fill: storyboard` params beside it. Only
- * the multi-shot mode has one.
+ * param, the single-valued `fill: storyboard` params beside it and its
+ * `shots_auto` switch. It says the model can write shots in this mode; whether
+ * a node has them on is `effectiveShots`.
  * @param params - The model's params.
  * @param mode - The mode the panel is in.
- * @returns The spec, or undefined outside the multi-shot mode or for a model with no shots.
+ * @returns The spec, or undefined where the model takes no shots in this mode.
  */
 export function storyboardSpec(
   params: Readonly<Record<string, ParamDescriptor>>,
   mode: string,
 ): StoryboardSpec | undefined {
-  if (mode !== MULTI_SHOT_MODE) return undefined;
   const entries = Object.entries(params).filter(
     ([, spec]) => spec.fill === "storyboard" && appliesInMode(spec, mode),
   );
@@ -78,7 +82,31 @@ export function storyboardSpec(
     maxShots: Math.min(spec.max_items ?? MULTI_SHOT_MAX_SHOTS, MULTI_SHOT_MAX_SHOTS),
     maxChars: spec.fields?.prompt?.max_chars,
     intoPrompt: spec.into_prompt,
+    autoParam: Object.entries(params).find(([, other]) => other.shots_auto === true && appliesInMode(other, mode))?.[0],
   };
+}
+
+/** Which of the Shots control's three choices a node is on. */
+export type ShotsChoice = "single" | "multi" | "auto";
+
+/**
+ * The Shots choice a node is on in a mode: multi-shot when the node has it on
+ * and the model takes shots there; else auto when the model's own `shots_auto`
+ * switch is on in its stored params; else single shot.
+ * @param spec - The model's storyboard in this mode, undefined where it takes no shots.
+ * @param multiShot - The node's `multiShot` field.
+ * @param params - The params stored for the model.
+ * @returns The choice.
+ */
+export function effectiveShots(
+  spec: StoryboardSpec | undefined,
+  multiShot: unknown,
+  params: Readonly<Record<string, unknown>>,
+): ShotsChoice {
+  if (spec === undefined) return "single";
+  if (multiShot === true) return "multi";
+  if (spec.autoParam !== undefined && params[spec.autoParam] === true) return "auto";
+  return "single";
 }
 
 /** One shot as a run sends it: its words as plain text and its seconds. */
@@ -124,8 +152,9 @@ function writeShots(template: string, shots: readonly StoryboardShotInput[]): st
 }
 
 /**
- * What a multi-shot run sends: Kling its fixed values and each shot as a field, a
- * model with no field for shots one prompt that writes them all out.
+ * What a multi-shot run sends: Kling its fixed values, its own shot planning
+ * off (it names the same upstream field) and each shot as a field, a model with
+ * no field for shots one prompt that writes them all out.
  * @param spec - The model's storyboard.
  * @param shots - The shots, in order, with their words already plain text.
  * @returns The params to merge and the prompt to send in place of the main one.
@@ -138,6 +167,7 @@ export function storyboardSend(spec: StoryboardSpec, shots: readonly StoryboardS
   return {
     params: {
       ...spec.fixed,
+      ...(spec.autoParam === undefined ? {} : { [spec.autoParam]: false }),
       [spec.shotsParam]: shots.map((shot) =>
         seconds === undefined ? { prompt: shot.prompt } : { prompt: shot.prompt, [seconds]: shot.duration },
       ),

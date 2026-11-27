@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type * as AuthModule from '@web/data/api/auth';
+import type * as AnalyticsModule from '@web/data/analytics';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // These cases cover the program's entry points as they behave once shown again (inner#2155).
 vi.mock('@web/features/referral/referral-ui', () => ({ REFERRAL_UI_SHOWN: true }));
@@ -19,7 +20,11 @@ const { carry, warning } = vi.hoisted(() => ({
 
 vi.mock('@web/data/api/auth', async () => {
   const actual = await vi.importActual<typeof AuthModule>('@web/data/api/auth');
-  return { ...actual, authApi: { ...actual.authApi, options: vi.fn(), google: vi.fn(), login: vi.fn() } };
+  return { ...actual, authApi: { ...actual.authApi, options: vi.fn(), me: vi.fn(), login: vi.fn() } };
+});
+vi.mock('@web/data/analytics', async () => {
+  const actual = await vi.importActual<typeof AnalyticsModule>('@web/data/analytics');
+  return { ...actual, trackEvent: vi.fn(), reportConversion: vi.fn(), attributionBody: () => ({}) };
 });
 vi.mock('@web/lib/referral-carry', () => ({
   carriedReferralCode: () => carry.code,
@@ -33,28 +38,28 @@ vi.mock('@web/lib/toast', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/lib/toast')>();
   return { ...actual, toast: { ...actual.toast, warning } };
 });
-vi.mock('@web/pages/auth/GoogleSignIn', () => ({
-  GoogleSignIn: ({ busy, onCredential }: { busy: boolean; onCredential: (c: string) => Promise<void> }) => (
-    <button type='button' disabled={busy} onClick={() => void onCredential('credential')}>
-      Continue with Google
-    </button>
-  ),
-}));
 
 import LoginPage from '@web/pages/auth/LoginPage';
-import { authApi, type SignupReferralOutcome } from '@web/data/api/auth';
-import { ApiException } from '@web/data/api/types';
+import { authApi } from '@web/data/api/auth';
+import { reportConversion } from '@web/data/analytics';
 import { useCurrentUserStore } from '@web/stores';
+import { recordGoogleBeginPosts, sessionStorageText, type GoogleBeginPost } from './google-begin-harness';
 
 const USER = { id: 'u1', email: 'foo@bar.com', personalStudio: null, membershipTier: 'base', locale: 'en' } as const;
-const REFUSED = new ApiException({ status: 422, message: 'This referral code is not valid.', fromServer: true, reason: 'invalid_code' });
+const INVALID = 'This referral code is not valid. Change it, or clear it to continue.';
 
-/** Renders the sign-in page with the page it goes to. */
-function setup(): void {
+let recorder: { posts: GoogleBeginPost[]; stop: () => void };
+
+/**
+ * Renders the sign-in page at an address, with the page it goes to.
+ * @param entry - The starting address.
+ * @returns The unmount function, to leave the page as a full-page post does.
+ */
+function setup(entry = '/login'): () => void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const view = render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/login']}>
+      <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route path='/login' element={<LoginPage />} />
           <Route path='/studio' element={<div data-testid='studio-page' />} />
@@ -62,108 +67,151 @@ function setup(): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return view.unmount;
 }
 
-const google = (): HTMLElement => screen.getByRole('button', { name: 'Continue with Google' });
+const google = (): Promise<HTMLElement> => screen.findByRole('button', { name: /continue with google/i });
+
+/**
+ * Type a code into the opened referral field and press the Google button,
+ * then leave the page as the browser does on a form post.
+ * @param user - The user-event instance.
+ * @param code - What the user types.
+ * @returns The post the browser sent.
+ */
+async function typeAndLeave(user: ReturnType<typeof userEvent.setup>, code: string): Promise<GoogleBeginPost> {
+  const leave = setup();
+  await user.click(await screen.findByRole('button', { name: 'Have a referral code?' }));
+  await user.type(screen.getByLabelText('Referral code'), code);
+  await user.click(await google());
+  leave();
+  expect(recorder.posts).toHaveLength(1);
+  return recorder.posts[0]!;
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubGlobal('__GOOGLE_CLIENT_ID__', 'test.apps.googleusercontent.com');
+  sessionStorage.clear();
   carry.code = null;
   useCurrentUserStore.setState({ user: null, role: null, loading: false, bootstrapped: true });
-  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
+  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: true, googleSignIn: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' } as never);
+  vi.mocked(authApi.me).mockResolvedValue(USER as never);
+  recorder = recordGoogleBeginPosts();
 });
 
-describe('the sign-in page referral row (inner#1868 table 12.14)', () => {
-  it('shows a placeholder and keeps Google waiting while the options load', () => {
-    vi.mocked(authApi.options).mockReturnValue(new Promise(() => {}));
-    setup();
-    expect(screen.getByTestId('login-referral-loading')).toBeInTheDocument();
-    expect(google()).toBeDisabled();
-  });
+afterEach(() => {
+  recorder.stop();
+});
 
-  it('names the carried code and sends it with a new Google account', async () => {
+describe('the sign-in page referral row with Google (inner#2157 §7.9)', () => {
+  it('names the carried code and posts it as from the link, saving it first', async () => {
     carry.code = 'ALICE';
-    vi.mocked(authApi.google).mockResolvedValue({ user: USER, created: true, referral: 'applied' } as never);
     const user = userEvent.setup();
     setup();
     expect(await screen.findByText(/will use referral code/)).toHaveTextContent('ALICE');
-    expect(screen.getByText('ALICE')).toHaveClass('font-semibold');
-    await user.click(google());
-    expect(authApi.google).toHaveBeenCalledWith(expect.objectContaining({ referralCode: 'ALICE', referralSource: 'signup_link' }));
-    await waitFor(() => expect(carry.forget).toHaveBeenCalled());
+    await user.click(await google());
+    expect(recorder.posts).toHaveLength(1);
+    expect(recorder.posts[0]!.fields.referralCode).toBe('ALICE');
+    expect(recorder.posts[0]!.fields.referralSource).toBe('signup_link');
+    expect(recorder.posts[0]!.storedAtSubmit).toContain('ALICE');
   });
 
-  it('drops the carried code when removed and sends none afterwards', async () => {
+  it('drops the carried code when removed and posts none afterwards', async () => {
     carry.code = 'ALICE';
-    vi.mocked(authApi.google).mockResolvedValue({ user: USER, created: true } as never);
     const user = userEvent.setup();
     setup();
     await user.click(await screen.findByRole('button', { name: 'Don\'t use this code' }));
     expect(screen.queryByText(/will use referral code/)).toBeNull();
-    expect(screen.getByRole('button', { name: 'Have a referral code?' })).toBeInTheDocument();
     expect(carry.forget).toHaveBeenCalled();
-    await user.click(google());
-    expect(vi.mocked(authApi.google).mock.calls[0]![0]).not.toHaveProperty('referralCode');
+    await user.click(await google());
+    expect(recorder.posts[0]!.fields.referralCode ?? '').toBe('');
   });
 
-  it('marks a refused carried code as no longer valid and stops sending it', async () => {
-    carry.code = 'ALICE';
-    vi.mocked(authApi.google).mockRejectedValueOnce(REFUSED).mockResolvedValueOnce({ user: USER, created: true } as never);
+  it('posts a typed code as typed and saves it before the post', async () => {
     const user = userEvent.setup();
-    setup();
+    const post = await typeAndLeave(user, 'bob');
+    expect(post.fields.referralCode).toBe('bob');
+    expect(post.fields.referralSource).toBe('signup_typed');
+    expect(post.storedAtSubmit).toContain('bob');
+  });
+
+  it('restores a typed code after googleError=cancelled, keeps it typed and clears the saved copy', async () => {
+    const user = userEvent.setup();
+    await typeAndLeave(user, 'bob');
+    setup('/login?googleError=cancelled');
+    expect(await screen.findByLabelText('Referral code')).toHaveValue('bob');
+    await waitFor(() => expect(sessionStorageText()).not.toContain('bob'));
+    await user.click(await google());
+    expect(recorder.posts).toHaveLength(2);
+    expect(recorder.posts[1]!.fields.referralCode).toBe('bob');
+    expect(recorder.posts[1]!.fields.referralSource).toBe('signup_typed');
+  });
+
+  it('restores the code after google=signed_in too and clears the saved copy', async () => {
+    const user = userEvent.setup();
+    await typeAndLeave(user, 'bob');
+    setup('/login?google=signed_in&referral=not_applied');
+    await waitFor(() => expect(sessionStorageText()).not.toContain('bob'));
+  });
+
+  it('does not restore the saved code on a plain visit', async () => {
+    const user = userEvent.setup();
+    await typeAndLeave(user, 'bob');
+    setup('/login');
+    expect(await screen.findByRole('button', { name: 'Have a referral code?' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Referral code')).toBeNull();
+  });
+
+  it('marks a typed code invalid after googleError=referral_invalid', async () => {
+    const user = userEvent.setup();
+    await typeAndLeave(user, 'bob');
+    setup('/login?googleError=referral_invalid');
+    expect(await screen.findByText(INVALID)).toBeInTheDocument();
+    expect(screen.getByLabelText('Referral code')).toHaveValue('bob');
+    expect(screen.getByLabelText('Referral code')).toHaveAttribute('aria-invalid', 'true');
+    expect(carry.refused).toHaveBeenCalledWith('bob');
+  });
+
+  it('marks a carried code as no longer valid after googleError=referral_invalid and stops posting it', async () => {
+    carry.code = 'ALICE';
+    const user = userEvent.setup();
+    const leave = setup();
     await screen.findByText(/will use referral code/);
-    await user.click(google());
+    await user.click(await google());
+    leave();
+    setup('/login?googleError=referral_invalid');
     expect(await screen.findByText(/is no longer valid/)).toHaveTextContent('Referral code ALICE is no longer valid');
-    await user.click(google());
-    expect(vi.mocked(authApi.google).mock.calls[1]![0]).not.toHaveProperty('referralCode');
+    expect(carry.refused).toHaveBeenCalledWith('ALICE');
+    await user.click(await google());
+    expect(recorder.posts).toHaveLength(2);
+    expect(recorder.posts[1]!.fields.referralCode ?? '').toBe('');
   });
 
-  it('opens a field for a typed code, sends it, and shows a refusal under it', async () => {
-    vi.mocked(authApi.google).mockRejectedValue(REFUSED);
-    const user = userEvent.setup();
-    setup();
-    await user.click(await screen.findByRole('button', { name: 'Have a referral code?' }));
-    expect(screen.getByLabelText('Referral code')).toHaveAttribute('maxLength', '40');
-    await user.type(screen.getByLabelText('Referral code'), 'bob');
-    await user.click(google());
-    expect(authApi.google).toHaveBeenCalledWith(expect.objectContaining({ referralCode: 'bob', referralSource: 'signup_typed' }));
-    expect(await screen.findByText('This referral code is not valid. Change it, or clear it to continue.')).toBeInTheDocument();
-    await user.type(screen.getByLabelText('Referral code'), 'x');
-    expect(screen.queryByText('This referral code is not valid. Change it, or clear it to continue.')).toBeNull();
-  });
-
-  it('warns before navigating when Google signs in to an existing account carrying a code', async () => {
+  it('forgets the carried code and reports the conversion when Google made a new account', async () => {
     carry.code = 'ALICE';
-    vi.mocked(authApi.google).mockResolvedValue({ user: USER, created: false, referral: 'not_applied' } as never);
-    const user = userEvent.setup();
-    setup();
-    await screen.findByText(/will use referral code/);
-    await user.click(google());
-    await waitFor(() => expect(warning).toHaveBeenCalledWith(
+    setup('/login?google=created');
+    await waitFor(() => expect(carry.forget).toHaveBeenCalledTimes(1));
+    expect(reportConversion).toHaveBeenCalledExactlyOnceWith('signup', 'signup:u1');
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  it('warns and keeps the carried code when Google signed in to an existing account with referral=not_applied', async () => {
+    carry.code = 'ALICE';
+    setup('/login?google=signed_in&referral=not_applied');
+    expect(await screen.findByTestId('studio-page')).toBeInTheDocument();
+    expect(warning).toHaveBeenCalledExactlyOnceWith(
       'This account already exists, so the referral code was not used. If you have not had a membership yet, you can add it in the membership panel.',
-    ));
+    );
     // The warning sends the user to the panel, whose field fills from the carried code.
     expect(carry.forget).not.toHaveBeenCalled();
-  });
-
-  it('shows no warning when Google made a new account whose code is pending', async () => {
-    carry.code = 'ALICE';
-    const pending: SignupReferralOutcome = 'pending';
-    vi.mocked(authApi.google).mockResolvedValue({ user: USER, created: true, referral: pending } as never);
-    const user = userEvent.setup();
-    setup();
-    await screen.findByText(/will use referral code/);
-    await user.click(google());
-    await waitFor(() => expect(carry.forget).toHaveBeenCalledTimes(1));
-    expect(warning).not.toHaveBeenCalled();
+    expect(reportConversion).not.toHaveBeenCalled();
   });
 
   it('has no referral row where nothing is sold', async () => {
     carry.code = 'ALICE';
-    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
+    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false, googleSignIn: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' } as never);
     setup();
-    await waitFor(() => expect(google()).toBeEnabled());
+    await google();
     expect(screen.queryByText(/will use referral code/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Have a referral code?' })).toBeNull();
   });

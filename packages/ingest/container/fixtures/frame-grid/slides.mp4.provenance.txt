@@ -1,0 +1,5 @@
+slides.mp4
+
+A Chrome MediaRecorder MP4 recording (encoder tag `AVC1 Coding`, yuvj420p, BT.709 full range) of a 320x240 canvas redrawn about every 4 s (a slide show), with an oscillator's AAC audio running to about 19.76 s while the video ends at about 16.03 s; one keyframe, 5 source frames. r_frame_rate 30000/1 exceeds the 120 fps cap, so the grid rate is 30 (Mux rule) per the sample set's rate table, 481 video slots. Made by the sample set's slide-show recording script: Playwright drives Chrome, which records a canvas captureStream plus a Web Audio oscillator with MediaRecorder (mime type video/mp4).
+
+From the maintainers' frame-grid sample set (inner#1306), copied unchanged. Used by container/__tests__/frame-grid-*.node.test.ts.

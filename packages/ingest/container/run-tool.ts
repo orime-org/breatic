@@ -19,6 +19,8 @@ export interface ToolRun {
   signal: AbortSignal;
   /** Bytes or a stream to hand the tool on stdin, when it reads from there. */
   input?: Uint8Array | ReadableStream<Uint8Array>;
+  /** The tool writes its result to a file named in its arguments, so an empty stdout is its answer. */
+  writesFile?: boolean;
 }
 
 /**
@@ -31,7 +33,7 @@ export interface ToolRun {
  * @param args - Its argument list.
  * @param run - Its output ceiling, its signal and its input.
  * @returns What it wrote, or null when it failed, was cut off or produced
- *   nothing.
+ *   nothing without `writesFile`.
  */
 export async function runTool(
   program: string,
@@ -65,7 +67,7 @@ export async function runTool(
           resolve(null);
           return;
         }
-        if (stdout.length === 0) {
+        if (stdout.length === 0 && run.writesFile !== true) {
           console.error("media_tool_wrote_nothing", { program });
           resolve(null);
           return;

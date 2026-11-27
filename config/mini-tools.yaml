@@ -9,6 +9,145 @@
 # How often the worker asks the ingest Worker how a job is doing.
 poll_interval_ms: 5000
 
+executions:
+  # Provisional: reuse the existing eight-output job contract and cut's 300 s
+  # precheck, not measured capacity. Std4 worst-sample qualification is pending.
+  video.extract-frames:
+    container_class: "MiniToolContainerStd4"
+    precheck_seconds: 300
+    max_outputs: 8
+    # Outputs one batch job writes; at most the job contract's eight.
+    max_outputs_per_job: 8
+  video.split:
+    container_class: "MiniToolContainerStd4"
+    precheck_seconds: 300
+    max_outputs: 8
+    max_outputs_per_job: 8
+  # A video focus crop takes one grid frame from the tool source, as frame extraction does; the platform pays for it.
+  video.focus-crop:
+    container_class: "MiniToolContainerStd4"
+    precheck_seconds: 300
+
+# Chunked full-resolution encoding. Each chunk targets chunk_share of the
+# remaining task budget; a run uses at most max_parallel_chunks chunks, and a
+# presentation needing more fails as too_long. Encode jobs run only on
+# standard-4 (basic only probes and copies), so the rates are configured for it:
+# a job's seconds are start_seconds + (encoded + pre-roll frames) x (source
+# pixels / decode-convert rate [+ source pixels / tone-map rate] + output pixels
+# / encode rate). Rates were measured on a maintainer machine held to
+# standard-4 limits; replace them with readings taken on Cloudflare standard-4.
+encoding:
+  chunk_share: 0.5
+  max_parallel_chunks: 8
+  # A failed chunk attempt is retried this many times before the presentation fails.
+  chunk_retries: 3
+  encoder:
+    container_class: "MiniToolContainerStd4"
+    start_seconds: 3
+    # Local Docker readings at nproc 4 (encode-throughput nproc4 and 12-bit runs),
+    # to be replaced by measurements on Cloudflare standard-4.
+    encode_pixels_per_second: 248000000
+    # The original's source pixels per second, by its source decode key (frames-split §5.4): each key's slowest covered
+    # codec, 4-thread maintainer readings, to be replaced by measurements on Cloudflare standard-4. sdr_8bit is 8-bit
+    # 4:4:4 VP9, sdr_10bit and sdr_12bit 10- and 12-bit 4:4:4 VP9, sdr_alpha_layer HEVC with an alpha layer,
+    # sdr_prores ProRes 4444, sdr_dnx DNxHR 444, sdr_av1_* 4:4:4 AV1, sdr_jpeg2000 12/16-bit RGB JPEG2000, sdr_ffv1
+    # 16-bit FFV1, sdr_png 16-bit PNG, sdr_other MJPEG.
+    decode_convert_pixels_per_second:
+      sdr_8bit: 910000000
+      sdr_10bit: 810000000
+      sdr_12bit: 690000000
+      sdr_alpha_layer: 600000000
+      sdr_prores: 820000000
+      sdr_dnx: 735000000
+      sdr_av1_8bit: 740000000
+      sdr_av1_10bit: 570000000
+      sdr_av1_12bit: 610000000
+      sdr_jpeg2000: 25000000
+      sdr_ffv1: 75000000
+      sdr_png: 340000000
+      sdr_other: 1080000000
+    # Source pixels an HDR original's edit-file encode tone maps per second: the slowest measured filter graph (odd sizes).
+    tonemap_pixels_per_second: 420000000
+    # Output pixels per second each edit-file tier encodes; provisional until measured on Cloudflare standard-4.
+    edit_h264_intra_8bit_420_pixels_per_second: 300000000
+    edit_h264_intra_10bit_420_pixels_per_second: 250000000
+    edit_h264_intra_8bit_444_pixels_per_second: 200000000
+    edit_h264_intra_10bit_444_pixels_per_second: 180000000
+    edit_prores_pixels_per_second: 400000000
+    # Audio seconds encoded to AAC 48 kHz per second, for the dispatched copy's estimate.
+    # Local Docker reading at nproc 4 (aac-encode-rate run), to be replaced by a measurement on Cloudflare standard-4.
+    aac_encode_seconds_per_second: 100
+  # Source pixels per second each edit-file tier decodes when a tool reads the edit file; provisional until measured
+  # on Cloudflare standard-4.
+  decoder:
+    edit_h264_intra_8bit_420_pixels_per_second: 1500000000
+    edit_h264_intra_10bit_420_pixels_per_second: 1200000000
+    edit_h264_intra_8bit_444_pixels_per_second: 1100000000
+    edit_h264_intra_10bit_444_pixels_per_second: 900000000
+    edit_prores_pixels_per_second: 950000000
+
+# Frozen into each planned job; oversized output fails without being truncated.
+plan_limits:
+  probeStdoutBytes: 268435456
+  analysisStdoutBytes: 16777216
+  stderrTailBytes: 65536
+
+# Automatic presentation preparation is platform funded and uses the metadata container.
+presentation:
+  container_class: "MediaContainer"
+  # The target presentation policy; raise it when a policy change must prepare every source again.
+  policy_version: 1
+  # Frames the probe decodes to classify alpha and colour: one classified every measured fixture.
+  probe_sample_frames: 1
+  # How long a single-frame source is shown.
+  single_frame_duration_ms: 5000
+  # The frame-rate rule's cap: a source above it gets its rate from its packets.
+  max_fps: 120
+  # The playback file's keyframe interval in seconds.
+  playback_gop_seconds: 2
+  # The most bytes the probe may print.
+  probe_output_max_bytes: 67108864
+  # Equal to storage.yaml upload.max_upload_bytes: every uploadable video is presented.
+  max_source_bytes: 2147483648
+  # The most bytes a transparent video's packed playback file may take; a larger one fails as packed_over_cap.
+  max_packed_bytes: 1073741824
+  crf: 18
+  preset: "medium"
+  # The edit file tools read when the original cannot be read frame-accurately: all-intra H.264 or ProRes 4444.
+  # bytes_per_pixel estimates its size before it is written; it is provisional until measured.
+  # max_edit_bytes comes from the standard-4 disk (classes.MiniToolContainerStd4.disk_gb, 20 GB, decimal) less a
+  # 4 GB working margin. The edit stitch downloads every edit chunk, so the encoder class holds this cap plus the margin;
+  # the margin holds the container image, which shares the instance disk, and the stitch's records. Video executions and
+  # analyses read the tool source in place through the loopback reader and hold one output at a time.
+  max_edit_bytes: 16000000000
+  edit:
+    crf: 15
+    preset: "medium"
+    prores_profile: "4444"
+    bytes_per_pixel: 0.5
+  # An encoded carrier: short side at most max_short_side, labelled SDR BT.709;
+  # it is encoded on encoding.encoder.container_class.
+  carrier:
+    max_short_side: 1080
+    color:
+      primaries: "bt709"
+      transfer: "bt709"
+      matrix: "bt709"
+      range: "tv"
+
+# Canonical results remain discoverable until their delivery is acknowledged.
+delivery:
+  discovery_interval_ms: 30000
+  discovery_page_size: 100
+
+# A billing lookup lease and retry delay; neither changes the node task budget.
+settlement:
+  lease_ms: 60000
+  retry_ms: 30000
+  lookup_timeout_ms: 15000
+  discovery_interval_ms: 30000
+  discovery_page_size: 100
+
 # Cloudflare's published per-second prices
 # (https://developers.cloudflare.com/containers/pricing/, read 2026-10-07).
 prices:
@@ -18,6 +157,11 @@ prices:
 
 # One class per instance type, each with the instance type's published size.
 classes:
+  MediaContainer:
+    instance_type: "basic"
+    vcpu: 0.25
+    memory_gib: 1
+    disk_gb: 4
   MiniToolContainerStd1:
     instance_type: "standard-1"
     vcpu: 0.5
@@ -110,3 +254,20 @@ join_max_clips: 20
 # downloads.
 waveform_max_seconds: 600
 waveform_max_bytes: 200000000
+# A video tool panel asks for a quote once the inputs it prices have held still this long,
+# so a playing video does not ask on every frame.
+quote_debounce_ms: 300
+
+# Frozen public detector/provider profiles for accepted analyses (inner#1306).
+# The worker consumes the accepted profile; later config changes apply to new runs.
+analyses:
+  scene_cuts:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+    profile:
+      id: "pyscenedetect-content"
+      version: "0.7.2"
+      weightsHash: null
+      params:
+        threshold: 27
+        minSceneLength: 15

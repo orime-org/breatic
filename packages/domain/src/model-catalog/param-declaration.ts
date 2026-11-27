@@ -78,6 +78,9 @@ const declarationSchema = z.object({
   // A list the endpoint has no field for: each entry is written into the
   // prompt with this template.
   into_prompt: z.string().optional(),
+  // A switch that lets the model plan its own shots (Kling's auto_shots), drawn
+  // in the Shots control beside writing the shots one by one.
+  shots_auto: z.boolean().optional(),
   // How a value reads on screen, when its own spelling is not that sentence
   // (`left_right` reads "Left first"): a value of a choice or a step of a
   // range. English and never localized, like the model's own description.
@@ -153,6 +156,7 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "remote_source",
   "absent_value",
   "into_prompt",
+  "shots_auto",
   "label",
   "value_labels",
   "value_locales",
@@ -355,6 +359,11 @@ function faultsOn(
     } else if (!declared.into_prompt.includes("{prompt}")) {
       faults.push("into_prompt has no {prompt}, so no entry's text would reach the prompt");
     }
+  }
+
+  // The Shots control reads this switch as on or off.
+  if (declared.shots_auto === true && !(declared.values?.length === 2 && declared.values.includes(true) && declared.values.includes(false))) {
+    faults.push("shots_auto marks a switch, so it needs values: [true, false]");
   }
 
   // One tag per value: the panel pairs them by position, so a short list

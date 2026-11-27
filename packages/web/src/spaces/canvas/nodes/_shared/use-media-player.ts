@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
+import type { MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
 
 /** Where a player stands: what one player hands another (inner#1844). */
 export interface MediaPlayerState {
@@ -67,12 +68,14 @@ export interface MediaPlayerApi {
  *   mounted and the new clip's duration arrives in the same write as its
  *   content. The element is what answers for a medium the node knows none of.
  * @param start - Where to start, written once at mount (inner#1844).
+ * @param owned - An optional actual native or alpha transport owner.
  * @returns Reactive player state plus transport actions.
  */
 export function useMediaPlayer(
   ref: React.RefObject<HTMLMediaElement | null>,
   knownDuration?: number,
   start?: MediaPlayerState,
+  owned?: MediaSurfaceBinding | null,
 ): MediaPlayerApi {
   const [playing, setPlaying] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);
@@ -80,30 +83,37 @@ export function useMediaPlayer(
   const [volume, setVolume] = React.useState(1);
   const [muted, setMuted] = React.useState(false);
 
+  // A presentation owns its actual element; the original ref remains the
+  // native audio/independent-player contract. Ref identity is irrelevant for
+  // an owned transport and must not pause it on a control re-render.
+  const nativeRef = owned === undefined ? ref : undefined;
   // A hidden Space keeps its media element, and an element left playing goes
-  // on sounding from a Space nobody is looking at. Empty deps: this runs when
-  // the Space is hidden or closed, not when the caller hands in a new ref.
+  // on sounding from a Space nobody is looking at. Only an actual owner change
+  // ends this transport lifetime, not a new ref wrapper from the caller.
   React.useEffect(() => {
-    const el = ref.current;
-    return () => el?.pause();
+    const el = owned?.element ?? nativeRef?.current;
+    return () => {
+      if (owned) owned.pause();
+      else el?.pause();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [owned]);
 
   // Written in the commit of the click that opened this player, before any
   // metadata: a time set at HAVE_NOTHING becomes the start position, and play()
   // still counts as answering the click, which Safari requires for sound.
   // Mount only: a later `start` belongs to a player that has moved on.
   React.useLayoutEffect(() => {
-    const el = ref.current;
+    const el = owned?.element ?? nativeRef?.current;
     if (!el || !start) return;
     writePlayerState(el, start);
-    if (start.playing) void el.play().catch(() => {});
+    if (start.playing) void (owned ? owned.play() : el.play()).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   React.useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
+    const el = owned?.element ?? nativeRef?.current;
+    if (!el) { setPlaying(false); setCurrentTime(0); setElementDuration(0); return undefined; }
 
     /** Mirror the current native state, including a resource load/reset. */
     const sync = (): void => {
@@ -125,22 +135,24 @@ export function useMediaPlayer(
     return () => {
       for (const event of events) el.removeEventListener(event, sync);
     };
-  }, [ref]);
+  }, [nativeRef, owned]);
 
   // A click can arrive before the queued native event updates React.
   const togglePlay = React.useCallback((): void => {
-    const el = ref.current;
+    const el = owned?.element ?? nativeRef?.current;
     if (!el) return;
-    if (el.paused) void el.play().catch(() => {});
+    if (el.paused) void (owned ? owned.play() : el.play()).catch(() => {});
+    else if (owned) owned.pause();
     else el.pause();
-  }, [ref]);
+  }, [nativeRef, owned]);
 
   const seek = React.useCallback(
     (time: number): void => {
-      const el = ref.current;
-      if (el) el.currentTime = time;
+      const el = nativeRef?.current;
+      if (owned) owned.seek(time);
+      else if (el) el.currentTime = time;
     },
-    [ref],
+    [nativeRef, owned],
   );
 
   // The node's own figure comes first, and the element answers for a medium the
@@ -149,26 +161,23 @@ export function useMediaPlayer(
 
   const seekFraction = React.useCallback(
     (fraction: number): void => {
-      const el = ref.current;
-      if (el && duration > 0) {
-        el.currentTime = Math.min(1, Math.max(0, fraction)) * duration;
-      }
+      if (duration > 0) seek(Math.min(1, Math.max(0, fraction)) * duration);
     },
-    [ref, duration],
+    [seek, duration],
   );
 
   const setVolumeLevel = React.useCallback(
     (next: number): void => {
-      const el = ref.current;
+      const el = owned?.element ?? nativeRef?.current;
       if (el) el.volume = Math.min(1, Math.max(0, next));
     },
-    [ref],
+    [nativeRef, owned],
   );
 
   const toggleMute = React.useCallback((): void => {
-    const el = ref.current;
+    const el = owned?.element ?? nativeRef?.current;
     if (el) el.muted = !el.muted;
-  }, [ref]);
+  }, [nativeRef, owned]);
 
   // The same figure the scrubber is positioned against, so a drag lands where
   // it was released. The element takes a time before it has any metadata: with

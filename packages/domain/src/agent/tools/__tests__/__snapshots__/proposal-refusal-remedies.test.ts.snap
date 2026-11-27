@@ -116,8 +116,6 @@ exports[`every refusal states its fault, its rule and its facts > mode-unbacked 
 
 exports[`every refusal states its fault, its rule and its facts > model-not-in-mode (0): is met and says what is wrong 1`] = `""nano-banana-pro-edit-ultra" does not back "t2i". Those that do: gpt-image-2.5-sunburst-text-to-image, grok-imagine-image-v2.0-text-to-image, nano-banana-2, recraft-v4.1-pro-text-to-vector, riverflow-2.0-pro-text-to-image, krea-v2-large-text-to-image, ideogram-v3-quality, seedream-v5.5-text-to-image, recraft-v4-style-text-to-image."`;
 
-exports[`every refusal states its fault, its rule and its facts > multishot-no-shots (0): is met and says what is wrong, and its one fix clears it 1`] = `"In the multi_shot mode the shots are what is generated. On node 0 ("Gen"), give shots, each with its own prompt and seconds."`;
-
 exports[`every refusal states its fault, its rule and its facts > no-mode-model (0): is met and says what is wrong 1`] = `"Node 0 generates, so it needs a mode and a model."`;
 
 exports[`every refusal states its fault, its rule and its facts > no-prompt-box (0): is met and says what is wrong, and its one fix clears it 1`] = `""omnihuman-1.5" draws no prompt box, so words, tweak marks and refs written there reach nobody. On node 1 ("Gen"), keep only notes saying what the user picks in the panel."`;
@@ -152,7 +150,7 @@ exports[`every refusal states its fault, its rule and its facts > param-slot (0)
 
 exports[`every refusal states its fault, its rule and its facts > param-storyboard (0): is met and says what is wrong, and its one fix clears it 1`] = `""multi_prompt" is set by the node's shots. On node 0 ("Gen"), leave "multi_prompt" out of params."`;
 
-exports[`every refusal states its fault, its rule and its facts > param-storyboard-other-mode (0): is met and says what is wrong, and its one fix clears it 1`] = `""multi_prompt" is set by shots, which only the multi_shot mode takes. On node 0 ("Gen"), leave "multi_prompt" out of params."`;
+exports[`every refusal states its fault, its rule and its facts > param-storyboard-other-mode (0): is met and says what is wrong, and its one fix clears it 1`] = `""shots" is set by shots, and "gemini-omni-1.1-flash-image-to-video" takes no shots in "first_last". On node 0 ("Gen"), leave "shots" out of params."`;
 
 exports[`every refusal states its fault, its rule and its facts > param-too-short (0): is met and says what is wrong 1`] = `""voice_description" takes at least 1 character once cleaned, and this one has 0."`;
 
@@ -204,7 +202,9 @@ exports[`every refusal states its fault, its rule and its facts > shot-too-long 
 
 exports[`every refusal states its fault, its rule and its facts > shots-duration (0): is met and says what is wrong 1`] = `"The shots add up to 5 seconds and duration is 8."`;
 
-exports[`every refusal states its fault, its rule and its facts > shots-outside-multishot (0): is met and says what is wrong, and its one fix clears it 1`] = `"Shots belong to the multi_shot mode, and "Gen" runs "t2v". On node 0 ("Gen"), leave shots out."`;
+exports[`every refusal states its fault, its rule and its facts > shots-not-taken (0): is met and says what is wrong, and its one fix clears it 1`] = `""nano-banana-2" takes no shots in "t2i". On node 0 ("Gen"), leave shots out."`;
+
+exports[`every refusal states its fault, its rule and its facts > shots-with-auto (0): is met and says what is wrong 1`] = `"auto_shots lets "kling-v3.0-4k-text-to-video" plan the shots itself, and this node writes its shots out."`;
 
 exports[`every refusal states its fault, its rule and its facts > shots-with-prompt (0): is met and says what is wrong, and its one fix clears it 1`] = `"With shots the main prompt is not sent; its words, refs and notes go in the shots. On node 0 ("Gen"), leave prompt out."`;
 
@@ -226,7 +226,7 @@ exports[`every refusal states its fault, its rule and its facts > template-edge-
 
 exports[`every refusal states its fault, its rule and its facts > template-edge-missing (1): is met and says what is wrong, and its one fix clears it 1`] = `"Template "fixture-shots" anchored at node 1 ("Clip") wires its "still" node into "clip" by "pool", and node 0 ("Still"), tagged "still", has no edge there. On node 1 ("Clip"), send node 0 ("Still") into it by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, its ref and note in a shot."`;
 
-exports[`every refusal states its fault, its rule and its facts > template-edge-missing (2): is met and says what is wrong, and its one fix clears it 1`] = `"Template "fixture-shots" anchored at node 1 ("Clip") wires its "still" node into "clip" by "pool", and node 0 ("Still"), tagged "still", has no edge there. On node 1 ("Clip"), send node 0 ("Still") into it by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, its ref and note in a shot."`;
+exports[`every refusal states its fault, its rule and its facts > template-edge-missing (2): is met and says what is wrong, and its one fix clears it 1`] = `"Template "fixture-shots" anchored at node 1 ("Clip") wires its "still" node into "clip" by "pool", and node 0 ("Still"), tagged "still", has no edge there. On node 1 ("Clip"), send node 0 ("Still") into it by an edge with into: "pool" and a ref @'ing it and a note saying what to do first."`;
 
 exports[`every refusal states its fault, its rule and its facts > template-input-into (0): is met and says what is wrong, and its one fix clears it 1`] = `"Template "fixture-slotted" anchored at node 0 ("Cover") takes input "song" into the "audio" slot of node 0 ("Cover"), not its pool or another slot, and the edge from node 1 ("Song") says into "pool". On node 0 ("Cover"), change the edge from node 1 ("Song") so it goes into it by an edge with into: "audio" and a note saying to pick it there and no ref."`;
 
@@ -252,7 +252,7 @@ exports[`every refusal states its fault, its rule and its facts > template-no-pr
 
 exports[`every refusal states its fault, its rule and its facts > template-no-prompt (1): is met and says what is wrong, and its one fix clears it 1`] = `""Gen" names template "storyboard-grid-25" and sends no prompt. The template's prompt, to rewrite in the user's language with their story or detail in it: [{"text":"Use "}, {"ref": <index of the node wired in for input "reference">}, {"text":" as the reference. Create ONE image: a storyboard grid of exactly 5 rows and 5 columns, 25 equal panels in total, separated by thin white gutters, read left to right and top to bottom as one continuous sequence in time. Story: "}, {"slot":{"kind":"tweak","label":"the story","note":"the story"}}, {"text":". Every panel keeps the same people, outfits, location and lighting as the reference. Vary shot size and camera angle from panel to panel like a film storyboard. No text, no numbers."}]. On node 0 ("Gen"), write a prompt."`;
 
-exports[`every refusal states its fault, its rule and its facts > template-no-prompt (2): is met and says what is wrong, and its one fix clears it 1`] = `""Clip" names template "fixture-shots" and sends no shots. The template's prompt, to rewrite in the user's language with their story or detail in it: [{"slot":{"kind":"note","label":"Generate Still first"}}, {"ref": <index of the node wired in for node "still">}, {"text":" walks along the shore."}]. Each node the shots @ goes into the pool. A node holding material or words goes into "Clip" by an edge with into: "pool" and a ref @'ing it; an empty one by an edge with into: "pool" and a ref @'ing it and a note saying what to do first. On node 1 ("Clip"), write the shots."`;
+exports[`every refusal states its fault, its rule and its facts > template-no-prompt (2): is met and says what is wrong, and its one fix clears it 1`] = `""Clip" names template "fixture-shots" and sends no shots. The template's shots, to rewrite in the user's language with their story or detail in it: shots: [{"duration": 2, "prompt": [{"text":"canvas.template.fixture-shots.shot.1"}]}, {"duration": 3, "prompt": [{"text":"canvas.template.fixture-shots.shot.2"}]}]. Each node the shots @ goes into the pool. A node holding material or words goes into "Clip" by an edge with into: "pool" and a ref @'ing it; an empty one by an edge with into: "pool" and a ref @'ing it and a note saying what to do first. On node 1 ("Clip"), write the shots."`;
 
 exports[`every refusal states its fault, its rule and its facts > template-no-text (0): is met and says what is wrong, and its one fix clears it 1`] = `""Script" names template "fixture-scripted" and sends no words. The template's text, to rewrite in the user's language with their story in it: [{"text":"Who: "}, {"slot":{"kind":"tweak","label":"the lead, e.g. a tired nurse","note":"the lead, e.g. a tired nurse"}}, {"text":"\\nScene 1: "}, {"slot":{"kind":"tweak","label":"what happens first","note":"what happens first"}}, {"text":"\\nScene 2: "}, {"slot":{"kind":"tweak","label":"what happens next","note":"what happens next"}}]. On node 1 ("Script"), write its words."`;
 

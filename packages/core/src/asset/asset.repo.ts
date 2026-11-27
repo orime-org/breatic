@@ -187,11 +187,12 @@ export async function findLiveByKeyInStudio(
 /**
  * An asset row by id, deleted or not.
  * @param assetId - The row's id.
+ * @param tx - An enclosing transaction, when the caller holds one.
  * @returns The `StudioAssetEntity`, or null when no row has that id.
  * @throws {Error} When the database query fails.
  */
-export async function findById(assetId: string): Promise<StudioAssetEntity | null> {
-  const rows = await db
+export async function findById(assetId: string, tx?: DbTx): Promise<StudioAssetEntity | null> {
+  const rows = await (tx ?? db)
     .select()
     .from(studioAssets)
     .where(eq(studioAssets.id, assetId))
@@ -353,8 +354,30 @@ export async function setCoverAsset(
 }
 
 /**
- * The address of a video's live cover in its own Studio, as every entry hands a video's media facts out; null for
- * anything that is not a video or has no such cover.
+/**
+ * A video's live cover row in its own Studio, as every entry hands a video's media facts out; null for anything that
+ * is not a video or has no such cover. A mini-tool output carries the whole row (its id, hash and size).
+ * @param asset - The asset's id and kind.
+ * @param asset.id - Its id.
+ * @param asset.kind - Its kind; only a video has a cover.
+ * @param tx - An enclosing transaction, when the caller holds one.
+ * @returns The cover's `StudioAssetEntity`, or null.
+ * @throws {Error} When the database query fails.
+ */
+export async function findCoverOf(asset: { id: string; kind: string }, tx?: DbTx): Promise<StudioAssetEntity | null> {
+  if (asset.kind !== "video") return null;
+  const cover = alias(studioAssets, "cover");
+  const rows = await (tx ?? db)
+    .select({ cover })
+    .from(studioAssets)
+    .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
+    .where(and(eq(studioAssets.id, asset.id), isNull(cover.deletedAt), eq(cover.studioId, studioAssets.studioId)))
+    .limit(1);
+  return rows[0] ? toEntity(rows[0].cover) : null;
+}
+
+/**
+ * The address of a video's live cover in its own Studio; null for anything that is not a video or has no such cover.
  * @param asset - The asset's id and kind.
  * @param asset.id - Its id.
  * @param asset.kind - Its kind; only a video has a cover.
@@ -362,15 +385,7 @@ export async function setCoverAsset(
  * @throws {Error} When the database query fails.
  */
 export async function findCoverUrlOf(asset: { id: string; kind: string }): Promise<string | null> {
-  if (asset.kind !== "video") return null;
-  const cover = alias(studioAssets, "cover");
-  const rows = await db
-    .select({ fileUrl: cover.fileUrl })
-    .from(studioAssets)
-    .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
-    .where(and(eq(studioAssets.id, asset.id), isNull(cover.deletedAt), eq(cover.studioId, studioAssets.studioId)))
-    .limit(1);
-  return rows[0]?.fileUrl ?? null;
+  return (await findCoverOf(asset))?.fileUrl ?? null;
 }
 
 /**
@@ -566,18 +581,20 @@ export async function readLiveProjectReferences(projectId: string, studioId: str
 }
 
 /**
- * The live Projects holding a live reference to an asset, whatever their Studio (#1580): the ones a page may have the
- * asset open in, told when its peaks are ready. A Project counts as live as `countLiveProjectsInStudio` counts it:
- * neither archived nor deleted.
- * @param assetId - The asset.
+ * The live Projects holding a live reference to any live asset row stored under a key, whatever their Studio (frames-split
+ * §7.20): work derived from the stored bytes (a video's presentation, an audio's peaks) is shared by every row under the
+ * key, and a paste into another Studio files a row of its own under the same key. A Project counts as live when it is
+ * neither archived nor deleted, as `countLiveProjectsInStudio` counts it.
+ * @param storageKey - The stored bytes' key.
  * @returns The Projects' ids, in no particular order.
  * @throws {Error} When the database read fails.
  */
-export async function listProjectsReferencingAsset(assetId: string): Promise<string[]> {
+export async function listProjectsReferencingStorageKey(storageKey: string): Promise<string[]> {
   const rows = await db.selectDistinct({ id: projectAssetRefs.projectId }).from(projectAssetRefs)
+    .innerJoin(studioAssets, eq(studioAssets.id, projectAssetRefs.assetId))
     .innerJoin(projects, eq(projects.id, projectAssetRefs.projectId))
     .where(and(
-      eq(projectAssetRefs.assetId, assetId), isNull(projectAssetRefs.deletedAt),
+      eq(studioAssets.storageKey, storageKey), isNull(studioAssets.deletedAt), isNull(projectAssetRefs.deletedAt),
       isNull(projects.deletedAt), isNull(projects.archivedAt),
     ));
   return rows.map((row) => row.id);

@@ -11,6 +11,356 @@ import { and, eq, desc, inArray, isNotNull, isNull, sql, type SQL } from "drizzl
 import { db, type DbTx } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
+import type { MiniToolMedium } from "@breatic/shared/mini-tools";
+import type { DueMiniToolSettlement, DueMiniToolSettlementPage, MiniToolSettlement, MiniToolSettlementClaim, MiniToolSettlementCursor } from "@domain/mini-tool/consumption.types.js";
+import type { MiniToolDeliveryState, MiniToolDeliveryCursor } from "@domain/mini-tool/delivery.service.js";
+
+/**
+ * Patch only durable media delivery, preserving computation and consumption siblings.
+ * @param taskId - The original task whose immutable row lock is held.
+ * @param delivery - The validated internal delivery state.
+ * @param tx - The same transaction as manifest initialization or acknowledgement.
+ * @returns Nothing after the original parent is updated.
+ * @throws {Error} When the parent disappeared or its update fails.
+ */
+export async function storeMiniToolDelivery(taskId: string, delivery: MiniToolDeliveryState, tx: DbTx): Promise<void> {
+  const patch = sql.param({ miniToolDelivery: delivery }, tasks.result);
+  const rows = await tx.update(tasks).set({
+    result: sql`coalesce(${tasks.result}, '{}'::jsonb) || ${patch}`, updatedAt: sql`clock_timestamp()`,
+  }).where(eq(tasks.id, taskId)).returning({ id: tasks.id });
+  if (rows.length !== 1) throw new Error("Delivery task no longer exists");
+}
+
+/**
+ * Discover registered manifests requiring delivery, including pre-existing missing siblings.
+ * @param limit - The bounded positive page size, including room for one caller lookahead.
+ * @param cursor - The preceding immutable SQL primary key.
+ * @returns Candidate task identities in exact UUID order, independent of billing and deadlines.
+ * @throws {Error} When the database read fails.
+ */
+export async function listMiniToolDeliveryCandidates(limit: number, cursor?: MiniToolDeliveryCursor): Promise<string[]> {
+  const after = cursor === undefined ? sql`` : sql`AND ${tasks.id} > ${cursor.taskId}::uuid`;
+  const rows = await db.execute<{ id: string }>(sql`
+    SELECT ${tasks.id} AS id FROM ${tasks}
+    WHERE ${tasks.source} = 'mini_tool' AND ${tasks.status} IN ('completed', 'failed')
+      AND ${tasks.params}->'miniToolExecution' IS NOT NULL
+      AND jsonb_path_exists(${tasks.result}, '$.miniToolExecution.outputs[*] ? (@.result.status == "registered")')
+      AND (${tasks.result}->'miniToolDelivery' IS NULL
+        OR jsonb_path_exists(${tasks.result}, '$.miniToolDelivery.outputs[*] ? (@.state == "pending")'))
+      ${after} ORDER BY ${tasks.id} LIMIT ${limit}
+  `);
+  return rows.map((row) => row.id);
+}
+
+/** Parent facts read while serializing one task's consumption writes. */
+export interface LockedMiniToolConsumptionTask {
+  id: string;
+  taskType: string;
+  userId: string;
+  projectId: string | null;
+  status: string;
+  source: string;
+  model: string | null;
+  billedAt: Date | null;
+  billedCredits: number | null;
+  result: Record<string, unknown>;
+}
+
+/**
+ * Lock by immutable task identity before reading any consumption state.
+ * @param taskId - The parent task, including a task hidden from user history.
+ * @param tx - The transaction that will record usage and settlement together.
+ * @returns Current parent facts, or null when no task exists.
+ * @throws {Error} When the database read fails.
+ */
+export async function lockMiniToolConsumptionTask(taskId: string, tx: DbTx): Promise<LockedMiniToolConsumptionTask | null> {
+  const [row] = await tx.select({
+    id: tasks.id, taskType: tasks.taskType, userId: tasks.userId, projectId: tasks.projectId,
+    status: tasks.status, source: tasks.source, result: tasks.result,
+    model: tasks.model, billedAt: tasks.billedAt, billedCredits: tasks.billedCredits,
+  }).from(tasks).where(eq(tasks.id, taskId)).for("update");
+  return row ? { ...row, result: row.result ?? {} } : null;
+}
+
+/**
+ * Claim a fixed amount without changing the parent's computation or media result.
+ * @param taskId - The parent whose immutable row lock is held.
+ * @param credits - The once-rounded complete expense.
+ * @param tx - The same transaction that writes funds and releases its hold.
+ * @returns Whether this transaction claimed the unbilled parent.
+ * @throws {Error} When the database write fails.
+ */
+export async function claimMiniToolCharge(taskId: string, credits: number, tx: DbTx): Promise<boolean> {
+  const rows = await tx.update(tasks).set({
+    billedAt: sql`clock_timestamp()`, billedCredits: credits, creditsUsed: credits,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(tasks.id, taskId), isNull(tasks.billedAt))).returning({ id: tasks.id });
+  return rows.length === 1;
+}
+
+/**
+ * Check a lookup lease against the database clock after acquiring the task lock.
+ * @param taskId - The task whose lock is held.
+ * @param claim - The lookup's original version and token.
+ * @param tx - The transaction holding the task lock.
+ * @returns Whether this claim may still write its answer.
+ * @throws {Error} When the database read fails.
+ */
+export async function hasMiniToolSettlementLease(taskId: string, claim: MiniToolSettlementClaim, tx: DbTx): Promise<boolean> {
+  const [row] = await tx.select({
+    valid: sql<boolean>`coalesce(
+      ${tasks.result}->'settlement'->>'state' = 'checking'
+      AND ${tasks.result}->'settlement'->>'version' = ${String(claim.version)}
+      AND ${tasks.result}->'settlement'->>'leaseToken' = ${claim.leaseToken}
+      AND (${tasks.result}->'settlement'->>'leaseUntil')::timestamptz > clock_timestamp(), false)`,
+  }).from(tasks).where(eq(tasks.id, taskId));
+  return row?.valid === true;
+}
+
+/**
+ * Read a fresh UTC instant without passing through JavaScript's millisecond Date.
+ * @param taskId - The task whose lock is held.
+ * @param tx - The transaction holding the task lock.
+ * @returns Database wall time with six fractional digits.
+ * @throws {Error} When the task is missing or the database read fails.
+ */
+export async function miniToolSettlementDatabaseNow(taskId: string, tx: DbTx): Promise<string> {
+  const [row] = await tx.select({
+    now: sql<string>`to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+  }).from(tasks).where(eq(tasks.id, taskId));
+  if (!row) throw new Error("Consumption task no longer exists");
+  return row.now;
+}
+
+/** SQL-clock instants and due decisions, retaining timestamp microseconds. */
+export type MiniToolSettlementClock = {
+  now: string;
+  leaseUntil: string;
+  retryAt: string;
+  waitingDue: boolean;
+  leaseExpired: boolean;
+};
+
+/**
+ * Read billing due times using only the database clock while the task lock is held.
+ * @param taskId - The immutable task identity.
+ * @param timing - Billing lease and retry configuration, independent of computation.
+ * @param timing.lease_ms - Duration of the lookup ownership.
+ * @param timing.retry_ms - Delay before another lookup attempt.
+ * @param tx - The short transaction holding the task lock.
+ * @returns One consistent clock sample, precise instants and due decisions.
+ * @throws {Error} When the task is absent or persistence is malformed.
+ */
+export async function miniToolSettlementClock(
+  taskId: string, timing: { lease_ms: number; retry_ms: number }, tx: DbTx,
+): Promise<MiniToolSettlementClock> {
+  const rows = await tx.execute<MiniToolSettlementClock>(sql`
+    WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at)
+    SELECT to_char(i.at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "now",
+      to_char((i.at + ${timing.lease_ms} * interval '1 millisecond') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "leaseUntil",
+      to_char((i.at + ${timing.retry_ms} * interval '1 millisecond') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "retryAt",
+      coalesce((t.result->'settlement'->>'nextAttemptAt')::timestamptz <= i.at, false) AS "waitingDue",
+      coalesce((t.result->'settlement'->>'leaseUntil')::timestamptz <= i.at, false) AS "leaseExpired"
+    FROM ${tasks} t CROSS JOIN instant i WHERE t.id = ${taskId}`);
+  const row = rows[0];
+  if (!row) throw new Error("Settlement task no longer exists");
+  return row;
+}
+
+/**
+ * Merge only settlement metadata into the current result under the task lock.
+ * @param taskId - The parent whose calculation state and manifest stay intact.
+ * @param settlement - The validated next consumption-recording period.
+ * @param tx - The transaction that also wrote usage and the step's consumption.
+ * @returns Nothing.
+ * @throws {Error} When the task vanished or the database update fails.
+ */
+export async function storeMiniToolSettlement(taskId: string, settlement: MiniToolSettlement, tx: DbTx): Promise<void> {
+  const patch = sql.param({ settlement }, tasks.result);
+  const rows = await tx.update(tasks).set({
+    result: sql`coalesce(${tasks.result}, '{}'::jsonb) || ${patch}`,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(eq(tasks.id, taskId)).returning({ id: tasks.id });
+  if (rows.length !== 1) throw new Error("Consumption task no longer exists");
+}
+
+/**
+ * Discover due periods, including expenses hidden from user-facing task history.
+ * @param limit - The validated positive page size, leaving room for one lookahead row.
+ * @param cursor - The preceding full-precision SQL position, never passed through Date.
+ * @returns Current period identities in effective due-time and task UUID order.
+ * @throws {Error} When the database read fails.
+ */
+export async function listDueMiniToolSettlements(limit: number, cursor?: MiniToolSettlementCursor): Promise<DueMiniToolSettlementPage> {
+  const dueAt = sql`mini_tool_settlement_due_at(${tasks.result})`;
+  const after = cursor === undefined ? sql`` : sql`AND
+    (${dueAt}, ${tasks.id}) > (${cursor.dueAt}::timestamptz, ${cursor.taskId}::uuid)`;
+  const rows = await db.execute<DueMiniToolSettlement & Record<string, unknown>>(sql`
+    WITH discovery_clock AS MATERIALIZED (SELECT clock_timestamp() AS at)
+    SELECT ${tasks.id} AS "taskId", (${tasks.result}->'settlement'->>'version')::float8 AS "settlementVersion",
+      to_char(${dueAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "dueAt"
+    FROM ${tasks}
+    WHERE ${tasks.source} = 'mini_tool' AND ${tasks.billedAt} IS NULL
+      AND jsonb_typeof(${tasks.result}->'settlement'->'version') = 'number'
+      AND ${tasks.result}->'settlement'->>'state' IN ('waiting', 'checking')
+      AND ${dueAt} <= (SELECT at FROM discovery_clock) ${after}
+    ORDER BY ${dueAt}, ${tasks.id}
+    LIMIT ${limit + 1}
+  `);
+  const items: DueMiniToolSettlement[] = rows.slice(0, limit).map((row) => ({
+    taskId: row.taskId, settlementVersion: row.settlementVersion, dueAt: row.dueAt,
+  }));
+  const last = items.at(-1);
+  return { items, nextCursor: rows.length > limit && last !== undefined ? { taskId: last.taskId, dueAt: last.dueAt } : null };
+}
+
+/**
+ * Read the current committed waiting cycle after a claim or recording invalidates its predecessor.
+ * @param taskId - The validated immutable parent, including hidden task history.
+ * @returns Its current waiting identity, even when its retry time is still in the future.
+ * @throws {Error} When the database read fails.
+ */
+export async function waitingMiniToolSettlement(taskId: string): Promise<DueMiniToolSettlement | null> {
+  const rows = await db.execute<DueMiniToolSettlement & Record<string, unknown>>(sql`
+    SELECT ${tasks.id} AS "taskId", (${tasks.result}->'settlement'->>'version')::float8 AS "settlementVersion",
+      to_char(mini_tool_settlement_due_at(${tasks.result}) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "dueAt"
+    FROM ${tasks}
+    WHERE ${tasks.id} = ${taskId}::uuid AND ${tasks.source} = 'mini_tool' AND ${tasks.billedAt} IS NULL
+      AND jsonb_typeof(${tasks.result}->'settlement'->'version') = 'number'
+      AND ${tasks.result}->'settlement'->>'state' = 'waiting'
+  `);
+  const row = rows[0];
+  return row && typeof row.dueAt === "string" ? { taskId: row.taskId, settlementVersion: row.settlementVersion, dueAt: row.dueAt } : null;
+}
+
+/** Durable admission fields, with the database instant kept outside Date. */
+export interface AnalysisTaskRow {
+  id: string;
+  userId: string;
+  projectId: string | null;
+  spaceId: string;
+  taskType: string;
+  source: string;
+  status: string;
+  params: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  errorMessage: string | null;
+  acceptedAt: string;
+  /** What the analysis was charged once billed, null before. */
+  billedCredits: number | null;
+}
+
+/** The columns an analysis task is read with. */
+type AnalysisTaskSelection = {
+  id: typeof tasks.id; userId: typeof tasks.userId; projectId: typeof tasks.projectId; spaceId: typeof tasks.spaceId;
+  taskType: typeof tasks.taskType; source: typeof tasks.source; status: typeof tasks.status; params: typeof tasks.params;
+  result: typeof tasks.result; errorMessage: typeof tasks.errorMessage; billedCredits: typeof tasks.billedCredits; acceptedAt: SQL<string>;
+};
+
+/**
+ * The columns an analysis task is read with, built when read so that loading this module reads no table.
+ * @returns The selection.
+ */
+function analysisTaskSelection(): AnalysisTaskSelection {
+  return {
+    id: tasks.id, userId: tasks.userId, projectId: tasks.projectId,
+    spaceId: tasks.spaceId, taskType: tasks.taskType, source: tasks.source, status: tasks.status,
+    params: tasks.params, result: tasks.result, errorMessage: tasks.errorMessage, billedCredits: tasks.billedCredits,
+    acceptedAt: sql<string>`to_char(${tasks.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+  };
+}
+
+/**
+ * Read an analysis identity without losing SQL microseconds.
+ * @param id - The run/task UUID.
+ * @returns Its live row, including non-analysis rows for collision detection.
+ * @throws {Error} When the database read fails.
+ */
+export async function getAnalysisTask(id: string): Promise<AnalysisTaskRow | null> {
+  const [row] = await db.select(analysisTaskSelection()).from(tasks)
+    .where(and(eq(tasks.id, id), isNull(tasks.deletedAt))).limit(1);
+  return row ? { ...row, params: row.params ?? {} } : null;
+}
+
+/**
+ * Lock the original analysis task before deciding its metadata transition.
+ * @param id - The immutable accepted task, including hidden history.
+ * @param tx - The transaction that will write its status and analysis together.
+ * @returns The current physical row and its original precise acceptance time.
+ * @throws {Error} When the database read fails.
+ */
+export async function lockMiniToolAnalysisTask(id: string, tx: DbTx): Promise<AnalysisTaskRow | null> {
+  const [row] = await tx.select(analysisTaskSelection()).from(tasks).where(eq(tasks.id, id)).for("update");
+  return row ? { ...row, params: row.params ?? {} } : null;
+}
+
+/**
+ * Commit analysis metadata and computation status under their existing row lock.
+ * @param id - The locked task identity.
+ * @param update - The validated next record and calculation fields.
+ * @param update.analysis - The complete public analysis record.
+ * @param update.status - The task's next or preserved terminal status.
+ * @param update.errorMessage - The task summary's failure code.
+ * @param update.finish - Whether this write first terminates active computation.
+ * @param tx - The transaction holding the original task lock.
+ * @returns The row written in this transaction, retaining source microseconds.
+ * @throws {Error} When the task disappears or the database update fails.
+ */
+export async function storeMiniToolAnalysisTransition(id: string, update: {
+  analysis: Record<string, unknown>;
+  status: "completed" | "failed" | "cancelled";
+  errorMessage: string | null;
+  finish: boolean;
+}, tx: DbTx): Promise<AnalysisTaskRow> {
+  const patch = sql.param({ analysis: update.analysis }, tasks.result);
+  const [row] = await tx.update(tasks).set({
+    status: update.status,
+    result: sql`coalesce(${tasks.result}, '{}'::jsonb) || ${patch}`,
+    errorMessage: update.errorMessage,
+    completedAt: update.finish ? sql`coalesce(${tasks.completedAt}, clock_timestamp())` : tasks.completedAt,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(eq(tasks.id, id)).returning(analysisTaskSelection());
+  if (!row) throw new Error("Analysis task no longer exists");
+  return { ...row, params: row.params ?? {} };
+}
+
+/**
+ * Claim the durable run UUID before opening any node task or spending credits.
+ * @param data - Frozen task inputs and the authenticated actor.
+ * @param data.id - The client-generated analysis run UUID.
+ * @param data.userId - The authenticated actor who owns this admission.
+ * @param data.projectId - The project that owns the analysis.
+ * @param data.spaceId - The canvas Space holding its source node.
+ * @param data.params - The frozen analysis and backend execution inputs.
+ * @param data.model - The served model, when this analysis calls one.
+ * @param tx - The admission transaction that also writes the analysis pin, if any.
+ * @returns Whether this caller inserted the task.
+ * @throws {Error} When a database write fails.
+ */
+export async function claimAnalysisTask(data: {
+  id: string; userId: string; projectId: string; spaceId: string;
+  params: Record<string, unknown>; model?: string;
+}, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db).insert(tasks).values({
+    ...data, taskType: "mini_tool_analysis", mode: "append", source: "mini_tool",
+  }).onConflictDoNothing({ target: tasks.id }).returning({ id: tasks.id });
+  return rows.length === 1;
+}
+
+/**
+ * Store a public analysis record without changing its acceptance timestamp.
+ * @param id - The task UUID.
+ * @param analysis - The validated public analysis record.
+ * @returns Nothing.
+ * @throws {Error} When the database write fails.
+ */
+export async function storeAnalysisRecord(id: string, analysis: Record<string, unknown>): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [row] = await tx.select({ result: tasks.result }).from(tasks).where(eq(tasks.id, id)).for("update");
+    if (!row) throw new Error(`Analysis task ${id} does not exist`);
+    await tx.update(tasks).set({ result: { ...row.result, analysis }, updatedAt: new Date() }).where(eq(tasks.id, id));
+  });
+}
 
 /**
  * A task completed and waiting on its cost: not yet billed, and marked by `markCompleted` (inner#1743).
@@ -88,6 +438,103 @@ export async function getTaskById(id: string): Promise<TaskEntity | null> {
     .where(and(eq(tasks.id, id), isNull(tasks.deletedAt)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Read a durable execution identity even after its user-facing history is hidden.
+ * @param id - The immutable task/run UUID.
+ * @returns The original parent, including an occupied non-execution identity for collision checks.
+ * @param transaction - The caller's existing computation transaction, when present.
+ * @throws {Error} When the database read fails.
+ */
+export async function getMiniToolExecutionTask(id: string, transaction?: DbTx): Promise<TaskEntity | null> {
+  const rows = await (transaction ?? db).select().from(tasks).where(eq(tasks.id, id)).limit(1);
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Serialize planned media and its public expense projection by the original task.
+ * @param id - The immutable accepted task identity.
+ * @param tx - The transaction retaining the task lock.
+ * @returns Its complete current parent, including hidden worker history.
+ * @throws {Error} When the database read fails.
+ */
+export async function lockMiniToolExecutionTask(id: string, tx: DbTx): Promise<TaskEntity | null> {
+  const [row] = await tx.select().from(tasks).where(eq(tasks.id, id)).for("update");
+  return row ? toEntity(row) : null;
+}
+
+/**
+ * Merge only the execution namespace and its optional computation transition.
+ * @param id - The original task whose lock the caller retains.
+ * @param record - Validated public execution state.
+ * @param tx - The same transaction as media or consumption persistence.
+ * @param ending - The computation transition; absent for expense-only updates.
+ * @param ending.status - The terminal computation state.
+ * @param ending.errorMessage - The original failure summary, or null for success.
+ * @param ending.finish - Whether this transition first ends active computation.
+ * @returns Nothing after the namespace has been committed to this transaction.
+ * @throws {Error} When the original parent disappears or persistence fails.
+ */
+export async function storeMiniToolExecutionRecord(id: string, record: Record<string, unknown>, tx: DbTx, ending?: {
+  status: "completed" | "failed"; errorMessage: string | null; finish: boolean;
+}): Promise<void> {
+  const patch = sql.param({ miniToolExecution: record }, tasks.result);
+  const rows = await tx.update(tasks).set({
+    result: sql`coalesce(${tasks.result}, '{}'::jsonb) || ${patch}`,
+    updatedAt: sql`clock_timestamp()`,
+    ...(ending === undefined ? {} : {
+      status: ending.status, errorMessage: ending.errorMessage,
+      completedAt: ending.finish ? sql`coalesce(${tasks.completedAt}, clock_timestamp())` : tasks.completedAt,
+    }),
+  }).where(eq(tasks.id, id)).returning({ id: tasks.id });
+  if (rows.length !== 1) throw new Error("Planned execution parent disappeared");
+}
+
+/**
+ * Claim one planned run before its adapter opens node rows, holds credits or queues it.
+ * @param data - The authenticated owner and complete server-frozen execution.
+ * @param data.id - The press-generated durable run UUID.
+ * @param data.userId - The authenticated actor.
+ * @param data.projectId - The project owning the result and consumption.
+ * @param data.spaceId - Its canvas Space.
+ * @param data.taskType - The planned output medium.
+ * @param data.model - The internally selected model.
+ * @param data.params - The complete immutable execution namespace.
+ * @param data.result - Initial public output slots, when the lane initializes them at admission.
+ * @param transaction - Retry arbitration transaction, when present.
+ * @returns Whether this caller inserted the durable winner.
+ * @throws {Error} When the database write fails.
+ */
+export async function claimMiniToolExecutionTask(data: {
+  id: string; userId: string; projectId: string; spaceId: string;
+  taskType: MiniToolMedium; model: string; params: Record<string, unknown>; result?: Record<string, unknown>;
+}, transaction?: DbTx): Promise<boolean> {
+  const rows = await (transaction ?? db).insert(tasks).values({
+    ...data, mode: "append", source: "mini_tool",
+  }).onConflictDoNothing({ target: tasks.id }).returning({ id: tasks.id });
+  return rows.length === 1;
+}
+
+/**
+ * The planned video tool runs the sweep looks at (frames-split §7.19): every running one, and every pending one that
+ * never waited for a running slot and was created longer ago than the grace window, oldest first. A run's job id is its
+ * task id (planned-run.ts).
+ * @param limit - How many of each at most.
+ * @param graceMs - How old a pending run must be, so a run still being opened and queued is left alone.
+ * @returns The running and the pending run ids.
+ * @throws {Error} When a read fails.
+ */
+export async function listPlannedRunsToSweep(limit: number, graceMs: number): Promise<{ running: string[]; pending: string[] }> {
+  const planned = sql`${tasks.source} = 'mini_tool' AND ${tasks.params} ? 'miniToolExecution' AND ${tasks.deletedAt} IS NULL`;
+  const running = await db.execute<{ id: string }>(sql`
+    SELECT ${tasks.id} AS id FROM ${tasks} WHERE ${planned} AND ${tasks.status} = 'running'
+    ORDER BY ${tasks.startedAt} ASC LIMIT ${limit}`);
+  const pending = await db.execute<{ id: string }>(sql`
+    SELECT ${tasks.id} AS id FROM ${tasks} WHERE ${planned} AND ${tasks.status} = 'pending' AND ${tasks.slotWaitSince} IS NULL
+      AND ${tasks.createdAt} < now() - (${graceMs} * interval '1 millisecond')
+    ORDER BY ${tasks.createdAt} ASC LIMIT ${limit}`);
+  return { running: running.map((row) => row.id), pending: pending.map((row) => row.id) };
 }
 
 /**
@@ -258,11 +705,12 @@ export async function recordAttemptError(id: string, error: string): Promise<boo
  * @param id - UUID of the task.
  * @param jobId - The BullMQ job running it.
  * @param now - The start to keep when the row has none yet.
+ * @param transaction - The analysis owner's transaction when the current state is locked.
  * @returns The start the row holds after the write.
  * @throws {Error} When the task row does not exist.
  */
-export async function markRunning(id: string, jobId: string, now: Date): Promise<Date> {
-  const [row] = await db
+export async function markRunning(id: string, jobId: string, now: Date, transaction?: DbTx): Promise<Date> {
+  const [row] = await (transaction ?? db)
     .update(tasks)
     .set({
       arqJobId: jobId,
@@ -451,6 +899,8 @@ export interface GateTaskRow {
   /** Full-precision text, so a comparison against another row's creation loses no microseconds. */
   createdAt: string;
   startedAt: Date | null;
+  /** Whether a video mini-tool run's settlement period is open, which releases its credit hold (frames-split §7.19). */
+  settling: boolean;
 }
 
 /**
@@ -488,6 +938,7 @@ export async function findForGate(id: string): Promise<GateTaskRow | null> {
       errorMessage: tasks.errorMessage,
       createdAt: sql<string>`${tasks.createdAt}::text`,
       startedAt: tasks.startedAt,
+      settling: sql<boolean>`coalesce(${tasks.result} ? 'settlement', false)`,
     })
     .from(tasks)
     .where(eq(tasks.id, id));

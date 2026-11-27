@@ -10,7 +10,8 @@
       "rate_limited": "請求過於頻繁，請稍後再試",
       "payload_too_large": "請求內容超過 {limit}，請縮短提示詞或減少引用的文字。",
       "transfer_invalid": "上傳的內容無法使用，請重試。",
-      "internal": "伺服器內部錯誤"
+      "internal": "伺服器內部錯誤",
+      "project_copying": "這個 Project 正在複製，暫時不能複製。"
     },
     "credit": {
       "not_studio_admin": "只能指定給你管理的 Studio。",
@@ -38,7 +39,6 @@
       "logout_success": "已登出",
       "logout_others_success": "已登出其他裝置",
       "not_authenticated": "未登入",
-      "google_oauth_unconfigured": "本伺服器未開啟 Google 登入",
       "invalid_google_credential": "無法驗證你的 Google 帳號",
       "desktop_exchange_invalid": "這個登入連結已失效，請重新登入。",
       "google_email_unverified": "你的 Google 帳號電子郵件未驗證",
@@ -219,10 +219,13 @@
       "unavailable": "這個工具暫時無法使用。",
       "invalidParam": "「{name}」的值這個工具不支援。",
       "foreignSource": "這個檔案無法處理。",
+      "presentationChanged": "影片已更新，請重新選擇畫面和區域。",
       "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
       "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。",
       "clipsTooLarge": "這些片段加起來太大，無法拼接。",
-      "joinClipCount": "拼接需要 2 到 {max} 段。"
+      "joinClipCount": "拼接需要 2 到 {max} 段。",
+      "runTooLong": "這個影片太長，一次執行處理不了（需要超過 {max} 個編碼作業）。請減少或縮短輸出。",
+      "tooManyOutputs": "一次執行最多產生 {max} 個結果。"
     },
     "idempotency": {
       "missing": "頁面已更新，請重新整理後再試。",
@@ -868,7 +871,6 @@
         "horizontal_angle": "水平角度",
         "vertical_angle": "垂直角度",
         "negative_prompt": "反向提示詞",
-        "auto_shots": "自動分鏡",
         "motion": "運動幅度",
         "order": "順序",
         "model_mode": "區域",
@@ -923,7 +925,12 @@
         "addShot": "新增鏡頭",
         "shotPlaceholder": "描述這個鏡頭，@ 引用參考",
         "shotCapReached": "最多 {max, number} 個鏡頭",
-        "noSecondToSpare": "加長總時長才能再加鏡頭"
+        "noSecondToSpare": "加長總時長才能再加鏡頭",
+        "single": "單鏡頭",
+        "multi": "多鏡頭",
+        "multiHint": "逐個鏡頭自己寫",
+        "auto": "自動多鏡頭",
+        "autoHint": "由模型自行拆分鏡頭"
       },
       "refuseStoryboardShotEmpty": "鏡頭 {shot, number} 沒有內容",
       "refuseStoryboardTooMany": "最多 {limit, number} 個鏡頭",
@@ -954,6 +961,7 @@
       "editProposalMarks": "請替換大括號裡的內容。橘色的注意事項不會傳給模型。",
       "notePrefix": "注意事項：",
       "integerBlank": "留空為自動",
+      "focusCropExpired": "裁剪逾時——請重試。",
       "ownKeyLabel": "你的 key",
       "studioKeyLabel": "Studio 的 key",
       "alsoCredits": "點數",
@@ -1258,6 +1266,12 @@
         },
         "hdr": {
           "label": "HDR"
+        },
+        "extract-frames": {
+          "label": "抽幀"
+        },
+        "split": {
+          "label": "分割"
         }
       },
       "audio": {
@@ -1310,7 +1324,9 @@
           "label": "比例"
         },
         "rect": {
-          "label": "尺寸（px）"
+          "label": "尺寸（px）",
+          "width": "寬",
+          "height": "高"
         },
         "orient": {
           "label": "方向"
@@ -1469,6 +1485,44 @@
         "attack": "啟動",
         "release": "釋放",
         "makeup": "補償增益"
+      },
+      "videoUI": {
+        "analysisFailed": "分析失敗，請重試。",
+        "atCursor": "在目前位置新增",
+        "current": "目前影格",
+        "currentFrameUnavailable": "目前影格無法使用",
+        "cutPoint": "切點",
+        "detectScenes": "場景偵測",
+        "first": "首影格",
+        "last": "末影格",
+        "ledgerUnsupported": "此影片暫不支援此工具",
+        "mediaError": "媒體無法使用",
+        "rebuildDraft": "重設設定",
+        "removeCut": "移除",
+        "retryPreview": "重試預覽",
+        "sourceUnavailable": "來源影片無法使用",
+        "unsupportedDraft": "已儲存設定需要更新。",
+        "invalidNumber": "請輸入有效數值。",
+        "sourceChanged": "來源素材已變更。",
+        "useCurrentSource": "使用目前素材",
+        "tooManyOutputs": "一次執行最多產生 {max} 個結果。",
+        "noCuts": "新增切點或執行場景偵測。",
+        "detectAgain": "重新偵測",
+        "cutSummary": "{cuts} 個切點 · {segments} 段",
+        "segmentPreview": "預覽 · {start} – {end}",
+        "stopPreview": "停止預覽",
+        "detectionError": "場景偵測失敗，請重新偵測。",
+        "detectionSuperseded": "場景偵測已在先前的編輯上完成。如需使用，請重新偵測。",
+        "videoUpdated": "影片已更新。",
+        "applyToVideo": "套用到目前影片",
+        "settingsOutOfRange": "部分設定超出更新後的影片，請先調整。",
+        "outputCapExceeded": "最多 {cap} 個產物，目前 {count} 個",
+        "outputCount": "{count} 個產物",
+        "viewerMode": "Viewer 模式",
+        "connectionUnavailable": "連線無法使用",
+        "preparingVideo": "正在準備影片…",
+        "preparationFailed": "影片準備失敗",
+        "tooLongToPrepare": "超出可準備時長"
       }
     },
     "template": {
@@ -3359,6 +3413,13 @@
     "email": "電子郵件",
     "password": "密碼",
     "or": "或",
+    "google": {
+      "continue": "使用 Google 帳戶繼續",
+      "cancelled": "已取消 Google 登入。請重試或使用電子郵件。",
+      "expired": "Google 登入已逾時，請重試。",
+      "rateLimited": "嘗試次數過多，請稍後再試。",
+      "unavailable": "Google 登入暫時無法使用，請使用電子郵件。"
+    },
     "invalidEmail": "請輸入有效的電子郵件地址。",
     "passwordTooShort": "密碼至少 8 個字元。",
     "passwordShow": "顯示密碼",
@@ -3371,8 +3432,6 @@
       "signUp": "註冊",
       "noAccount": "還沒有帳號?",
       "forgotPassword": "忘記密碼?",
-      "googleLoading": "正在載入 Google 登入…",
-      "googleFailed": "Google 登入暫不可用，請重新整理頁面或使用電子郵件登入。",
       "failed": "登入失敗,請重試。"
     },
     "register": {
@@ -3464,7 +3523,6 @@
       "googleOnly": "用 Google 新註冊時使用"
     },
     "desktop": {
-      "continueWithGoogle": "透過 Google 帳戶繼續操作",
       "waitingBrowser": "請在瀏覽器中完成登入",
       "cancel": "取消",
       "exchangeFailed": "登入沒有完成，請重試。",
@@ -3559,6 +3617,10 @@
       "title": "仍有未完成的工作，要重新整理嗎？",
       "refresh": "仍然重新整理",
       "failed": "重新整理失敗，請重試。"
+    },
+    "copying": {
+      "title": "這個 Project 正在複製，完成後在 Studio 開啟。",
+      "backToStudio": "返回 Studio"
     }
   },
   "common": {
@@ -4551,7 +4613,8 @@
         "openedAt": "開啟於 {time}",
         "editedAt": "修改於 {time}",
         "archivedAt": "封存於 {time}",
-        "neverOpened": "從未開啟"
+        "neverOpened": "從未開啟",
+        "copying": "正在複製"
       },
       "projects": {
         "new": "新增 Project",

@@ -26,6 +26,10 @@ vi.mock("@breatic/core", async (importOriginal) => {
       // Left in the stub so the case sees a route that still reads and sends them.
       waveform_peaks_retry_ms: 5000,
       waveform_peaks_retry_max_ms: 600_000,
+      executions: {
+        "video.extract-frames": { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 8, max_outputs_per_job: 8 },
+        "video.split": { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 9, max_outputs_per_job: 8 },
+      },
       // Not the shipped 20, so the case proves the route reads the accessor.
       join_max_clips: 17,
     })),
@@ -97,5 +101,13 @@ describe("GET /canvas/limits", () => {
     expect(body.data).not.toHaveProperty("waveformPeaksRetryMaxMs");
     // inner#1825 §6.3: the join panel's add tile and slot pick stop at this many clips.
     expect(body.data.joinMaxClips).toBe(17);
+  });
+
+  // Frames-split design §10.7: the panel refuses more outputs than one run creates before it makes any node.
+  it("serves each configured tool's max_outputs", async () => {
+    const res = await createApp().request("/api/v1/canvas/limits", { headers: AUTH });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { maxOutputs?: Record<string, number> } };
+    expect(body.data.maxOutputs?.["video.split"]).toBe(9);
   });
 });

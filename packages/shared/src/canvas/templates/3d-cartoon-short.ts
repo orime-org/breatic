@@ -8,7 +8,7 @@ export const THREE_D_CARTOON_SHORT: GenerationTemplate = {
   id: "3d-cartoon-short",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "16:9", duration: 10, generate_audio: true } },
+    { key: "result", role: "generate", type: "video", mode: "ref", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "16:9", duration: 10, generate_audio: true } },
     { key: "design", role: "generate", type: "image", mode: "t2i", model: "gpt-image-2.5-sunburst-text-to-image", params: { aspect_ratio: "1:1" } },
   ],
   edges: [{ from: "design", to: "result", into: "pool" }],

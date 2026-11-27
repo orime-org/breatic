@@ -20,6 +20,8 @@
 
 // ── Database ─────────────────────────────────────────────────────
 export { db, rawPg, pingDb, closeDb, createPgClient } from "@core/db/client.js";
+export { MINI_TOOL_SETTLEMENT_QUEUE, MINI_TOOL_SETTLEMENT_JOB, MINI_TOOL_SETTLEMENT_DISCOVERY_JOB, miniToolSettlementWakeSchema, miniToolSettlementDiscoverySchema, type MiniToolSettlementWake, type MiniToolSettlementDiscovery } from "@core/infra/mini-tool-settlement.js";
+export { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, miniToolDeliveryWakeSchema, miniToolDeliveryDiscoverySchema, type MiniToolDeliveryWake, type MiniToolDeliveryDiscovery } from "@core/infra/mini-tool-delivery.js";
 export { onDatabaseWaitTimeout, type DatabaseWaitTimeout } from "@core/db/wait-timeouts.js";
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
@@ -46,7 +48,7 @@ export {
   writeSpaceEntry,
 } from "@core/db/yjs-bootstrap.js";
 export type { SpaceEntryInit, SpaceKind } from "@core/db/yjs-bootstrap.js";
-export { loadInitialSpaceType } from "@core/db/project-seed.repo.js";
+export { loadSeedFacts, type SeedFacts } from "@core/db/project-seed.repo.js";
 // Table values + Drizzle row types, also re-exported by name so server
 // modules can `import { projects } from "@breatic/core"`. `schema` (the
 // namespace, above) stays the canonical form for bulk access.
@@ -150,6 +152,7 @@ export {
 export {
   publishActivityNew,
   publishAssetPeaksReady,
+  publishVideoPresentationChanged,
   publishSceneLookSettled,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
@@ -185,6 +188,8 @@ export {
   revokeSession,
   revokeAllSessions,
   sessionCookieName,
+  hostOnlySessionCookieName,
+  cookieDomainHost,
   type RevokeOutcome,
 } from "@core/infra/session-store.js";
 export { redactSessionError, type RedactedSessionError } from "@core/infra/session-error.js";
@@ -369,7 +374,7 @@ export * from "@core/http/internal-signature.js";
 export { closeAfterRefusal } from "@core/http/close-after-refusal.js";
 export { refuseUnstorableText } from "@core/http/refuse-unstorable-text.js";
 export { toPage } from "@core/http/keyset-page.js";
-export { frontendOrigin } from "@core/http/frontend-origin.js";
+export { frontendOrigin, frontendOriginFor, isTrustedFrontendOrigin } from "@core/http/frontend-origin.js";
 export { fingerprint } from "@core/http/request-fingerprint.js";
 export { isKnownTimeZone } from "@core/util/time-zone.js";
 export { asStorable, holdsOnlyStorableText, isStorableText, storableText } from "@core/util/storable-text.js";
@@ -410,6 +415,8 @@ export {
 export { nextAttemptDelaySeconds } from "@core/outbox/backoff.js";
 export { commerceConfigSchema, getCommerceConfig, type CommerceConfig } from "@core/config/commerce.js";
 export * as commerceOutboxRepo from "@core/commerce/commerce-outbox.repo.js";
+export * as influencerRepo from "@core/influencer/influencer.repo.js";
+export { getInfluencersConfig } from "@core/config/influencers.js";
 export {
   adClickSchema,
   conversionContextSchema,
@@ -467,10 +474,12 @@ export {
   type RefundLotFactsRequest,
   COMMERCE_OUTBOX_TYPES,
   accountErasureEventSchema,
+  influencerStatusEventSchema,
   inboxAnswerSchema,
   inboxDeliverySchema,
   lotRefundLifecycleEventSchema,
   type AccountErasureEvent,
+  type InfluencerStatusEvent,
   type CommerceOutboxType,
   type InboxAnswer,
   type InboxDelivery,

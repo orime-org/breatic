@@ -79,7 +79,7 @@ Memory-only state tied to a canvas document (its `Y.UndoManager`, for example) i
 
 ### Mini-tool runs create new nodes
 
-**A mini-tool Run writes its result as new nodes connected to the source by edges; it never writes back into the source node.** `spaces/canvas/mini-tool/start-mini-tool-run.ts` writes the result nodes and edges before it calls the server, so the user's content exists at once, and what the run does next lands on those nodes' task rows.
+**A mini-tool Run writes its result as new nodes connected to the source by edges; it never writes back into the source node.** `spaces/canvas/mini-tool/start-mini-tool-run.ts` (and `start-planned-video-run.ts` for video tools) writes the result nodes and edges before it calls the server, so the user's content exists at once, and what the run does next lands on those nodes' task rows.
 
 ## Gating details
 
@@ -87,7 +87,7 @@ The gate itself (`evaluateNodeGate` in `spaces/canvas/node-gate.ts`, the locked 
 
 ### Concurrent tasks on one node
 
-**A running task freezes only deletion.** A node can carry several tasks at once and each result needs somewhere to land, so a second upload, a second generation and the user's own edits are all allowed; the later write wins and every task's output stays in the node's task list for the user to pick. Whether a task has run out of time is judged by the server, which harvests rows past `started_at + budget_ms` when someone reads the node's task list (`packages/domain/src/node-task/node-task.service.ts`), so the frontend needs no clock for it.
+**A running task freezes only deletion.** A node can carry several tasks at once and each result needs somewhere to land, so a second upload, a second generation and the user's own edits are all allowed; the later write wins and every task's output stays in the node's task list for the user to pick. Whether a task has run out of time is judged by the server, which harvests rows past `started_at + budget_ms` when someone reads the node's task list (`packages/domain/src/node-task/node-task.service.ts`), so the frontend needs no clock for it; the rows of an open planned video tool run are skipped there, because that run ends itself and settles all its rows at once.
 
 ### Text node edit gate
 

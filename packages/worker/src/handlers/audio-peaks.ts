@@ -4,8 +4,9 @@
 /**
  * Read an audio row's peaks after it registered (inner#1305 §4.4). What to
  * read is the domain service's; this hands it the row, writes down a read
- * that found no sound, and tells every live Project referencing the audio
- * that its peaks are there (#1580), so a cut band open on it draws them.
+ * that found no sound, and tells every live Project referencing a row stored
+ * under the audio's key that its peaks are there (#1580), so a cut band open
+ * on it draws them.
  */
 
 import type { Job } from "bullmq";
@@ -34,7 +35,7 @@ export async function runAudioPeaks(job: Job<AudioPeaksJob>): Promise<void> {
   const asset = await assetRepo.findById(assetId);
   if (asset === null) return;
   const url = (await getStorageAdapter()).publicUrl(asset.storageKey);
-  for (const projectId of await assetRepo.listProjectsReferencingAsset(assetId)) {
+  for (const projectId of await assetRepo.listProjectsReferencingStorageKey(asset.storageKey)) {
     await publishAssetPeaksReady(projectId, assetId, url);
   }
 }

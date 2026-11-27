@@ -117,6 +117,17 @@ beforeAll(() => {
   loadLocales();
 });
 
+
+// §97 (frames-split design §10.6 删除行; tools design acceptance item 5): the guide describes frame extraction with its three
+// kept modes and no longer quotes the removed interval mode or explains it.
+describe("frame extraction in the guide after the interval mode is removed", () => {
+  it("quotes First, Last and Current and says nothing about intervals", () => {
+    const guide = renderProductGuide();
+    for (const mode of ["first", "last", "current"]) expect(guide).toContain(`"${t(`canvas.miniTool.videoUI.${mode}`)}"`);
+    expect(guide).not.toMatch(/interval/i);
+  });
+});
+
 describe("the guide as a tool", () => {
   it("is registered, and reaches a chat turn", () => {
     expect(Object.keys(TOOL_MAP)).toContain(GET_PRODUCT_GUIDE);
@@ -254,8 +265,8 @@ describe("what the guide says", () => {
     expect(section("Proposal cards")).toMatch(/When a template applied from the panel or a placed proposal carries a ✏️ mark \(in a prompt box or a text node's words\), the message/);
   });
 
-  it("says material wired into the pool arrives @'d in the prompt, or in the shot on a multi-shot node", () => {
-    expect(section("Proposal cards")).toMatch(/one wired into the reference pool is already @'d in its prompt, or in its shot on a node in Multi-Shot\./);
+  it("says material wired into the pool arrives @'d in the prompt, or in the shot on a node on Multi-shot", () => {
+    expect(section("Proposal cards")).toMatch(/one wired into the reference pool is already @'d in its prompt, or in its shot on a node on "Multi-shot"\./);
   });
 
   it("says words bound for a song's lyrics box arrive @'d there", () => {
@@ -345,13 +356,16 @@ describe("what the guide says", () => {
     expect(doc).not.toMatch(/marked not open yet\)/);
   });
 
-  it("walks through the multi-shot mode, and says each mode keeps its own prompt", () => {
+  it("walks through the Shots pill, and says each mode keeps its own prompt (inner#2192)", () => {
     const panel = section("Inside the generation panel");
-    expect(panel).toMatch(/- Multi-Shot, a mode in the video panel's mode picker: the prompt box gives way to one card per shot/);
-    expect(panel).toMatch(/switching into it with no shots lays out two/);
+    expect(panel).toMatch(/- Shots, a pill right of the settings pill in the video panel, shown where the model takes shots in the mode/);
+    expect(panel).toMatch(/never in first-last frame, image animation or talking head/);
+    expect(panel).toMatch(/"Multi-shot" \(Write each shot yourself\): the prompt box gives way to one card per shot/);
+    expect(panel).toMatch(/picking it with no shots lays out two/);
+    expect(panel).toMatch(/"Auto multi-shot" \(The model plans the shots\) keeps the prompt box, and the model splits the prompt into shots itself/);
+    expect(renderProductGuide()).not.toMatch(/Multi-Shot/);
     expect(panel).toMatch(/Under the cards, in the middle, is "Add shot"/);
     expect(panel).toMatch(/The shots' seconds keep adding up to the video's length/);
-    expect(panel).toMatch(/"Auto multi-shot" switch in the settings pill/);
     expect(panel).toMatch(/each mode keeps its own words/);
     expect(section("Generating")).toMatch(/"Shot 2 is empty"/);
     expect(section("Groups and undo")).toMatch(/a video's shots/);
@@ -363,7 +377,7 @@ describe("what the guide says", () => {
     expect(panel).toMatch(/Only one shot is open at a time/);
     expect(panel).toMatch(/one row showing its number, its seconds and the first line of its words/);
     expect(panel).toMatch(/clicking a chip in the strip puts it in the open shot's box/);
-    expect(panel).toMatch(/in Multi-Shot it goes into the open shot/);
+    expect(panel).toMatch(/on "Multi-shot" it goes into the open shot/);
     // VideoGeneratePanelContainer.tsx: `shots[at] ?? shots[at - 1]`.
     expect(panel).toMatch(/removing the open shot opens the one after it, or the one before it when it was the last/);
     expect(panel).not.toMatch(/clicked into last/);
@@ -1211,6 +1225,19 @@ describe("product guide: full screen", () => {
     expect(text).toMatch(/row of icons over a picture or video holds only full screen/);
     expect(text).not.toMatch(/full-screen controls/);
     expect(text).not.toMatch(/play, seek and fullscreen/);
+  });
+});
+
+// frames-split §7.19: a video tool run is rerun only as a whole, from its panel; no row offers to retry part of it.
+describe("a video tool's ended task row (frames-split §7.19)", () => {
+  beforeAll(() => { loadLocales(); });
+  it("says a video tool's failed, cancelled or expired row offers only Clear and the tool runs again from its panel", () => {
+    const text = renderProductGuide();
+    expect(text).toContain(`a video tool's failed row (including one that says "${t("canvas.task.failure.cancelled")}") or expired row offers only "${t("canvas.task.action.clear")}"; run the tool again from its panel`);
+    expect(text).not.toMatch(/was not retried already|a retried result runs again/);
+  });
+  it("still offers Retry for an upload still at hand", () => {
+    expect(renderProductGuide()).toContain(`offers "${t("canvas.task.action.retry")}" for an upload still at hand`);
   });
 });
 

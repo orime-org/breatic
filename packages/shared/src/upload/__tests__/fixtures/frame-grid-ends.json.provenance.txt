@@ -1,0 +1,19 @@
+Grid-end, frame-count and keyframe-statistics inputs of frame-grid samples made by the maintainers (no third-party
+media), read with ffprobe 8.0.1.
+
+gridEnds: the 26 samples of round 6 to round 8 that have both audio and more than one video packet. Per file:
+  ffprobe -v error -of json -select_streams v:0 -show_entries packet=pts:stream=time_base <file>
+    -> videoTimeBase, firstVideoPts and lastVideoPts (smallest and largest pts)
+  ffprobe -v error -of json -select_streams a:0 -show_entries packet=pts,duration:packet_side_data \
+    -show_entries stream=time_base,sample_rate <file>
+    -> audioTimeBase, sampleRate, and the last audio packet's pts, duration and discard_padding (samples)
+  ffprobe -v error -of json -select_streams a:0 -show_entries frame=best_effort_timestamp <file>
+    -> firstAudioFramePts (the first decoded audio frame, after encoder priming and edit lists)
+fps, quantum, expectedGridEnd, expectedV and expectedFrameCount are copied from the maintainers' reference harness
+output for the same files (grid start = the first video pts; quantum = the Matroska/WebM stream time base, 0 for
+every other container).
+
+keyframePackets: every video packet of round11/seek/elst.mp4 (an MP4 cut mid-GOP with -c copy, its first keyframe
+at -0.36 s discarded by the edit list) and round11/seek/vlate.mp4 (video starting at 0.50 s), read without
+-ignore_editlist, as [pts, dts, duration, flags] in the stream time base:
+  ffprobe -v error -of json -select_streams v:0 -show_entries packet=pts,dts,duration,flags:stream=time_base <file>

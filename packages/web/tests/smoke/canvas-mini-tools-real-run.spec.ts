@@ -96,7 +96,8 @@ function prepareMedia(): string {
     '-vf', 'crop=1280:720:x=\'80+60*sin(t*9)\':y=\'72+50*cos(t*11)\'',
     ...mp4, join(dir, 'shaky.mp4'),
   );
-  ffmpeg(...pattern('1920x1080', 60), ...tone(60), ...mp4, join(dir, 'long1080.mp4'));
+  // A low bitrate keeps the minute of 1080p at about 7 MB, so its upload and read-back stay inside the poll.
+  ffmpeg(...pattern('1920x1080', 60), ...tone(60), '-crf', '40', ...mp4, join(dir, 'long1080.mp4'));
   return dir;
 }
 

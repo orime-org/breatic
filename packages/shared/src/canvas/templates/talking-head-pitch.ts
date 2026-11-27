@@ -8,7 +8,7 @@ export const TALKING_HEAD_PITCH: GenerationTemplate = {
   id: "talking-head-pitch",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "9:16", duration: 10, generate_audio: true } },
+    { key: "result", role: "generate", type: "video", mode: "ref", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "9:16", duration: 10, generate_audio: true } },
   ],
   edges: [],
   inputs: [{ key: "person", type: "image" }],

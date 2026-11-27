@@ -37,6 +37,7 @@ import {
   type PreviewOutcome,
   type UploadTicketPayload,
   TRANSFER_MEDIA_TYPE,
+  originMatches,
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
 import { fromOurBackend } from "@ingest/backend-secret.js";
@@ -75,6 +76,7 @@ import {
   type MonitoringEnv,
 } from "@ingest/error-monitoring.js";
 import { readMediaAtEdge, type MediaEnv } from "@ingest/media-read.js";
+import { videoPresentationRoute } from '@ingest/video-presentation-route.js';
 import { turnUprightIfTagged } from "@ingest/upright-step.js";
 import {
   hasPreviewableFrame,
@@ -1344,8 +1346,10 @@ function allowedOrigin(request: Request, env: Env): string | null {
   const origin = request.headers.get("origin");
   if (origin === null) return null;
   // Absent when that is the very setting missing; nothing is then allowed.
+  // An entry may be `https://*.<domain>`, admitting one label below it: every
+  // influencer site is let in at once, since parts are authorised by ticket.
   const allowed = (env.ALLOWED_ORIGINS ?? "").split(",").map((o) => o.trim());
-  return allowed.includes(origin) ? origin : null;
+  return originMatches(origin, allowed) ? origin : null;
 }
 
 /**
@@ -1465,6 +1469,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (request.method === "POST" && pathname === "/media") {
     return readStoredMedia(request, env);
   }
+  if (request.method === 'POST' && pathname === '/video-presentation') return videoPresentationRoute(request, env);
 
   if (request.method === "POST" && pathname === "/jobs") {
     return submitJob(request, env);

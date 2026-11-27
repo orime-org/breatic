@@ -10,7 +10,7 @@
  * settings it would run; only what it says is ever cut.
  */
 
-import { MULTI_SHOT_MODE } from '@breatic/shared';
+import { effectiveShots, storyboardSpec } from '@breatic/shared';
 import type { CanvasNodeFields, ParamDescriptor } from '@breatic/shared';
 
 import type { NodeView } from '@web/data/yjs/node-view';
@@ -23,7 +23,7 @@ export type FieldClass = 'identity' | 'reference' | 'content' | 'other';
  * How a node field is kept. Besides a class: `byKind` when the same key means
  * different things on different kinds; `idle` for what the user picked,
  * kept only when nothing would run; `perMode` for a text stored once per
- * mode, kept for the mode in effect; `shots` for the multi-shot mode's shots;
+ * mode, kept for the mode in effect; `shots` for the shots of a node on Multi-shot;
  * `each` for an array whose elements are judged by {@link ARRAY_FIELD_RULES}.
  */
 type FieldRule =
@@ -45,7 +45,9 @@ type ViewKey = KeysOf<NodeView>;
  * what the canvas view carries, and what lives only in the shared map
  * (`body`, and the single `prompt` of nodes older than one prompt per mode).
  */
-type FieldKey = keyof CanvasNodeFields['data'] | ViewKey | 'body' | 'prompt';
+// Accepted-run metadata uses dynamic UUID keys. Like other task metadata it
+// follows the `other` fallback; it is never an Agent content/reference field.
+type FieldKey = Exclude<keyof CanvasNodeFields['data'] | ViewKey | 'body' | 'prompt', `miniToolAnalysis:${string}`>;
 
 /** Every field a node is handed over with. A key added to a node and not named here fails the typecheck. */
 export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
@@ -59,6 +61,8 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   prompts: 'perMode',
   lyrics: 'perMode',
   shots: 'shots',
+  // Said by the shots, which are kept only on Multi-shot.
+  multiShot: 'other',
   mode: 'idle',
   model: 'idle',
   coverUrl: 'reference',
@@ -79,6 +83,11 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   musicVocal: 'reference',
   soundVideo: 'reference',
   focusImages: 'each',
+  // Which video focus crops collab handled, task state rather than content (frames-split §5.5).
+  focusCropOutcomes: 'other',
+  miniToolAssetUrls: 'reference',
+  'miniToolDraft:video.extract-frames': 'other',
+  'miniToolDraft:video.split': 'other',
   replies: 'each',
   attachments: 'each',
   createdAt: 'other',
@@ -89,6 +98,7 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   taskCounts: 'other',
   focusUploads: 'other',
   taskResultEventId: 'other',
+  miniToolResultOrigin: 'other',
   // Which template node it was placed as: part of who the node is.
   templateNode: 'identity',
   width: 'other',
@@ -253,7 +263,9 @@ export function fitPartsOf(entry: Entry, descriptors: Readonly<Record<string, Pa
       kept[key] = { [mode]: value[mode] };
       texts.push({ path: [...at, mode], text: value[mode] });
     } else if (rule === 'shots') {
-      if (mode === MULTI_SHOT_MODE) kept[key] = keepEach(value, ARRAY_FIELD_RULES.shots, at, texts);
+      // Sent only on Multi-shot (inner#2192), where the model takes shots in the mode.
+      const board = mode === undefined ? undefined : storyboardSpec(descriptors ?? {}, mode);
+      if (effectiveShots(board, data.multiShot, {}) === 'multi') kept[key] = keepEach(value, ARRAY_FIELD_RULES.shots, at, texts);
     } else if (rule === 'each') {
       kept[key] = keepEach(value, ARRAY_FIELD_RULES[key as keyof typeof ARRAY_FIELD_RULES], at, texts);
     } else if (rule === 'idle') {

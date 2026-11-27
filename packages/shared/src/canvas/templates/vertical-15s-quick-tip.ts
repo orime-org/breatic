@@ -12,7 +12,7 @@ export const VERTICAL_15S_QUICK_TIP: GenerationTemplate = {
       key: "result",
       role: "generate",
       type: "video",
-      mode: "multi_shot",
+      mode: "ref",
       model: "seedance-2.5-text-to-video",
       params: { aspect_ratio: "9:16", duration: 15, generate_audio: true },
       shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],

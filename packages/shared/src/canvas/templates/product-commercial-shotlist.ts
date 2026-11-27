@@ -8,7 +8,7 @@ export const PRODUCT_COMMERCIAL_SHOTLIST: GenerationTemplate = {
   id: "product-commercial-shotlist",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "16:9", duration: 12, generate_audio: true } },
+    { key: "result", role: "generate", type: "video", mode: "ref", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "16:9", duration: 12, generate_audio: true } },
   ],
   edges: [],
   inputs: [{ key: "product", type: "image" }],

@@ -63,6 +63,7 @@ export type {
   NodeType,
   AttachRef,
   FocusImage,
+  FocusCropOutcome,
   FocusUpload,
   AnnotationReply,
   CanvasNodeFields,
@@ -132,6 +133,7 @@ export type {
   ActivityNewControlEvent,
   UploadEndedEvent,
   AssetPeaksReadyControlEvent,
+  VideoPresentationChangedControlEvent,
   SceneLookSettledControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
@@ -172,6 +174,7 @@ export {
   activityNewChannel,
   uploadEndedChannel,
   assetPeaksReadyChannel,
+  videoPresentationChangedChannel,
   sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
@@ -205,6 +208,7 @@ export {
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
   ASSET_PEAKS_READY_SIGNAL,
+  VIDEO_PRESENTATION_CHANGED_SIGNAL,
   NOTIFICATIONS_CHANGED_SIGNAL,
   PROJECT_TRANSFER_CHANGED_SIGNAL,
   UPLOAD_ENDED_SIGNAL,
@@ -245,6 +249,7 @@ export type {
   ActivityNewSignal,
   CreditsChangedSignal,
   AssetPeaksReadySignal,
+  VideoPresentationChangedSignal,
   NotificationsChangedSignal,
   ProjectTransferChangedSignal,
   UploadEndedSignal,
@@ -340,7 +345,7 @@ export {
   normalizeEmail,
   emailSchema,
   registerSchema,
-  googleAuthSchema,
+  googleBeginSchema,
   desktopHandoffSchema,
   desktopExchangeSchema,
   REFERRAL_CODE_INPUT_MAX,
@@ -729,11 +734,11 @@ export {
 } from "@shared/relight-terms.js";
 export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {
-  MULTI_SHOT_MODE,
+  effectiveShots,
   storyboardSend,
   storyboardSpec,
 } from "@shared/storyboard.js";
-export type { StoryboardSend, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
+export type { ShotsChoice, StoryboardSend, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
 export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
 export { formatCredits } from "@shared/format-credits.js";
 export { ceilToCreditCent } from "@shared/credit-cent.js";
@@ -874,7 +879,8 @@ export { reasonOf } from "@shared/http/reason.js";
 // can still read the complaint, rather than at the moment someone uploads.
 // This is not one more thing the transport does — it is the bound the second
 // parameter already had, said out loud.
-export { MAX_TIMER_MS } from "@shared/http/constants.js";
+export { DEFAULT_TIMEOUT_MS, MAX_TIMER_MS } from "@shared/http/constants.js";
+export { originMatches } from "@shared/http/origin-matches.js";
 
 // The one backoff function with a consumer outside this package.
 // `packages/core/src/infra/retry.ts` held a byte-identical copy of the backoff
@@ -924,10 +930,23 @@ export {
 export {
   UPLOAD_STATUS_MAX_KEYS,
   STUDIO_PAGE_POLL_DEFAULT_MS,
+  COPYING_POLL_MAX_IDS,
   type UploadStatus,
   type UploadStatusResult,
 } from "@shared/upload/upload-status.js";
 export { uprightKeyFor, type UprightCopy } from "@shared/upload/upright.js";
+export {
+  chooseFrameGridRate, isVariableFrameRate, needsEditFile, sourceDecodeKey,
+  SOURCE_DECODE_KEYS,
+  type DecodeKeySource, type EditFileFacts, type FrameGridRate, type FrameGridRateInput, type FrameGridRateStep,
+  type FrameGridScanReason, type FrameRate, type SourceDecodeKey, type VariableFrameRateFacts,
+} from "@shared/upload/frame-grid-rate.js";
+export {
+  GRID_RULES_VERSION, audioGridEnd, decodePrerollFrames, gridFilterChain, gridLandingLate,
+  gridSeekPosition, planFrameGrid, sourceKeyframeStats,
+  type AudioLastPacket, type DecodePrerollInput, type FrameGrid, type FrameGridInput, type GridLanding,
+  type GridSeekInput, type SeekGrid, type SourceKeyframeStats, type SourcePacket,
+} from "@shared/upload/frame-grid.js";
 // Why a task failed, as a code rather than a sentence: the writer is a server
 // and the user is whoever opens the list, in their own language.
 export {
@@ -1089,6 +1108,7 @@ export {
   type TemplateSkeleton,
 } from "@shared/canvas/template-expansion.js";
 // Plain text in and out of a text node's body ships at
+// The one focus-image sanitizer, web and collab alike (frames-split §5.5).
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
 
 export {
@@ -1136,6 +1156,36 @@ export {
   type MiniToolJobReport,
   type MiniToolJobRequest,
 } from "@shared/upload/mini-tool-job.js";
+export {
+  miniToolPlanRecipeSchema,
+  miniToolPlanLimitsSchema,
+  miniToolPlanJobRequestSchema,
+  miniToolPlanJobReportSchema,
+  miniToolPlanColorInputsSchema,
+  miniToolPlanGridCountSchema,
+  miniToolPlanAccess,
+  sameMiniToolPlanJob,
+  readMiniToolPlanJobReport,
+  type MiniToolPlanRecipe,
+  type MiniToolPlanPixelRect,
+  type MiniToolPlanFrameCrop,
+  type MiniToolPlanExact,
+  type MiniToolPlanGrid,
+  type MiniToolPlanToolSource,
+  type MiniToolPlanFrames,
+  type MiniToolPlanChunkRef,
+  type MiniToolPlanColorInputs,
+  type MiniToolPlanEditEncode,
+  type MiniToolPlanEditStitch,
+  type MiniToolPlanDetectorProfile,
+  type MiniToolPlanAnalysisTarget,
+  type MiniToolPlanTarget,
+  type MiniToolPlanFrameTarget,
+  type MiniToolPlanJobRequest,
+  type MiniToolPlanJobReport,
+  type MiniToolPlanAccess,
+} from "@shared/upload/mini-tool-plan-job.js";
+export { submitMiniToolPlanJob, readMiniToolPlanJob, readMiniToolPlanJobById } from "@shared/upload/mini-tool-plan-client.js";
 export { containerUsageSchema, type ContainerUsage } from "@shared/upload/container-usage.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
@@ -1286,6 +1336,88 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
+export {
+  videoPresentationOriginalSchema,
+  videoPresentationKeyFor,
+  packedGeometrySchema,
+  type PackedGeometry,
+  type VideoPresentationOriginal,
+  type VideoPresentationRect,
+} from "@shared/upload/video-presentation.js";
+export {
+  classifyVideoSourceLedgerFailure,
+  type VideoSourceLedgerFailureClass,
+} from "@shared/upload/video-source-ledger.js";
+export {
+  readAlphaPackedManifest,
+  VideoPresentationReadRefused,
+} from "@shared/upload/read-alpha-packed-manifest.js";
+export {
+  videoPresentationVersionSchema,
+  videoPresentationDisplaySchema,
+  videoPresentationEditReceiptSchema,
+  videoPresentationToolSourceSchema,
+  sourceKeyframeStatsSchema,
+  alphaPackedManifestSchema,
+  alphaPackedManifestMatchesVersion,
+  videoPresentationPlanSchema,
+  videoPresentationRefSchema,
+  videoPresentationPlanSha256,
+  verifyVideoPresentationPlan,
+  videoPresentationToolInputId,
+  videoPresentationVersionId,
+  type VideoPresentationVersion,
+  type VideoPresentationDisplay,
+  type VideoPresentationEditReceipt,
+  type VideoPresentationToolSource,
+  type AlphaPackedManifest,
+  type VideoPresentationPlan,
+  type VideoPresentationRef,
+} from "@shared/upload/video-presentation-version.js";
+export {
+  videoPresentationSourceBindingSchema,
+  videoPresentationResponseSchema,
+  type VideoPresentationSourceBinding,
+  type VideoPresentationResponse,
+} from "@shared/upload/video-presentation-response.js";
+export {
+  videoPresentationAtIngest,
+  prepareVideoPresentationAtIngest,
+  readVideoPresentationPrepareAnswer,
+  readVideoPresentationIngestSnapshot,
+  stepVideoPresentationAtIngest,
+  videoPresentationWorkKeyFor,
+  videoPresentationObjectURL,
+  videoPresentationPrepareAnswerSchema,
+  videoPresentationEncodingSchema,
+  videoPresentationProbeSchema,
+  type VideoPresentationProbeFacts,
+  videoPresentationChunkUnitSchema,
+  videoPresentationChunkReportSchema,
+  videoPresentationOutputReceiptSchema,
+  videoPresentationOutputReceiptsSchema,
+  videoPresentationDoneReceiptsSchema,
+  x264PresetSchema,
+  type VideoPresentationPrepareAnswer,
+  type VideoPresentationEncoding,
+  type VideoPresentationChunkUnit,
+  type VideoPresentationChunkReport,
+  type VideoPresentationOutputReceipt,
+  videoPresentationIngestSnapshotSchema,
+  videoPresentationIngestRequestSchema,
+  videoPresentationIngestPreparationSchema,
+  videoPresentationPricingSchema,
+  videoPresentationProcessLimitsSchema,
+  type VideoPresentationIngestRequest,
+  type VideoPresentationIngestSnapshot,
+  type VideoPresentationIngestPricing,
+  type VideoPresentationAdmissionPolicy,
+  type VideoPresentationIngestSourceBinding,
+  type VideoPresentationIngestPreparation,
+  type VideoPresentationProcessLimits,
+  type VideoPresentationPricing,
+  type VideoPresentationUsageFact,
+} from "@shared/upload/video-presentation-ingest.js";
 export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_MAX_KEYS, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType, isSceneLookImageMediaType,
   SCENE_LOOK_KEY_PREFIX, SCENE_LOOK_MAX_PARTS, SCENE_LOOK_DEFAULT_PART, SCENE_LOOK_FIELDS, SCENE_LOOK_PICTURE_COLOR, SCENE_LOOK_EMISSIVE_DEFAULT, SCENE_LOOK_REPEAT_MIN, SCENE_LOOK_REPEAT_MAX, SCENE_LOOK_OFFSET_MAX, SCENE_LOOK_ROTATION_MAX, SceneLookSchema, SceneLookMapSchema, isSceneLookPartKey, gatherSceneLook, expandSceneLook,
   SCENE_LIGHT_TYPES, VIEWFINDER_RATIOS, DEFAULT_VIEWFINDER_RATIO, SCENE_FREE_RATIO_MIN, SCENE_FREE_RATIO_MAX, SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_DEFAULT,

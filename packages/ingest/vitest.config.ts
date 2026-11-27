@@ -21,11 +21,12 @@
  */
 
 import { defineWorkersProject } from "@cloudflare/vitest-pool-workers/config";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 
 /** Where both projects find this package's and shared's sources. */
 const alias = {
+  "@ingest/container": resolve(__dirname, "./container"),
   "@ingest": resolve(__dirname, "./src"),
   "@shared": resolve(__dirname, "../shared/src"),
 };
@@ -35,6 +36,14 @@ const alias = {
  * container's own tests are among them: it runs on Node, not workerd.
  */
 const NODE_TESTS = "{src,container,scripts}/**/__tests__/**/*.node.test.ts";
+
+/**
+ * The tests that run real FFmpeg and read how it decodes or encodes. `INGEST_MEDIA_TESTS=image` leaves them out of
+ * this run, as CI's package job does: they run in the production image with its FFmpeg build instead
+ * (`scripts/test-container-in-image.sh`, the same paths).
+ */
+const MEDIA_TESTS = ["container/__tests__/**/*.node.test.ts", "src/__tests__/seek-landing-read.node.test.ts"];
+const mediaTestsElsewhere = process.env.INGEST_MEDIA_TESTS === "image";
 
 const workers = defineWorkersProject({
   test: {
@@ -56,7 +65,7 @@ const workers = defineWorkersProject({
     sequence: { groupOrder: 1 },
     poolOptions: {
       workers: {
-        main: "./src/index.ts",
+        main: "./src/__tests__/helpers/test-worker.ts",
         // Every test here addresses a storage key nothing else uses, so the
         // per-test rollback buys nothing.
         isolatedStorage: false,
@@ -86,6 +95,8 @@ const workers = defineWorkersProject({
             MEDIA: { className: "MediaContainer", useSQLite: true },
             MINI_TOOL_STD1: { className: "MiniToolContainerStd1", useSQLite: true },
             MINI_TOOL_STD4: { className: "MiniToolContainerStd4", useSQLite: true },
+            PRESENTATION_STATE_TEST: { className: "PresentationStateTestObject", useSQLite: true },
+            PLAN_WRITE_TEST: { className: "PlanWriteTestObject", useSQLite: true },
             LONG_MEDIA: { className: "LongMediaJobTestObject", useSQLite: true },
             WEB_READER: { className: "WebReaderContainer", useSQLite: true },
           },
@@ -110,8 +121,9 @@ const node = defineConfig({
   test: {
     name: "node",
     include: [NODE_TESTS],
-    // CI runs these beside the other packages' suites, as it does the workers
-    // project above.
+    exclude: [...configDefaults.exclude, ...(mediaTestsElsewhere ? MEDIA_TESTS : [])],
+    // The media container's tests run real ffmpeg jobs of several seconds, and CI runs these beside the other
+    // packages' suites, as it does the workers project above.
     testTimeout: 30_000,
   },
   resolve: { alias },

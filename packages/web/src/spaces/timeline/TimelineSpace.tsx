@@ -51,6 +51,10 @@ import { TimelineImageLayer, TimelineTextLayer, type TimelineImageState } from '
 import { retryTimelineFonts, useTimelineTextFonts } from '@web/spaces/timeline/timeline-text-fonts';
 import { useTimelineEditPrefs } from '@web/spaces/timeline/use-timeline-edit-prefs';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
+import { useTimelinePresentations } from '@web/spaces/timeline/use-timeline-presentations';
+import type { TimelineMediaLayer } from '@web/spaces/timeline/media-layer-controller';
+import { preparationFailureKey, preparationRetryable } from '@web/spaces/canvas/video-presentation/VideoPreparationNotice';
+import { useVideoPresentationRepair } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
 import { usePublishTimelineView } from '@web/spaces/timeline/use-publish-timeline-view';
 import { userMovedScroll, type TrackScroll } from '@web/spaces/timeline/timeline-follow-scroll';
 import type { TimelineWebClipView } from '@web/spaces/timeline/TimelineTrackArea';
@@ -361,10 +365,24 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
   }, [clips, audible, rank, frame, premountFrames]);
   const imageClips = React.useMemo(() => clips.flatMap((clip) => clip.kind === 'image' && rank.has(clip.trackId)
     && (visible.includes(clip) || (clip.startFrame > frame && nearFrame(clip, frame, premountFrames))) ? [clip] : []), [clips, visible, rank, frame, premountFrames]);
-  const videoSpecs = laneClips.flatMap((clip) => {
+  // Each video is read through the presentation query the canvas node reads (inner#1306 frames-split §7.8).
+  const urlSignature = [...new Set(laneClips.flatMap((clip) => (clip.kind === 'video' ? timelineClipSource(document.sources, clip)?.url : undefined) ?? []))].sort().join('\n');
+  const videoUrls = React.useMemo(() => (urlSignature === '' ? [] : urlSignature.split('\n')), [urlSignature]);
+  const { presentations, retryManifest } = useTimelinePresentations(projectId, videoUrls);
+  const { repair: repairPresentation, repairing: repairingPresentations } = useVideoPresentationRepair(projectId);
+  const videoSpecs = laneClips.flatMap((clip): TimelineMediaLayer[] => {
     const source = timelineClipSource(document.sources, clip);
     if (source === undefined || source.kind === 'image') return [];
-    return [{ clipId: clip.id, kind: source.kind, fileUrl: source.url, coverUrl: source.kind === 'video' ? source.coverUrl : null }];
+    if (source.kind === 'audio') return [{ clipId: clip.id, kind: 'audio', fileUrl: source.url, coverUrl: null }];
+    // A selected version plays through the canvas renderer; until then the original plays for display (§7.8, §7.14).
+    const presented = presentations.get(source.url);
+    const presentation = presented?.source ?? null;
+    // A selected alpha-packed version waits for its manifest, and fails with it, never falling back to the original.
+    const waiting = presented?.selected === true && presentation === null;
+    return [{
+      clipId: clip.id, kind: 'video', fileUrl: waiting ? null : source.url, presentation, coverUrl: source.coverUrl,
+      ...(waiting && presented.failure !== null ? { failed: true } : {}),
+    }];
   });
   const videoSignature = JSON.stringify(videoSpecs);
   // The layer set keeps its identity while its content is unchanged, so playing on does not resync the elements.
@@ -408,7 +426,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
     document, frame, onFrame: setFrame, videoLayers, enabled: true, preview,
     webLayers, webPending, stillPending, webLoadTimeoutMs: webLimits?.playerLoadTimeoutMs,
   });
-  const { seek, retryVideo, retryWeb, videoElement, videoStates } = playback;
+  const { seek, retryVideo, retryWeb, videoSurface, videoStates } = playback;
   // Clips whose element or picture failed, so their file reads as unreadable on the track and in the properties.
   const failedIds = React.useMemo(() => new Set([
     ...[...videoStates].flatMap(([clipId, state]) => state === 'failed' ? [clipId] : []),
@@ -460,7 +478,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
     if (host === null) return;
     for (const clip of laneClips) {
       if (clip.kind !== 'video') continue;
-      const element = videoElement(clip.id);
+      const element = videoSurface(clip.id);
       if (element === undefined) continue;
       if (element.parentElement !== host) host.append(element);
       const index = visible.indexOf(clip);
@@ -782,24 +800,52 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
   }, [handledId, t]);
   const [notesLayer, setNotesLayer] = React.useState<HTMLDivElement | null>(null);
   // The preview notes of drawn and heard layers that cannot be read, and of texts whose fonts failed (design §6.6),
-  // each by its track.
-  const mediaNotes = [...visible, ...audible.filter((clip) => clip.kind === 'audio')].flatMap((clip, index) => {
+  // each by its track. A video's presentation shows as the canvas node shows it (`useResolvedVideoPresentation`): the
+  // candidate's failure or a selected version's unreadable manifest; with nothing selected, once the browser cannot play
+  // the original, the note reads "Preparing video…" over the cover (frames-split §7.9 last paragraph).
+  const mediaNotes = [...visible, ...audible.filter((clip) => clip.kind === 'audio')].flatMap((clip, index): MediaNote[] => {
     const track = labels.nameOf(clip.trackId) ?? clip.trackId;
-    if (clip.kind === 'text') return textFonts.get(clip.id) === 'failed' ? [{ clipId: clip.id, z: index + 1, text: t('timeline.preview.fontFailed', { track }), retry: true }] : [];
+    /**
+     * This clip's note under its track.
+     * @param text - Why the layer cannot be read or shown yet.
+     * @param retry - Whether a Retry shows.
+     * @param loading - Whether that Retry is waiting.
+     * @returns The note.
+     * @throws {never} Never.
+     */
+    const note = (text: string, retry: boolean, loading = false): MediaNote[] => [{ clipId: clip.id, z: index + 1, text: t('timeline.preview.media', { track, text }), retry, loading }];
+    if (clip.kind === 'text') return textFonts.get(clip.id) === 'failed' ? [{ clipId: clip.id, z: index + 1, text: t('timeline.preview.fontFailed', { track }), retry: true, loading: false }] : [];
     if (clip.kind !== 'video' && clip.kind !== 'audio' && clip.kind !== 'image') return [];
+    if (clip.kind === 'video') {
+      const original = timelineClipSource(document.sources, clip)?.url;
+      const presentation = original === undefined ? undefined : presentations.get(original);
+      if (original !== undefined && presentation !== undefined) {
+        if (presentation.failure !== null) {
+          return note(t(preparationFailureKey(presentation.failure)), preparationRetryable(presentation.failure), !presentation.selected && repairingPresentations.has(original));
+        }
+        if (!presentation.selected && videoStates.get(clip.id) === 'failed') return note(t('canvas.miniTool.videoUI.preparingVideo'), false);
+      }
+    }
     const failed = (clip.kind === 'image' ? imageStateOf(clip) : videoStates.get(clip.id)) === 'failed';
-    if (!failed) return [];
-    const text = t('timeline.media.readFailed', { kind: timelineClipKind(clip) });
-    return [{ clipId: clip.id, z: index + 1, text: t('timeline.preview.media', { track, text }), retry: true }];
+    return failed ? note(t('timeline.media.readFailed', { kind: timelineClipKind(clip) }), true) : [];
   });
   const retryLayer = React.useCallback((clipId: string): void => {
     const clip = document.clips[clipId];
     if (clip === undefined) return;
     if (clip.kind === 'text') { retryFonts(); return; }
+    // A video's failed presentation is read again as the canvas node does: a selected version's manifest, else the
+    // candidate is repaired (frames-split §7.9).
+    const original = clip.kind === 'video' ? timelineClipSource(document.sources, clip)?.url : undefined;
+    const presentation = original === undefined ? undefined : presentations.get(original);
+    if (original !== undefined && presentation !== undefined && presentation.failure !== null) {
+      if (presentation.selected) retryManifest(original);
+      else repairPresentation(original);
+      return;
+    }
     // The layer's element loads its stored address again, as a canvas node's retry does (inner#2171 design §6.1).
     if (clip.kind === 'image') setImageAttempts((current) => new Map(current).set(clipId, (current.get(clipId) ?? 0) + 1));
     else retryVideo(clipId);
-  }, [document.clips, retryVideo, retryFonts]);
+  }, [document.clips, document.sources, presentations, retryManifest, repairPresentation, retryVideo, retryFonts]);
   const retryNote = React.useCallback((event: React.MouseEvent<HTMLButtonElement>): void => {
     const clipId = event.currentTarget.dataset.clipId;
     if (clipId !== undefined) retryLayer(clipId);
@@ -905,7 +951,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
             <div data-testid='timeline-preview-notes' className='pointer-events-none absolute inset-px' style={NOTE_LAYER_STYLE}>
               <div ref={setNotesLayer} className='absolute right-3 top-3 flex flex-col items-end gap-1.5 *:pointer-events-auto'>
                 {mediaNotes.map((note) => <PreviewNote key={note.clipId} clipId={note.clipId} z={note.z} text={note.text}>
-                  {note.retry && <Button data-testid={`timeline-video-retry-${note.clipId}`} data-clip-id={note.clipId} variant='outline' size='compact' onClick={retryNote}>{t('timeline.retry')}</Button>}
+                  {note.retry && <Button data-testid={`timeline-video-retry-${note.clipId}`} data-clip-id={note.clipId} variant='outline' size='compact' loading={note.loading} onClick={retryNote}>{t('timeline.retry')}</Button>}
                 </PreviewNote>)}
               </div>
             </div>
@@ -933,6 +979,16 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
     {materialState.open && materialOpen && <TimelineMaterialDialog key={`${projectId}:${spaceId}`} projectId={projectId} spaceId={spaceId} draft={material} canWrite={!readOnly} document={document} placement={placement} onClose={closeMaterial} />}
     {pickerOpen && <TimelineWebAnimationPicker projectId={projectId} making={goMakeAsked && requestStatus === 'creating'} onPick={placeResult} onGoMake={goMake} onClose={closePicker} />}
   </div>;
+}
+
+/** A preview note of a layer that cannot be read or shown yet, by its track. */
+interface MediaNote {
+  clipId: string;
+  z: number;
+  text: string;
+  /** Whether its Retry shows, and whether that Retry is waiting. */
+  retry: boolean;
+  loading: boolean;
 }
 
 /**

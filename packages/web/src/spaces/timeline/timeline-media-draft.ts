@@ -16,6 +16,8 @@ import { parseTimelineFrame } from '@web/data/yjs/timeline-time';
 import { prepareTimelineMediaPlacement, timelineSourceName } from '@web/spaces/timeline/prepare-media-placement';
 import type { TimelineUploadKind } from '@web/spaces/timeline/timeline-uploads';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { gridDuration } from '@web/spaces/canvas/video-presentation/frame-grid-time';
+import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 
 /** The current material form held by an open document. */
 export interface TimelineMediaDraftSnapshot {
@@ -36,7 +38,7 @@ export interface TimelineMediaDraftSnapshot {
 interface TimelineMediaDraftInputs {
   projectId: string;
   spaceId: string;
-  /** Reads the Timeline limits a new picture's length comes from (inner#1709). */
+  /** The account query client: the Timeline limits a new picture's length comes from (inner#1709), and the presentation read that gives a selected video version's length. */
   queryClient: QueryClient;
   edit: (command: TimelineEditCommand, options?: TimelineEditOptions) => TimelineEditPlan;
   /** Hands a placed local file to the document's background uploads. */
@@ -108,6 +110,24 @@ function decodeDuration(fileUrl: string, kind: 'video' | 'audio', signal: AbortS
     media.src = fileUrl;
     media.load();
   });
+}
+
+/**
+ * A registered video's length as every surface plays it: the selected version's grid length (frames-split §7.8, §7.14 Tv),
+ * which takes precedence over any registered duration.
+ * @param queryClient - The account query client holding the presentation read.
+ * @param projectId - The Project.
+ * @param fileUrl - The registered original.
+ * @param signal - The material attempt's cancellation.
+ * @returns The grid length in seconds, or undefined while nothing is selected.
+ * @throws {DOMException} When the material attempt is canceled.
+ */
+async function selectedGridDuration(queryClient: QueryClient, projectId: string, fileUrl: string, signal: AbortSignal): Promise<number | undefined> {
+  // A read that failed leaves the registered or decoded original as the only length there is.
+  const read = await queryClient.ensureQueryData(videoPresentationQuery({ projectId, canonicalURL: fileUrl, active: true })).catch(() => undefined);
+  signal.throwIfAborted();
+  const selected = read?.presentation ?? null;
+  return selected === null ? undefined : gridDuration(selected.display);
 }
 
 /**
@@ -253,7 +273,8 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
         if (active !== attempt) return;
         // What the confirmed material is: a local file with the duration its metadata reports (none for a picture),
         // or Project material.
-        let material: { kind: 'local'; file: File; durationSeconds: number | null } | { kind: 'project'; asset: ProjectRegisteredAsset; decodedDurationSeconds: number | undefined };
+        let material: { kind: 'local'; file: File; durationSeconds: number | null }
+          | { kind: 'project'; asset: ProjectRegisteredAsset; presentedDurationSeconds: number | undefined; decodedDurationSeconds: number | undefined };
         if (captured.mode === 'local' && captured.file !== null) {
           const file = captured.file;
           failure = 'metadata_unavailable';
@@ -274,7 +295,11 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
           if (asset === null) { publish({ errorKey: 'source_unavailable' }); return; }
           failure = 'metadata_unavailable';
           const timed = asset.kind === 'video' || asset.kind === 'audio' ? asset.kind : null;
-          material = { kind: 'project', asset, decodedDurationSeconds: asset.durationSeconds === null && timed !== null ? await decodeDuration(asset.fileUrl, timed, controller.signal) : undefined };
+          // A video's selected version's grid length first; the registered duration, then decoding, only while nothing is selected.
+          const presentedDurationSeconds = asset.kind === 'video' ? await selectedGridDuration(inputs.queryClient, inputs.projectId, asset.fileUrl, controller.signal) : undefined;
+          const decodedDurationSeconds = presentedDurationSeconds === undefined && asset.durationSeconds === null && timed !== null
+            ? await decodeDuration(asset.fileUrl, timed, controller.signal) : undefined;
+          material = { kind: 'project', asset, presentedDurationSeconds, decodedDurationSeconds };
         }
         if (active !== attempt || controller.signal.aborted) return;
         if (!attempt.canApply) { publish({ errorKey: 'permission_changed' }); return; }
@@ -296,9 +321,10 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
           };
           command = { operation: 'add_upload', parameters: { clip, ...(target.newTrackId === undefined ? {} : { newTrackId: target.newTrackId }) }, placement };
         } else {
-          const { asset, decodedDurationSeconds } = material;
+          const { asset, presentedDurationSeconds, decodedDurationSeconds } = material;
           const prepared = prepareTimelineMediaPlacement(doc, {
             asset, startFrame, clipId, sourceId: newId(), canWrite, placement, ...target,
+            ...(presentedDurationSeconds === undefined ? {} : { presentedDurationSeconds }),
             ...(decodedDurationSeconds === undefined ? {} : { decodedDurationSeconds }),
             ...(imageDurationSeconds === undefined ? {} : { imageDurationSeconds }),
           });

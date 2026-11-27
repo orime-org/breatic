@@ -33,6 +33,8 @@ export interface ProbeStream {
    * cover cut from the same run comes out already turned.
    */
   rotation?: number;
+  /** A video stream's sample aspect ratio when it is not square (ffprobe's `sample_aspect_ratio`; 0:1 reads as square). */
+  sampleAspectRatio?: { numerator: number; denominator: number };
   /** ffprobe's colour tags, when the stream carries them; HDR reads the source as they say. */
   colorTransfer?: string;
   colorPrimaries?: string;
@@ -41,6 +43,8 @@ export interface ProbeStream {
   sampleRate?: number;
   /** An audio stream's channel count, when ffprobe read one. */
   channels?: number;
+  /** A video stream's `alpha_mode` tag, when it carries one (a VP9 or VP8 WebM with alpha says "1"). */
+  alphaMode?: string;
   /**
    * A video stream's frame rate in frames per second, when ffprobe read one:
    * its `avg_frame_rate`, or `r_frame_rate` where that is `0/0`. A join
@@ -54,6 +58,11 @@ export interface ProbeReport {
   streams: ProbeStream[];
   /** ffprobe's `format.duration`, in seconds. */
   durationSeconds: number | null;
+  /**
+   * The square-pixel display of the real video stream's first frame as FFmpeg's default decode gives it (container crop and
+   * display matrix applied; frames-split D07), when the container read one (`withDecodedDisplay`).
+   */
+  display?: { width: number; height: number };
 }
 
 /**
@@ -94,6 +103,27 @@ export interface MediaMetadata {
 function turnsTheFrame(rotation: number | undefined): boolean {
   if (rotation === undefined || !Number.isFinite(rotation)) return false;
   return Math.abs(rotation) % 180 === 90;
+}
+
+/**
+ * The square-pixel display of a picture (frames-split D07, §4.3 rotation/SAR row): a sample aspect ratio above 1 widens it,
+ * below 1 heightens it, the scaled side rounded in double precision (102 · 13/12 is 110.49999999999999, so 110); a missing
+ * or 0:n ratio reads as square. The frame-grid plan and the size an upload is filed at both take it.
+ * @param frame - The picture's size and sample aspect ratio.
+ * @param frame.width - Its width.
+ * @param frame.height - Its height.
+ * @param frame.sar - Its sample aspect ratio, `n:d`, `n/d` or a pair, if any.
+ * @returns The display width and height.
+ * @throws {TypeError} When the size is not positive.
+ */
+export function squareDisplay(frame: { width: number; height: number; sar?: string | { numerator: number; denominator: number } }): { width: number; height: number } {
+  const { width, height } = frame;
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) throw new TypeError("Expected the decoded frame size");
+  const pair = typeof frame.sar === "string" ? /^(\d+)[:/](\d+)$/u.exec(frame.sar)?.slice(1).map(Number) : frame.sar === undefined ? undefined : [frame.sar.numerator, frame.sar.denominator];
+  const ratio = pair === undefined || !(pair[0]! > 0) || !(pair[1]! > 0) ? 1 : pair[0]! / pair[1]!;
+  if (ratio > 1) return { width: Math.round(width * ratio), height };
+  if (ratio < 1) return { width, height: Math.round(height / ratio) };
+  return { width, height };
 }
 
 /**
@@ -139,10 +169,14 @@ export function hasPreviewableFrame(report: ProbeReport): boolean {
  * outright would file the cover's size as the song's. Duration comes off the
  * container format rather than any stream, so it is the same number for a file
  * whose audio and video run to different lengths.
+ * A video's size is its first decoded frame's display (`display`, frames-split D07); without one, the stream's coded pair
+ * made square by its sample aspect ratio and turned by the display matrix. A still image is filed at its pixels, turned:
+ * browsers do not show an image's pixel aspect.
  * @param report - What the container answered.
+ * @param still - Whether the object is a still image.
  * @returns The three values, each null when this media has no such number.
  */
-export function pickMediaMetadata(report: ProbeReport): MediaMetadata {
+export function pickMediaMetadata(report: ProbeReport, still = false): MediaMetadata {
   const media = realVideoStream(report);
   // Both or neither: half a pair describes no frame, and a reader that got one
   // of them would have to carry its own rule for the missing one.
@@ -150,9 +184,12 @@ export function pickMediaMetadata(report: ProbeReport): MediaMetadata {
     media?.width != null && media.height != null
       ? { width: media.width, height: media.height }
       : { width: null, height: null };
-  const sized = turnsTheFrame(media?.rotation)
-    ? { width: stored.height, height: stored.width }
-    : stored;
+  const shown = (size: { width: number; height: number }): { width: number; height: number } =>
+    turnsTheFrame(media?.rotation) ? { width: size.height, height: size.width } : size;
+  const sized = stored.width === null || stored.height === null ? stored
+    : still ? shown({ width: stored.width, height: stored.height })
+      : report.display ?? (stored.width > 0 && stored.height > 0
+        ? shown(squareDisplay({ width: stored.width, height: stored.height, sar: media?.sampleAspectRatio })) : stored);
   // A still image probes with a format duration of zero often enough to matter,
   // and zero seconds is not a duration anyone can act on.
   const duration =
@@ -179,7 +216,8 @@ export function mediaNumbersFor(
   storedType: string,
   report: ProbeReport,
 ): MediaMetadata {
-  const picked = pickMediaMetadata(report);
-  if (!storedType.startsWith("image/")) return picked;
+  const still = storedType.startsWith("image/");
+  const picked = pickMediaMetadata(report, still);
+  if (!still) return picked;
   return { ...picked, durationSeconds: null };
 }

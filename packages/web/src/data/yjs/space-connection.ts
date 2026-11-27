@@ -39,6 +39,17 @@ export function useSpaceConnection(): SocketState {
 }
 
 /**
+ * Whether this tab's connection is lost, as the project's ConnectionBanner shows it: refused or disconnected, not still
+ * connecting.
+ * @returns True while edits cannot reach the server.
+ * @throws {never} Never.
+ */
+export function useConnectionLost(): boolean {
+  const { status } = useSpaceConnection();
+  return status === 'disconnected' || status === 'authFailed';
+}
+
+/**
  * Doc-name builder per Space type. A type absent from this table has no Yjs
  * document yet, and attaching is skipped for it — adding one later is a single
  * entry here rather than another branch in the component.

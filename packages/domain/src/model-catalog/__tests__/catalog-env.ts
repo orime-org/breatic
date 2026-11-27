@@ -47,9 +47,10 @@ export function allProviderKeyNames(): string[] {
  * 传空数组就是「一个 key 都没配」。其余环境变量原样保留，因为 core 的 schema
  * 还要校验数据库和 Redis 那些。
  * @param configured - 要保留成非空的 key 名。
+ * @param extra - Other variables this case sets, such as `CREDIT_MULTIPLIER`.
  */
-export function useEnvWithKeys(configured: readonly string[]): void {
-  const env: Record<string, string | undefined> = { ...process.env };
+export function useEnvWithKeys(configured: readonly string[], extra: Readonly<Record<string, string>> = {}): void {
+  const env: Record<string, string | undefined> = { ...process.env, ...extra };
   for (const name of allProviderKeyNames()) {
     env[name] = configured.includes(name) ? "test-key" : "";
   }

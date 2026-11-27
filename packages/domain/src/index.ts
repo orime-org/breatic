@@ -69,6 +69,50 @@ export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 // ── Task (+ markCompletedAndBill: completion and charge request in one commit) ─
 export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
+export * as miniToolAnalysisService from "@domain/mini-tool/analysis.service.js";
+export { readMiniToolExecutionPlan, type MiniToolExecutionPlan } from "@domain/mini-tool/execution-plan.service.js";
+export {
+  acceptMiniToolExecution,
+  quoteMiniToolExecution,
+  type AcceptedMiniToolExecution,
+  type MiniToolExecutionAdmission,
+  type MiniToolExecutionTaskParams,
+} from "@domain/mini-tool/execution-admission.service.js";
+export * as miniToolSceneAnalysis from "@domain/mini-tool/scene-analysis.js";
+export { recordMiniToolConsumption, confirmMiniToolConsumption } from "@domain/mini-tool/consumption.service.js";
+export { openMiniToolConsumption, completeMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
+export { openMiniToolPlanJob, type OpenMiniToolPlanJobInput, type OpenMiniToolPlanJobResult } from "@domain/mini-tool/planned-job.service.js";
+export { claimMiniToolSettlement, deferMiniToolSettlement, listDueMiniToolSettlements, type ClaimedMiniToolSettlement } from "@domain/mini-tool/settlement-lookup.service.js";
+export { settleMiniToolCharge, type MiniToolChargeResult } from "@domain/mini-tool/settlement.service.js";
+export { runMiniToolSettlement, type MiniToolSettlementRunResult, type MiniToolSettlementLookup } from "@domain/mini-tool/settlement-runner.service.js";
+export {
+  miniToolConsumptionRecordSchema,
+  miniToolSettlementSchema,
+  miniToolSettlementClaimSchema,
+  recordMiniToolConsumptionInputSchema,
+  openMiniToolConsumptionInputSchema,
+  type MiniToolConsumptionRecord,
+  type MiniToolContainerPricing,
+  type MiniToolSettlement,
+  type MiniToolSettlementClaim,
+  type RecordMiniToolConsumptionInput,
+  type OpenMiniToolConsumptionInput,
+  type MiniToolSettlementCursor,
+  type DueMiniToolSettlement,
+  type DueMiniToolSettlementPage,
+  miniToolConsumptionLookupSchema,
+  type MiniToolConsumptionLookup,
+  type MiniToolConsumptionLookupInput,
+} from "@domain/mini-tool/consumption.types.js";
+export {
+  miniToolAnalysisRequestSchema,
+  miniToolFrozenAnalysisSchema,
+  type MiniToolAnalysisRequest,
+  type MiniToolFrozenAnalysis,
+  type MiniToolAnalysisTaskParams,
+  type MiniToolAnalysisJob,
+  type AcceptedMiniToolAnalysis,
+} from "@domain/mini-tool/analysis.service.js";
 export * as runningSlotService from "@domain/task/running-slot.service.js";
 export * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 export * as upstreamCloneRepo from "@domain/task/upstreamClone.repo.js";
@@ -96,6 +140,8 @@ export * as backendUploadService from "@domain/asset/backend-upload.service.js";
 export { UploadOpenFailed } from "@domain/asset/upload-open-failure.js";
 export { openContainerOutputs } from "@domain/asset/container-outputs.service.js";
 export * as mediaReadService from "@domain/asset/media-read.service.js";
+export * as videoPresentationService from "@domain/asset/video-presentation.service.js";
+export { VIDEO_PRESENTATION_QUEUE, VideoPresentationSourceChanged, type VideoPresentationJob } from "@domain/asset/video-presentation.service.js";
 export { extFromUrl, labelForUrl, userUrlSchema, safeExt } from "@domain/asset/source-url.js";
 export { isUserLinkFault, storedTypeOf, TYPE_UNKNOWN, urlIngestFailureLevel } from "@domain/asset/user-source.js";
 export {
@@ -330,6 +376,13 @@ export type {
 
 // ── Mail (notification mail sent by the worker) ──
 export { MAIL_QUEUE, enqueueMail, type MailJob } from "@domain/mail/mail-queue.js";
+export { recordMiniToolStepResult, type MiniToolStepJson, type MiniToolStepResultParser, type RecordMiniToolStepResultInput } from "@domain/mini-tool/upstream-step.service.js";
+export { miniToolStepStateSchema } from "@domain/mini-tool/upstream-step.types.js";
+
+export * as miniToolExecutionService from "@domain/mini-tool/execution.service.js";
+export * as miniToolDeliveryService from "@domain/mini-tool/delivery.service.js";
+export type { MiniToolDeliveryOutput, MiniToolDeliveryState, MiniToolDeliveryContext, MiniToolDeliveryAck, MiniToolDeliveryAcknowledgement, MiniToolDeliveryDeferral, MiniToolDeliveryCursor, PendingMiniToolDelivery, PendingMiniToolDeliveryPage } from "@domain/mini-tool/delivery.service.js";
+export type { MiniToolExecutionJob, MiniToolExecution, MiniToolExecutionCompletion } from "@domain/mini-tool/execution.service.js";
 export { escapeHtml, renderMail, type MailMessage, type MailSpec, type RenderedMail } from "@domain/mail/mail-shell.js";
 
 export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";
@@ -340,6 +393,9 @@ export * as deadlineSweepService from "@domain/sweep/deadline-sweep.service.js";
 export { readDatabaseClock } from "@domain/sweep/database-clock.repo.js";
 export { mintShareToken } from "@domain/request/share-token.js";
 
+// ── Presentation pins (inner#1306 §7.15) ──
+export * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
+export { syncPresentationPins } from "@domain/presentation/presentation-pin.service.js";
 // ── Provider (every model call goes through it, inner#1743) ──
 export { initProvider, provider } from "@domain/provider/instance.js";
 export { readProviderConfig } from "@domain/provider/provider-config-loader.js";

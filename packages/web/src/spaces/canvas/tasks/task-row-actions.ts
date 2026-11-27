@@ -27,8 +27,8 @@ export interface TaskRowSituation {
   status: TaskStatus;
   /** Whether it left a result in the node's history. */
   hasResult: boolean;
-  /** Whether this session still holds the File this upload was carrying. */
-  hasRetryFile: boolean;
+  /** Whether a failed task can run again: a failed upload whose File this session still holds. */
+  canRetry: boolean;
   /**
    * Whether this user may write. B4 admits a read-only member to the list,
    * and every button here is a write — each refusing in its own way once
@@ -45,7 +45,7 @@ export interface TaskRowSituation {
  * @param situation - The row's state and its two outside conditions.
  * @param situation.status - Which of the four states the task is in.
  * @param situation.hasResult - Whether it left content behind.
- * @param situation.hasRetryFile - Whether this session still holds its File.
+ * @param situation.canRetry - Whether the failed task can run again.
  * @param situation.readOnly - Whether this user may write.
  * @returns The row's buttons, empty while the task is still running and for a
  *   user who cannot write.
@@ -53,7 +53,7 @@ export interface TaskRowSituation {
 export function taskRowActions({
   status,
   hasResult,
-  hasRetryFile,
+  canRetry,
   readOnly,
 }: TaskRowSituation): TaskRowAction[] {
   if (readOnly) return [];
@@ -69,7 +69,7 @@ export function taskRowActions({
     // A failure produced nothing to write, whatever the row happens to
     // carry; the way forward is to run it again, not to keep anything.
     case 'failed':
-      return hasRetryFile ? ['retry', 'clear'] : ['clear'];
+      return canRetry ? ['retry', 'clear'] : ['clear'];
     // §4.5: a report can arrive after the verdict. It went into the node's
     // history only, since the node may hold a newer result by then; the
     // user decides there whether to restore it.

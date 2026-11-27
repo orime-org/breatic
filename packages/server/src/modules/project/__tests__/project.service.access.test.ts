@@ -69,6 +69,7 @@ function makeProject(over: Partial<ProjectEntity> = {}): ProjectEntity {
     updatedAt: new Date("2026-06-07T00:00:00Z"),
     deletedAt: null,
     archivedAt: null,
+    copying: false,
     ...over,
   };
 }

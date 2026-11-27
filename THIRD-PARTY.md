@@ -22,11 +22,11 @@ carry their own list; see [the desktop client installers](#the-desktop-client-in
 
 We publish six images: the backend, the web front-end, the media container, the
 page reader, the web-animation container and the web-animation render container.
-The media container carries FFmpeg and vips; the page reader carries a
-Chromium headless shell and the FFmpeg build Playwright installs beside it; the
-web-animation container carries Chromium and the DeepSeek Harness; the render
-container carries a Chromium headless shell, FFmpeg and the HyperFrames
-producer:
+The media container carries FFmpeg, vips, SoX and an isolated Python analysis
+runtime; the page reader carries a Chromium headless shell and the FFmpeg build
+Playwright installs beside it; the web-animation container carries Chromium and
+the DeepSeek Harness; the render container carries a Chromium headless shell,
+FFmpeg and the HyperFrames producer:
 
 | Image | Built from | Base | Carries FFmpeg |
 |---|---|---|---|
@@ -118,6 +118,36 @@ runs `sox` as a separate program, piping the decoded sound through it, and
 loads none of its libraries. The image carries the licence texts and a
 `SOURCE` file at `/usr/share/sox-source/`, written from the installed package
 while the image is built, as the FFmpeg one above is.
+
+### Isolated analysis in the media container
+
+The media container also carries Python 3.12.16, NumPy 2.3.5, OpenCV
+4.12.0 and PySceneDetect 0.7.2, with PySceneDetect's Python dependencies
+click 8.1.8, platformdirs 4.5.0 and tqdm 4.67.1 from Alpine. The Node
+service invokes our Python analysis program as a separate process and hands
+it raw BGR frames. Python does not decode media: OpenCV is built from source
+with FFmpeg, GStreamer, GUI and dynamic backend plugins disabled. The
+existing FFmpeg program supplies decoded frames through a separate process.
+
+| Component | Licence | Source |
+|---|---|---|
+| Python 3.12.16 | Python-2.0 | https://www.python.org/ftp/python/3.12.16/Python-3.12.16.tar.xz |
+| NumPy 2.3.5 | BSD-3-Clause and its bundled notices | https://github.com/numpy/numpy/tree/v2.3.5 |
+| OpenBLAS 0.3.30 | BSD-3-Clause | https://github.com/OpenMathLib/OpenBLAS/tree/v0.3.30 |
+| GCC runtime libraries | GPL-3.0-or-later WITH GCC-exception-3.1 | https://gcc.gnu.org/pub/gcc/releases/gcc-15.2.0/gcc-15.2.0.tar.xz |
+| Limited OpenCV 4.12.0 | Apache-2.0 and its bundled notices, including Protobuf, SoftFloat and MSCR | https://github.com/opencv/opencv/tree/4.12.0 |
+| PySceneDetect 0.7.2 | BSD-3-Clause | https://github.com/Breakthrough/PySceneDetect/tree/v0.7.2 |
+| click 8.1.8 | BSD-3-Clause | https://github.com/pallets/click/tree/8.1.8 |
+| platformdirs 4.5.0 | MIT | https://github.com/tox-dev/platformdirs/tree/4.5.0 |
+| tqdm 4.67.1 | MIT | https://github.com/tqdm/tqdm/tree/v4.67.1 |
+
+The image retains upstream licence texts and a `SOURCE` declaration under
+`/usr/share/analysis-source/`. That declaration includes the fixed upstream
+archive hashes and the installed Alpine package metadata.
+OpenCV's generated CMake cache, install manifest and build/runtime package
+lists are retained under `/opt/opencv/build-record/`. Python package notices
+also remain in their installed `dist-info` directories. This separate
+analysis runtime leaves the existing media programs' notices in place.
 
 ### Chromium and its libraries in the page reader
 
@@ -401,6 +431,22 @@ and licence travel with the fonts, and they do: the bundle carries
 `third-party-licences.txt`, generated from the installed packages, and the
 browser fetches it at `/third-party-licences.txt`. The same file carries
 BlockNote's MPL-2.0 above, and this one is served beside it.
+
+### @fontsource/google-sans
+
+| | |
+|---|---|
+| Version | `5.3.2` |
+| Reached through | Declared by `packages/web`; the Google sign-in button imports its 500 weight |
+| Licence | **OFL-1.1** (SIL Open Font License 1.1) |
+| Source | https://github.com/fontsource/font-files |
+
+The font files are served to the browser as published, for the sign-in
+button's label as Google's branding guidelines set it. The copyright line
+declares no Reserved Font Name, and Breatic does not sell the font files on
+their own. The copyright notice and licence travel with the fonts in
+`third-party-licences.txt`, which the browser fetches at
+`/third-party-licences.txt`, as for Inter above.
 
 ### jszip
 

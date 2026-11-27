@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { validFocusImages } from '@breatic/shared';
+import { videoToolNodeAssetUrls } from '@web/data/video-tool-node-data';
 import {
   isUploadableMediaType,
   uploadableSpellings,
@@ -396,6 +397,7 @@ export interface AssetNodeLike {
     content?: unknown;
     coverUrl?: unknown;
     focusImages?: unknown;
+    miniToolAssetUrls?: string[];
   };
 }
 
@@ -490,6 +492,7 @@ export function computeDeletedAssetEntries(
     // generating from — silently, until someone deletes the node it was
     // picked from (#1918).
     for (const url of slotUrls(n.data)) survivingUrls.add(url);
+    for (const url of videoToolNodeAssetUrls(n.data)) survivingUrls.add(url);
     // Focus crops (#1782) are uploaded assets too — a crop URL held by a
     // surviving node keeps the asset alive (adversarial round-2).
     for (const crop of validFocusImages(n.data?.focusImages)) {
@@ -551,6 +554,7 @@ export function assetUrlSurvives(
     if (slotUrls(data).includes(url)) {
       return true;
     }
+    if (videoToolNodeAssetUrls(data).includes(url)) return true;
     if (validFocusImages(data?.focusImages).some((c) => c.url === url)) {
       return true;
     }

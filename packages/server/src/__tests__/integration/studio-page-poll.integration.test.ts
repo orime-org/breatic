@@ -4,7 +4,8 @@
 /**
  * `GET /api/v1/studio-page/poll` — the Studio page's one poll (#1580, test spec K-01 to K-11; design §4): one answer
  * carries the bell's unread count and newest notification, the Studio's live transfer for an admin, how the asked
- * uploads ended, and the interval to the next poll. Real Postgres and Redis; only the ingest Worker is a double.
+ * uploads ended, which of the asked Project copies are no longer being copied (inner#1706 design 5.4), and the
+ * interval to the next poll. Real Postgres and Redis; only the ingest Worker is a double.
  */
 
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
@@ -39,7 +40,7 @@ import {
   uploadEndedChannelName,
 } from "@breatic/core";
 import { uploadStatusService } from "@breatic/domain";
-import { signSessionToken, UPLOAD_STATUS_MAX_KEYS } from "@breatic/shared";
+import { COPYING_POLL_MAX_IDS, signSessionToken, UPLOAD_STATUS_MAX_KEYS } from "@breatic/shared";
 import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/queued-finish.js";
 
 try {
@@ -131,6 +132,7 @@ interface Answer {
   notifications: { unread: number; latestAt: string | null };
   transfer: { id: string; status: string; updatedAt: string } | null;
   uploads: Record<string, unknown>[];
+  copied: string[];
   nextPollMs: number;
 }
 
@@ -317,6 +319,56 @@ describe("the asked uploads", () => {
     const s = await scene();
     const keys = Array.from({ length: UPLOAD_STATUS_MAX_KEYS + 1 }, (_v, i) => `uploads/k-${i}.png`);
     expect((await poll(s.admin.cookie, `studio=${s.slug}&uploads=${keys.join(",")}`)).status).toBe(422);
+  });
+});
+
+/**
+ * A copy of the scene's Project in a Studio, as the duplicate request leaves it, optionally already completed.
+ * @param studioId - Where the copy is.
+ * @param s - The scene whose Project and admin it copies.
+ * @param completed - Whether collab has recorded the copy as completed.
+ * @returns The copy's id.
+ */
+async function copyOf(studioId: string, s: Scene, completed: boolean): Promise<string> {
+  const [row] = await sql<{ id: string }[]>`
+    insert into projects (studio_id, created_by_user_id, name, slug, duplicated_from_id, duplicate_completed_at)
+    values (${studioId}, ${s.admin.id}, 'Poll copy', ${`${s.slug}-c-${seq++}`}, ${s.projectId}, ${completed ? new Date() : null})
+    returning id
+  `;
+  return row!.id;
+}
+
+describe("the asked copies", () => {
+  it("K-12 are named when they are no longer being copied, in the order asked", async () => {
+    const s = await scene();
+    const done = await copyOf(s.studioId, s, true);
+    const copying = await copyOf(s.studioId, s, false);
+    const got = await answer(s.member.cookie, `studio=${s.slug}&copying=${[copying, done, s.projectId].join(",")}`);
+    expect(got.copied).toEqual([done, s.projectId]);
+  });
+
+  it("K-13 leave out a Project outside the polled Studio, and are none for someone outside it", async () => {
+    const s = await scene();
+    const other = await scene();
+    const elsewhere = await copyOf(other.studioId, s, true);
+    const done = await copyOf(s.studioId, s, true);
+    expect((await answer(s.member.cookie, `studio=${s.slug}&copying=${[elsewhere, done].join(",")}`)).copied).toEqual([done]);
+    const stranger = await person();
+    expect((await answer(stranger.cookie, `studio=${s.slug}&copying=${done}`)).copied).toEqual([]);
+  });
+
+  it("K-14 are none when none are asked, and on the Recent page", async () => {
+    const s = await scene();
+    const done = await copyOf(s.studioId, s, true);
+    expect((await answer(s.member.cookie, `studio=${s.slug}`)).copied).toEqual([]);
+    expect((await answer(s.member.cookie, `copying=${done}`)).copied).toEqual([]);
+  });
+
+  it("K-15 refuses more ids than one request may carry, or one that is not a Project id", async () => {
+    const s = await scene();
+    const ids = Array.from({ length: COPYING_POLL_MAX_IDS + 1 }, () => crypto.randomUUID());
+    expect((await poll(s.member.cookie, `studio=${s.slug}&copying=${ids.join(",")}`)).status).toBe(422);
+    expect((await poll(s.member.cookie, `studio=${s.slug}&copying=not-a-project`)).status).toBe(422);
   });
 });
 

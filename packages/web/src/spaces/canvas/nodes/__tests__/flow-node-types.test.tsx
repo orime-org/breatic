@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render as rtlRender, screen, fireEvent, act } from '@testing-library/react';
-import type * as React from 'react';
+import { screen, fireEvent, act } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import { ReactFlowProvider, useStoreApi, type NodeProps } from '@xyflow/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -20,17 +20,8 @@ import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { NODE_TYPE_LIST } from '@web/spaces/canvas/nodes/registry';
-import type { TextNodeView } from '@web/data/yjs/node-view';
 
-/**
- * Renders under the app's tooltip provider: a text node carries a tooltip on
- * its full-screen button (inner#2115).
- * @param ui - What to render.
- * @returns The render result.
- */
-function render(ui: React.ReactElement): ReturnType<typeof rtlRender> {
-  return rtlRender(ui, { wrapper: TooltipProvider });
-}
+import type { TextNodeView } from '@web/data/yjs/node-view';
 
 
 const PID = 'p1';

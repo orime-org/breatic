@@ -7,6 +7,7 @@ import {
   MINI_TOOLS,
   defaultParamsOf,
   isModelTool,
+  outputTemplateOf,
   miniToolById,
   miniToolEstimateInput,
   miniToolRequestSchema,
@@ -54,6 +55,8 @@ const BATCH_ONE = {
     "video.audio-denoise",
     "video.stabilize",
     "video.hdr",
+    "video.extract-frames",
+    "video.split",
     "video.upscale",
     "video.interpolate",
     "video.extend",
@@ -90,7 +93,11 @@ describe("MINI_TOOLS registry", () => {
 
   it("gives every tool at least one output and one modality per output list", () => {
     for (const tool of MINI_TOOLS) {
-      expect(outputsOf(tool, defaultParamsOf(tool)).length).toBeGreaterThan(0);
+      if (tool.run.kind === "planned") {
+        expect(tool.outputs?.length).toBeGreaterThan(0);
+        expect(outputTemplateOf(tool)).toEqual(tool.outputs?.[0]);
+        expect(() => outputsOf(tool, {})).toThrow("execution plan");
+      } else expect(outputsOf(tool, defaultParamsOf(tool)).length).toBeGreaterThan(0);
     }
   });
 
@@ -652,5 +659,15 @@ describe("batch-four tools", () => {
       slots: { style: [{ url: "https://cdn.example.com/s1.png" }, { url: "https://cdn.example.com/s2.png" }] },
     });
     expect(parsed.success).toBe(true);
+  });
+});
+
+// §97 G2 (frames-split design §10.6 删除行; tools design acceptance item 5): the extract-frames guide the Agent reads names the
+// three kept modes and no longer the removed interval sampling.
+describe("the extract-frames guide after the interval mode is removed", () => {
+  it("names first, last and current only", () => {
+    const guide = miniToolById("video.extract-frames")?.guide ?? "";
+    for (const mode of ["first", "last", "current"]) expect(guide).toContain(mode);
+    expect(guide).not.toMatch(/interval/i);
   });
 });

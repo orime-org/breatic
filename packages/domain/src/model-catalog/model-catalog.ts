@@ -81,6 +81,8 @@ export interface FullParamSpec {
   absent_value?: string | number | boolean;
   /** The template each entry of a list is written into the prompt with. */
   into_prompt?: string;
+  /** A switch that lets the model plan its own shots, drawn in the Shots control. */
+  shots_auto?: boolean;
   /** How the param's value reaches the run. */
   fill?: string;
   /** What has to hold before this param counts; dropped from the run otherwise. */
@@ -477,7 +479,7 @@ function servabilityOn(upstreams: readonly { upstream: string; configured: boole
  * @param model - Model name.
  * @returns The entry, or undefined when no modality carries it.
  */
-function findCatalogEntry(model: string): ModelEntry | undefined {
+export function findCatalogEntry(model: string): ModelEntry | undefined {
   const catalog = getModelCatalog();
   for (const modality of MODALITIES) {
     const entry = catalog[modality].find((m) => m.name === model);

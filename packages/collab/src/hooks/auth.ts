@@ -50,7 +50,7 @@ import {
 } from "@collab/services/project-space-list.js";
 import {
   createLogger,
-  env,
+  isTrustedFrontendOrigin,
   getSession,
   projectAuthService,
   sessionCookieName,
@@ -232,7 +232,8 @@ export function createAuthHook({
       // Browser handshakes always carry Origin. Non-browser clients still
       // require a valid session and project membership below.
       const origin = requestHeaders.get("origin");
-      if (origin && !env.ALLOWED_ORIGINS.split(",").map((value) => value.trim()).includes(origin)) {
+      // Exact ALLOWED_ORIGINS items and registered influencer sites (inner#2157).
+      if (origin && !(await isTrustedFrontendOrigin(origin))) {
         logger.warn({ documentName, reason: "origin_not_allowed" }, "auth_rejected");
         throw new Error("Origin not allowed");
       }

@@ -4,6 +4,8 @@
 import * as React from 'react';
 
 import type { Modality } from '@web/data/yjs/node-view';
+import type { PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
+import type { FrameMode, MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 
 /**
  * Canvas mutations a node body can trigger but cannot perform itself: the
@@ -13,6 +15,12 @@ import type { Modality } from '@web/data/yjs/node-view';
  * is the one layer that knows each node's id.
  */
 export interface CanvasActions {
+  /** Receives the actual effect-owned video attachment; never persisted. */
+  onVideoBinding?: (nodeId: string, canonicalURL: string, snapshot: MediaPlayerVideoSnapshot) => void;
+  /** Consumes the just-presented canonical frame before its drawing buffer clears. */
+  onVideoFrame?: (nodeId: string, canonicalURL: string, frame: PresentedMediaFrame) => void;
+  /** Opens Extract frames on a video node in the chosen mode (tools design §4 camera menu); absent for viewers. */
+  openFrameTool?: (nodeId: string, mode: FrameMode) => void;
   /**
    * Persist a node's new display name to the Yjs doc (frontend-owned write,
    * same pattern as node position / deletion).

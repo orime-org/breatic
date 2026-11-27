@@ -13,6 +13,7 @@
 
 import type { CanvasNodeFields } from '@breatic/shared';
 import { NODE_MEDIA_KEYS, newId } from '@breatic/shared';
+import { rebindVideoToolDrafts } from '@web/data/video-tool-node-data';
 import type { CanvasEdge, SnapshotNode } from '@web/data/yjs/canvas-space';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { MENTION_LABEL_ATTR } from '@web/spaces/canvas/generate/reference-mention';
@@ -275,7 +276,7 @@ export function canvasTakesPaste(target: EventTarget | null, text: string): bool
 }
 
 /** Fields that are a node's state or its running work, not its content (2026-10-09). */
-const NOT_COPIED = ['locked', 'taskCounts', 'taskResultEventId', 'errorMessage', 'focusUploads'] as const;
+const NOT_COPIED = ['locked', 'taskCounts', 'taskResultEventId', 'miniToolResultOrigin', 'errorMessage', 'focusCropOutcomes', 'focusUploads'] as const;
 
 /** What {@link cloneForPaste} produces. */
 export interface PastedClones {
@@ -289,6 +290,8 @@ export interface PastedClones {
 
 /** Options for {@link cloneForPaste}. */
 export interface CloneOptions {
+  /** Destination Project, used to scope accepted mini-tool analysis references. */
+  targetProjectId?: string;
   /** Absolute positions of existing Groups a lone member may rejoin. */
   externalParentAbs?: ReadonlyMap<string, { x: number; y: number }>;
   /**
@@ -356,7 +359,11 @@ export function cloneForPaste(
       const parentAbs = options.externalParentAbs.get(node.parentId) as { x: number; y: number };
       position = { x: absShifted.x - parentAbs.x, y: absShifted.y - parentAbs.y };
     }
-    const data = withCopiedAnchor(rewriteMentions(contentOf(node.data), idMap, keptUpstream) as Record<string, unknown>, idMap);
+    const data = rebindVideoToolDrafts(
+      withCopiedAnchor(rewriteMentions(contentOf(node.data), idMap, keptUpstream) as Record<string, unknown>, idMap),
+      idMap,
+      options.targetProjectId !== undefined && options.targetProjectId === payload.source?.projectId,
+    );
     const fallbackName = node.type === 'group' ? 'Group' : MODALITY_LABEL[node.type];
     const name = typeof data.name === 'string' ? data.name : fallbackName;
     if (node.external === true) {
@@ -474,7 +481,7 @@ function rewriteMentions(
       const copy = idMap.get(sourceId);
       if (copy !== undefined) return { ...record, attrs: { ...attrs, [MENTION_SOURCE_ID_ATTR]: copy } };
     }
-    const label = typeof attrs[MENTION_LABEL_ATTR] === 'string' ? (attrs[MENTION_LABEL_ATTR] as string) : '';
+    const label = typeof attrs[MENTION_LABEL_ATTR] === 'string' ? attrs[MENTION_LABEL_ATTR] : '';
     return { text: [{ insert: `@${label}` }] };
   }
   const out: Record<string, unknown> = {};

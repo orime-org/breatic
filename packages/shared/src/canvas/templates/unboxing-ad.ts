@@ -8,7 +8,7 @@ export const UNBOXING_AD: GenerationTemplate = {
   id: "unboxing-ad",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "9:16", duration: 25, generate_audio: true } },
+    { key: "result", role: "generate", type: "video", mode: "ref", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "9:16", duration: 25, generate_audio: true } },
   ],
   edges: [],
   inputs: [{ key: "product", type: "image" }],

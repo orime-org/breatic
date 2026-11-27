@@ -7,7 +7,7 @@
  * worker loads.
  */
 
-import { MINI_TOOLS, isModelTool, modelOf, toolFilledParams, toolParamKeys } from "@breatic/shared/mini-tools";
+import { MINI_TOOLS, PLANNED_VIDEO_TOOL_IDS, isModelTool, modelOf, toolFilledParams, toolParamKeys } from "@breatic/shared/mini-tools";
 import {
   DEFAULT_LIGHT_ANGLE,
   LIGHT_ANGLE_GRID,
@@ -15,7 +15,7 @@ import {
   LIGHT_INTENSITIES,
   LIGHT_QUALITIES,
 } from "@breatic/shared";
-import { initCore } from "@breatic/core";
+import { getMiniToolsConfig, initCore } from "@breatic/core";
 import { getFullModelConfig } from "@breatic/domain";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -41,8 +41,31 @@ function catalog(): Map<string, FullModel> {
 }
 
 const modelTools = MINI_TOOLS.filter((tool) => tool.run.kind === "model");
+const plannedContainerClasses = {
+  "video.extract-frames": "MiniToolContainerStd4",
+  "video.split": "MiniToolContainerStd4",
+  // A video focus crop takes one grid frame on standard-4 (frames-split §5.5 configuration row).
+  "video.focus-crop": "MiniToolContainerStd4",
+} as const;
 
 describe("model tools against the catalog", () => {
+  it("binds every planned container execution to its declared registry and Std4 class", () => {
+    const config = getMiniToolsConfig();
+    const executions = Object.entries(config.executions);
+    expect(executions.map(([operation]) => operation).sort()).toEqual(Object.keys(plannedContainerClasses).sort());
+    for (const [operation, execution] of executions) {
+      // A focus crop is a planned request with no panel tool of its own (frames-split §5.5 plan shape row).
+      if (operation === "video.focus-crop") expect(PLANNED_VIDEO_TOOL_IDS).toContain(operation);
+      else expect(MINI_TOOLS.find((tool) => tool.id === operation)?.run.kind).toBe("planned");
+      // A focus crop's plan has exactly one output (the shared planned-request schema's single-output tools), so its config
+      // carries only its class and precheck, the values of frame extraction (frames-split §5.5 configuration row).
+      expect(execution).toMatchObject({ container_class: plannedContainerClasses[operation as keyof typeof plannedContainerClasses],
+        precheck_seconds: expect.any(Number), ...(operation === "video.focus-crop" ? {} : { max_outputs: expect.any(Number) }) });
+    }
+    expect(config.executions["video.focus-crop"]).toEqual({ container_class: config.executions["video.extract-frames"].container_class,
+      precheck_seconds: config.executions["video.extract-frames"].precheck_seconds });
+    expect(config.classes.MiniToolContainerStd4).toMatchObject({ vcpu: 4, memory_gib: 12 });
+  });
   it.each(modelTools.map((tool) => [tool.id, tool] as const))(
     "%s names a served model whose params it declares",
     (_id, tool) => {

@@ -13,6 +13,7 @@ import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { expandCapOf } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
+import { checkerboardStyle } from '@web/spaces/canvas/_shared/checkerboard';
 import { CROP_HANDLES } from '@web/spaces/canvas/focus/crop-source';
 import { TOOL_LAYER_CLASS, stopNodeClick } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import {
@@ -35,30 +36,6 @@ type Gesture = { pointerId: number; frame: ExpandFrame; ratio: ExpandRatio; last
 interface ExpandFrameOverlayProps {
   /** The canvas's node menu, which a right-click on the frame opens for the host. */
   onNodeContextMenu: (event: React.MouseEvent, node: Node) => void;
-}
-
-/** One checker cell's side in screen pixels. */
-const CHECKER_PX = 6;
-
-/**
- * The fill of the area the model paints: a low-contrast checkerboard, the
- * convention Photoshop's Generative Expand shows for it, in either theme. The
- * cells are counted from the picture's own corner, so the frame and the cover
- * over the node's picture lay the same grid.
- * @param scale - Canvas pixels per screen pixel at the zoom.
- * @param from - Where the picture's corner is from the element's top-left, in canvas pixels.
- * @param from.x - Across.
- * @param from.y - Down.
- * @returns The element's background.
- * @throws {never} Never.
- */
-export function expandFillStyle(scale: number, from: { x: number; y: number }): React.CSSProperties {
-  const cell = CHECKER_PX * scale;
-  return {
-    backgroundImage: 'repeating-conic-gradient(var(--color-muted) 0 25%, var(--color-background) 0 50%)',
-    backgroundSize: `${cell * 2}px ${cell * 2}px`,
-    backgroundPosition: `${from.x}px ${from.y}px`,
-  };
 }
 
 /**
@@ -211,7 +188,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
         borderWidth: scale,
         outlineWidth: scale,
         // The background starts inside the border.
-        ...expandFillStyle(scale, { x: -(frame.x + shift.x) * box.width - scale, y: -(frame.y + shift.y) * box.height - scale }),
+        ...checkerboardStyle(scale, { x: -(frame.x + shift.x) * box.width - scale, y: -(frame.y + shift.y) * box.height - scale }),
       }}
       onPointerMove={onMove}
       onPointerUp={onUp}

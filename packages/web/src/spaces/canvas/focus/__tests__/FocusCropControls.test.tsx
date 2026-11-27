@@ -17,6 +17,7 @@ import { toast } from '@web/lib/toast';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { useUIStore } from '@web/stores/ui';
 import {
+  ALPHA_VIDEOS,
   IMG_BOX,
   LAYOUT,
   cropCanvas,
@@ -45,6 +46,7 @@ type CropNode = { id: string } & MediaNodeData;
 
 const IMAGE: CropNode = { id: 'n1', kind: 'img', src: 'https://cdn/original.png' };
 const VIDEO: CropNode = { id: 'n1', kind: 'video', src: 'https://cdn/clip.mp4' };
+const ALPHA_VIDEO: CropNode = { id: 'n1', kind: 'alpha-video', src: 'https://cdn/alpha.webm' };
 
 beforeEach(() => {
   installLayout();
@@ -772,6 +774,26 @@ describe('FocusCropControls: a video target and its timeline (#1987)', () => {
       natural: { width: 800, height: 600 },
       sourceSrc: 'https://cdn/clip.mp4',
       sourceTimeSeconds: video.currentTime,
+    });
+  });
+
+  // A transparent video shows the packed renderer's canvas; its time and frame clock are the binding's native video
+  // (frames-split §7.8 focus crop row), whose pixels the backend reads.
+  it('a transparent video crops on its display canvas, with the native video\'s timeline and time (§7.8)', () => {
+    const onConfirm = vi.fn(() => true);
+    render(focusTree([ALPHA_VIDEO], onConfirm, vi.fn()));
+    const video = ALPHA_VIDEOS.get(ALPHA_VIDEO.src)!;
+    stubVideo(video, { duration: 10, currentTime: 4.375, videoWidth: 800, videoHeight: 600 });
+    pick(ALPHA_VIDEO);
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    expect(screen.getByTestId('focus-crop-timeline')).toBeInTheDocument();
+    expect(screen.getByRole('slider').getAttribute('aria-valuenow')).toBe('4.375');
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    expect(onConfirm).toHaveBeenCalledWith({
+      crop: { x: 100, y: 100, width: 200, height: 160 },
+      natural: { width: 800, height: 600 },
+      sourceSrc: ALPHA_VIDEO.src,
+      sourceTimeSeconds: 4.375,
     });
   });
 

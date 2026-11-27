@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { LongMediaJobRequest } from "@shared/media/long-media-job-types.js";
-import { longMediaSegmentArgs } from "@ingest/probe-command.js";
+import { landingDemuxer, longMediaSegmentArgs, PROBE_MAX_BYTES, seekBeforeLanding, seekLandingArgs } from "@ingest/probe-command.js";
 import { runToolBounded } from "./run-tool.js";
+import { readServedObject } from "@ingest/container/served-object-read.js";
 
 /** The Container's request to encode and write one source-time segment. */
 export interface LongMediaSegmentRunRequest {
@@ -110,7 +111,13 @@ export async function runLongMediaSegment(
       request.maxOutputBytes,
       signal,
     );
-  } catch {
+  } catch (err) {
+    console.error("long_media_segment_encode_failed", {
+      report: request.reportUrl,
+      mediaKind: request.mediaKind,
+      interval: request.interval,
+      err: err instanceof Error ? err.message : String(err),
+    });
     encoded = null;
   }
   if (encoded === "over_cap") {
@@ -134,14 +141,39 @@ export async function runLongMediaSegment(
   await deps.report(request.reportUrl, "failed");
 }
 
+/**
+ * The input seek that opens a video segment no later than its start: the start itself, moved back while the keyframe it
+ * lands on is presented after the start (`seekBeforeLanding`), one one-packet ffprobe per try.
+ * @param objectUrl - The loopback reader's URL of the source the Worker serves.
+ * @param startUs - The segment's start.
+ * @param signal - The segment's deadline.
+ * @returns The seek in microseconds and the demuxer options the probe searched with (`landingDemuxer`).
+ * @throws {Error} When ffprobe fails, so the segment fails rather than lose its first frames.
+ */
+async function seekNotPastLanding(objectUrl: string, startUs: bigint, signal: AbortSignal): Promise<{ seekUs: bigint; demuxer: readonly string[] }> {
+  let [seekUs, lastDtsUs]: [bigint, bigint | null] = [startUs, null];
+  for (;;) {
+    const answer = await runToolBounded("ffprobe", seekLandingArgs(objectUrl, seekUs), { maxBytes: PROBE_MAX_BYTES, signal });
+    if (answer === null || answer === "over_cap") throw new Error("The long media segment's seek probe failed");
+    const text = answer.toString("utf8");
+    const next = seekBeforeLanding(startUs, seekUs, text, lastDtsUs);
+    if (next === null) return { seekUs, demuxer: landingDemuxer(text) };
+    [seekUs, lastDtsUs] = [next.seekUs, next.dtsUs];
+  }
+}
+
 /** The production encoder and intercepted Worker calls. */
 const LONG_MEDIA_SEGMENT_DEPS: LongMediaSegmentRunDeps = {
   now: () => Date.now(),
-  encode: async (objectUrl, mediaKind, interval, profile, maxOutputBytes, signal) => runToolBounded(
-    "ffmpeg",
-    longMediaSegmentArgs(objectUrl, mediaKind, interval, profile),
-    { maxBytes: maxOutputBytes, signal },
-  ),
+  encode: async (objectUrl, mediaKind, interval, profile, maxOutputBytes, signal) => {
+    // The seek probes and the encode both read through the loopback reader: FFmpeg's own read exits 0 after a dropped
+    // connection with the part it read (a seek probe with no packet, an MP3 segment of its ID3 header alone), where this
+    // read resumes the drop or fails the segment.
+    return readServedObject(objectUrl, signal, async (local) => {
+      const seek = mediaKind === "video" ? await seekNotPastLanding(local, BigInt(interval.startUs), signal) : { seekUs: BigInt(interval.startUs), demuxer: [] };
+      return runToolBounded("ffmpeg", longMediaSegmentArgs(local, mediaKind, interval, profile, seek.seekUs, seek.demuxer), { maxBytes: maxOutputBytes, signal });
+    });
+  },
   write: async (outputUrl, bytes, signal) => {
     const response = await fetch(outputUrl, { method: "PUT", body: bytes, signal });
     await response.body?.cancel();

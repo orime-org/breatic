@@ -28,6 +28,7 @@ interface ProjectOpenTargetProps {
  * shows it. A member opens the project at `/project/{slug}-{uuid}`; a viewer
  * who is not on a live project gets the join dialog in place; an archived
  * project the viewer is not on does nothing, since it takes no join requests.
+ * A copy still being copied does nothing for anyone until it opens (inner#1706).
  * @param props - The project, the classes and the content.
  * @param props.project - The project.
  * @param props.className - Classes for the rendered element.
@@ -37,6 +38,7 @@ interface ProjectOpenTargetProps {
 export function ProjectOpenTarget({ project, className, children }: ProjectOpenTargetProps): React.JSX.Element {
   const [joinOpen, setJoinOpen] = React.useState(false);
   const openJoin = React.useCallback(() => setJoinOpen(true), []);
+  if (project.copying) return <div className={className}>{children}</div>;
   if (project.myRole !== null) {
     return (
       <Link to={`/project/${project.slug}-${project.id}`} className={className}>

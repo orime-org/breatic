@@ -323,6 +323,7 @@ describe('NodeTaskPanelContainer, the clock', () => {
     vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([
       {
         id: 't-1',
+        taskId: null,
         projectId: 'p',
         spaceId: 's',
         nodeId: 'target',

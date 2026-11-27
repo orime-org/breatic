@@ -100,7 +100,7 @@ export async function runUpright(
         ? await deps.runTool("vips", previewArgs(), { maxBytes: PREVIEW_MAX_BYTES, signal, input: turned })
         : null;
 
-    const { width, height } = pickMediaMetadata(report);
+    const { width, height } = pickMediaMetadata(report, true);
     const status = await deps.put(
       order.writeUrl,
       {

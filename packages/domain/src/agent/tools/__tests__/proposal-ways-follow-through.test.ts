@@ -75,8 +75,8 @@ function settings(): Setting[] {
 }
 
 /**
- * Where a generation's words go: its prompt, or on a multi-shot model one
- * shot holding the default length and the length that adds up to.
+ * Where a generation's words go: its prompt, or on a model that takes shots
+ * one shot holding the default length and the length that adds up to.
  * @param chosen - The generation's model.
  * @param words - The words, with any marks.
  * @returns The fields to spread into the node.

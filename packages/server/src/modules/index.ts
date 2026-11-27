@@ -24,6 +24,7 @@ export * as sceneGenerationService from "@server/modules/asset/scene-generation.
 export { holdRun } from "@server/modules/task/generation-task.js";
 export * as transferReferenceService from "@server/modules/asset/transfer-reference.service.js";
 export * as authService from "@server/modules/auth/auth.service.js";
+export * as googleLoginService from "@server/modules/auth/google-login.service.js";
 export * as desktopHandoffService from "@server/modules/auth/desktop-handoff.service.js";
 export * as invitationService from "@server/modules/invitation/invitation.service.js";
 export * as recoveryCodeService from "@server/modules/auth/recovery-code.service.js";
@@ -33,7 +34,7 @@ export * as attachmentService from "@server/modules/conversation/conversation-at
 export * as agentInstructionsService from "@server/modules/conversation/agent-instructions.service.js";
 export * as runningTurnsService from "@server/modules/conversation/running-turns.service.js";
 export * as memoryService from "@server/modules/memory/memory.service.js";
-export { precheckAgentTurn, precheckCredits, reserveForRun } from "@server/modules/credit/credit-precheck.service.js";
+export { explainHoldRefusal, precheckAgentTurn, precheckCredits, reserveForRun, reserveForRunIn } from "@server/modules/credit/credit-precheck.service.js";
 export * as creditViewService from "@server/modules/credit/credit-view.service.js";
 export {
   assertStorageAllowance,
@@ -47,12 +48,14 @@ export * as projectJoinRequestService from "@server/modules/project-join-request
 export * as notificationService from "@server/modules/notification/notification.service.js";
 export * as studioService from "@server/modules/studio/studio.service.js";
 export * as textToolService from "@server/modules/text-tool/text-tool.service.js";
+export * as miniToolPlannedRunService from "@server/modules/mini-tool/planned-run.js";
 export * as webAnimationExecutionService from "@server/modules/web-animation/web-animation-execution.service.js";
 export * as documentVersionService from "@server/modules/document-version/document-version.service.js";
 
 export * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
 
 export * as creditGrantService from "@server/modules/credit-grant/credit-grant.service.js";
+export * as influencerService from "@server/modules/influencer/influencer.service.js";
 
 export * as byokService from "@server/modules/byok/byok.service.js";
 export * as enterpriseCreditPurchaseService from "@server/modules/enterprise-credit-purchase/enterprise-credit-purchase.service.js";

@@ -13,7 +13,7 @@
  * only. The worker reads 501 as a terminal answer, while every other job keeps working.
  */
 
-import { miniToolJobRequestSchema } from "@breatic/shared";
+import { miniToolJobRequestSchema, miniToolPlanJobRequestSchema } from "@breatic/shared";
 import {
   ModelKeysUnreadable,
   WEB_ANIMATION_CONTAINER_CLASS,
@@ -28,7 +28,6 @@ import { fromOurBackend } from "@ingest/backend-secret.js";
 import { noteFailure } from "@ingest/error-monitoring.js";
 import {
   CLASS_BINDINGS,
-  JobStartFailed,
   type MiniToolClass,
   type MiniToolEnv,
 } from "@ingest/jobs/mini-tool-container.js";
@@ -96,32 +95,22 @@ function featureDisabled(): Response {
 }
 
 /**
- * Whether an error is a container that could not start, as it arrives across RPC.
- * @param err - What was thrown.
- * @returns True for {@link JobStartFailed}.
- */
-function isStartFailure(err: unknown): boolean {
-  return err instanceof JobStartFailed || (err instanceof Error && err.name === "JobStartFailed");
-}
-
-/**
- * Answer a web-animation submit: the job's report, or why it has none.
- * @param start - Submit the job to its object.
+ * Answer a web-animation submit: the job's report, or why it has none. Outcomes cross the Durable Object RPC boundary
+ * as values, since a thrown error loses its class and name there.
+ * @param answer - What the job's object answered.
  * @param failure - The event a container that could not start is noted under.
  * @param jobId - The job.
  * @returns 200 with its report; 410 after a cancel that came before any submit; 503 when the container could not start.
- * @throws {unknown} What the object throws other than a start failure.
  */
-async function submittedAnswer(start: () => Promise<object>, failure: string, jobId: string): Promise<Response> {
-  try {
-    const answer = await start();
-    if (!("report" in answer)) return new Response("Cancelled before it was submitted", { status: 410 });
-    return Response.json(answer.report);
-  } catch (err) {
-    if (!isStartFailure(err)) throw err;
-    noteFailure(failure, { jobId }, err);
+function submittedAnswer(answer: object, failure: string, jobId: string): Response {
+  // The RPC stub's type drops the report member (its report has `unknown` fields), so it is told apart by the key.
+  if ("report" in answer) return Response.json(answer.report);
+  // `start_failed` is the one answer that carries a reason.
+  if ("reason" in answer && typeof answer.reason === "string") {
+    noteFailure(failure, { jobId, reason: answer.reason });
     return new Response("The container could not start", { status: 503 });
   }
+  return new Response("Cancelled before it was submitted", { status: 410 });
 }
 
 /**
@@ -131,7 +120,7 @@ async function submittedAnswer(start: () => Promise<object>, failure: string, jo
  * @returns 200 with its report; 400 for a body that is not a job; 410 after a cancel that came before any submit;
  *   501 when the feature is off, the job has no plan, or its keys are absent or do not open here; 503 when the
  *   container could not start.
- * @throws {unknown} What the object throws other than a start failure.
+ * @throws {unknown} What the object throws.
  */
 async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Response> {
   const namespace = webAnimationNamespace(env, WEB_ANIMATION_CONTAINER_CLASS);
@@ -155,7 +144,7 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
     noteFailure("ingest_web_animation_keys_unreadable", { jobId: job.jobId });
     return featureDisabled();
   }
-  return submittedAnswer(() => namespace.get(namespace.idFromName(job.jobId)).submit(job, keys), "ingest_web_animation_start_failed", job.jobId);
+  return submittedAnswer(await namespace.get(namespace.idFromName(job.jobId)).submit(job, keys), "ingest_web_animation_start_failed", job.jobId);
 }
 
 /**
@@ -164,7 +153,7 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
  * @param env - The bindings.
  * @returns 200 with its report; 400 for a body that is not a render job; 410 after a cancel that came before any
  *   submit; 501 when exports are off; 503 when the container could not start.
- * @throws {unknown} What the object throws other than a start failure.
+ * @throws {unknown} What the object throws.
  */
 async function submitRenderJob(body: unknown, env: JobsEnv): Promise<Response> {
   const namespace = webAnimationNamespace(env, WEB_ANIMATION_RENDER_CONTAINER_CLASS);
@@ -172,7 +161,7 @@ async function submitRenderJob(body: unknown, env: JobsEnv): Promise<Response> {
   const parsed = webAnimationRenderJobRequestSchema.safeParse(body);
   if (!parsed.success) return new Response("Not a render job", { status: 400 });
   const job = parsed.data;
-  return submittedAnswer(() => namespace.get(namespace.idFromName(job.jobId)).submit(job), "ingest_web_animation_render_start_failed", job.jobId);
+  return submittedAnswer(await namespace.get(namespace.idFromName(job.jobId)).submit(job), "ingest_web_animation_render_start_failed", job.jobId);
 }
 
 /**
@@ -180,8 +169,9 @@ async function submitRenderJob(body: unknown, env: JobsEnv): Promise<Response> {
  * @param request - The request.
  * @param env - The bindings.
  * @returns 200 with the job's report; 400 for a body that is not a job or a class this Worker does not bind; 401
- *   without the secret; 503 when the container could not start; web-animation answers as above.
- * @throws {unknown} What a job object throws other than a start failure.
+ *   without the secret; 409 when a planned job's id is resubmitted with a different request; 503 when the container could
+ *   not start; web-animation answers as above.
+ * @throws {unknown} What a job object throws.
  */
 export async function submitJob(request: Request, env: JobsEnv): Promise<Response> {
   if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
@@ -189,19 +179,19 @@ export async function submitJob(request: Request, env: JobsEnv): Promise<Respons
   const containerClass = typeof body === "object" && body !== null ? (body as { containerClass?: unknown }).containerClass : undefined;
   if (containerClass === WEB_ANIMATION_CONTAINER_CLASS) return submitWebAnimationJob(body, env);
   if (containerClass === WEB_ANIMATION_RENDER_CONTAINER_CLASS) return submitRenderJob(body, env);
-  const parsed = miniToolJobRequestSchema.safeParse(body);
+  const version = typeof body === "object" && body !== null && "schemaVersion" in body ? body.schemaVersion : undefined;
+  const parsed = version === 2 ? miniToolPlanJobRequestSchema.safeParse(body) : miniToolJobRequestSchema.safeParse(body);
   if (!parsed.success) return new Response("Not a job", { status: 400 });
   const job = parsed.data;
   const namespace = namespaceOf(env, job.containerClass);
   if (namespace === null) return new Response("Unknown container class", { status: 400 });
-  try {
-    const report = await namespace.get(namespace.idFromName(job.jobId)).submit(job);
-    return Response.json(report);
-  } catch (err) {
-    if (!isStartFailure(err)) throw err;
-    noteFailure("ingest_mini_tool_start_failed", { jobId: job.jobId, containerClass: job.containerClass }, err);
+  const answer = await namespace.get(namespace.idFromName(job.jobId)).submit(job);
+  if (answer.kind === "conflict") return new Response("Job identity conflict", { status: 409 });
+  if (answer.kind === "start_failed") {
+    noteFailure("ingest_mini_tool_start_failed", { jobId: job.jobId, containerClass: job.containerClass, reason: answer.reason });
     return new Response("The container could not start", { status: 503 });
   }
+  return Response.json(answer.report);
 }
 
 /**

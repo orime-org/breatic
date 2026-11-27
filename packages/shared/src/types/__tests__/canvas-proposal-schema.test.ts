@@ -36,7 +36,7 @@ const CURRENT = {
       role: "generate",
       type: "video",
       name: "Shots",
-      mode: "multi_shot",
+      mode: "t2v",
       model: "some-video-model",
       shots: [{ prompt: [{ text: "a wide shot" }], duration: 5 }],
     },

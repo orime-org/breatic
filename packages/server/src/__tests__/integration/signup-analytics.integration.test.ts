@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
+import type * as GoogleAuthLibrary from "google-auth-library";
 
 // `ai` is stubbed so the app's module graph reaches no network.
 vi.mock("ai", () => ({
@@ -21,11 +22,13 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-// Google's token check is answered here; the rest of the route runs for real.
-const google = vi.hoisted(() => ({ verifyIdToken: vi.fn() }));
-vi.mock("google-auth-library", () => ({
-  OAuth2Client: vi.fn().mockImplementation(() => ({ verifyIdToken: google.verifyIdToken })),
-}));
+// Google's token endpoint and token check are answered here; the begin and
+// callback routes run for real (inner#2157 design §7.9).
+const google = vi.hoisted(() => ({ getToken: vi.fn(), verifyIdToken: vi.fn() }));
+vi.mock("google-auth-library", async (io) => {
+  const { googleClientDouble } = await import("./google-redirect-harness.js");
+  return googleClientDouble(await io<typeof GoogleAuthLibrary>(), google);
+});
 
 import crypto from "node:crypto";
 import postgres from "postgres";
@@ -36,13 +39,14 @@ import {
   loadLocales,
   setAdsConversionConfigForTest,
   resetServerAnalyticsForTest,
-  runWithConsent,
   type OutgoingEvent,
 } from "@breatic/core";
 import { CONSENT_COOKIE_NAME, CONSENT_REVISION } from "@breatic/shared";
 import type { Hono } from "hono";
 
 import { withPeer } from "../helpers/peer.js";
+import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } from "./google-redirect-harness.js";
+import { answerGoogleFrom, signInWithGoogle } from "./google-redirect-steps.js";
 
 try {
   initCore(process.env);
@@ -192,21 +196,6 @@ describe("sign-up analytics", () => {
     }
   });
 
-  it("reports a first Google sign-in as a sign-up and later ones as logins", async () => {
-    const { authService } = await import("@server/modules");
-    const googleId = crypto.randomUUID();
-    const email = `signup-analytics-google-${crypto.randomUUID()}@example.test`;
-    const consent = { analytics: true, ads: false };
-
-    const first = await runWithConsent(consent, () => authService.loginOrCreateGoogle(googleId, email));
-    created.push(first.user.id);
-    expect(first.created).toBe(true);
-    const again = await runWithConsent(consent, () => authService.loginOrCreateGoogle(googleId, email));
-    expect(again.created).toBe(false);
-
-    expect(sent.map((e) => [e.event_type, e.event_properties])).toEqual([["signup_completed", { method: "google" }]]);
-  });
-
   it("reports an email login", async () => {
     const email = `signup-analytics-login-${crypto.randomUUID()}@example.test`;
     const reg = await app.request("/api/v1/auth/register", {
@@ -226,38 +215,103 @@ describe("sign-up analytics", () => {
   });
 });
 
-describe("the Google sign-in route", () => {
+describe("the full-page Google sign-in", () => {
   beforeAll(() => {
-    initCore({ ...process.env, GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com" });
+    initCore({ ...process.env, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET });
+    answerGoogleFrom(google);
   });
 
   afterAll(() => {
     initCore(process.env);
   });
 
-  it("reports the first sign-in as a sign-up only, with its source kept, and a later one as a login", async () => {
+  /** The site the sign-in starts from. */
+  const SITE = "http://localhost:8000";
+
+  it("follows the consent the begin request carried: source kept and sign-up reported, though the callback carries no consent cookie", async () => {
     const sub = crypto.randomUUID();
-    const email = `signup-analytics-route-${crypto.randomUUID()}@example.test`;
-    google.verifyIdToken.mockResolvedValue({
-      getPayload: () => ({ iss: "https://accounts.google.com", sub, email, email_verified: true }),
+    const email = `signup-analytics-route-${crypto.randomUUID()}@gmail.com`;
+
+    const first = await signInWithGoogle(
+      app,
+      { origin: SITE, cookie: consentCookie(["necessary", "analytics"]) },
+      { sub, email },
+      { attribution: ATTRIBUTION },
+    );
+
+    expect(first.location.searchParams.get("google")).toBe("created");
+    const [row] = await sql<{ id: string }[]>`SELECT id FROM users WHERE email = ${email} AND deleted_at IS NULL`;
+    created.push(row!.id);
+    expect(await storedAttribution(row!.id)).toEqual({
+      first: { utm_source: "google", gclid: "click-1", landing_page: "/pricing", at: AT },
+      last: { utm_source: "google", gclid: "click-1", at: AT },
     });
-    const signIn = () =>
-      app.request("/api/v1/auth/google", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: consentCookie(["necessary", "analytics"]) },
-        body: JSON.stringify({ credential: "signed-token", attribution: ATTRIBUTION }),
-      });
+    expect(sent.map((e) => [e.event_type, e.user_id, e.event_properties])).toEqual([
+      ["signup_completed", row!.id, { method: "google" }],
+    ]);
+  });
 
-    const first = await signIn();
-    expect(first.status).toBe(200);
-    const { user, created: wasCreated } = ((await first.json()) as { data: { user: { id: string }; created: boolean } }).data;
-    created.push(user.id);
-    expect(wasCreated).toBe(true);
-    expect(sent.map((e) => e.event_type)).toEqual(["signup_completed"]);
-    expect(await storedAttribution(user.id)).not.toBeNull();
+  it("keeps nothing and reports nothing when the begin request carried no consent, even if the callback carries one", async () => {
+    const email = `signup-analytics-route-${crypto.randomUUID()}@gmail.com`;
 
+    const first = await signInWithGoogle(
+      app,
+      { origin: SITE },
+      { sub: crypto.randomUUID(), email },
+      { attribution: ATTRIBUTION },
+      { cookie: consentCookie(["necessary", "analytics", "ads"]) },
+    );
+
+    expect(first.location.searchParams.get("google")).toBe("created");
+    const [row] = await sql<{ id: string }[]>`SELECT id FROM users WHERE email = ${email} AND deleted_at IS NULL`;
+    created.push(row!.id);
+    expect(await storedAttribution(row!.id)).toBeNull();
+    expect(sent).toEqual([]);
+  });
+
+  it("reports a later sign-in of the same Google account as a login only", async () => {
+    const sub = crypto.randomUUID();
+    const email = `signup-analytics-route-${crypto.randomUUID()}@gmail.com`;
+    const consent = consentCookie(["necessary", "analytics"]);
+    await signInWithGoogle(app, { origin: SITE, cookie: consent }, { sub, email }, {}, { cookie: consent });
+    const [row] = await sql<{ id: string }[]>`SELECT id FROM users WHERE email = ${email} AND deleted_at IS NULL`;
+    created.push(row!.id);
     sent.splice(0);
-    expect((await signIn()).status).toBe(200);
+
+    const again = await signInWithGoogle(app, { origin: SITE, cookie: consent }, { sub, email }, { page: "login" }, { cookie: consent });
+
+    expect(again.location.searchParams.get("google")).toBe("signed_in");
     expect(sent.map((e) => [e.event_type, e.event_properties])).toEqual([["login_completed", { method: "google" }]]);
+  });
+
+  it("reports the login by the consent the begin request carried, though the callback carries none", async () => {
+    const sub = crypto.randomUUID();
+    const email = `signup-analytics-route-${crypto.randomUUID()}@gmail.com`;
+    const consent = consentCookie(["necessary", "analytics"]);
+    await signInWithGoogle(app, { origin: SITE, cookie: consent }, { sub, email });
+    const [row] = await sql<{ id: string }[]>`SELECT id FROM users WHERE email = ${email} AND deleted_at IS NULL`;
+    created.push(row!.id);
+    sent.splice(0);
+
+    const again = await signInWithGoogle(app, { origin: SITE, cookie: consent }, { sub, email }, { page: "login" });
+
+    expect(again.location.searchParams.get("google")).toBe("signed_in");
+    expect(sent.map((e) => e.event_type)).toEqual(["login_completed"]);
+  });
+
+  it("reports no login when the begin request carried no consent, even if the callback carries one", async () => {
+    const sub = crypto.randomUUID();
+    const email = `signup-analytics-route-${crypto.randomUUID()}@gmail.com`;
+    await signInWithGoogle(app, { origin: SITE }, { sub, email });
+    const [row] = await sql<{ id: string }[]>`SELECT id FROM users WHERE email = ${email} AND deleted_at IS NULL`;
+    created.push(row!.id);
+    sent.splice(0);
+
+    const again = await signInWithGoogle(
+      app, { origin: SITE }, { sub, email }, { page: "login" }, { cookie: consentCookie(["necessary", "analytics"]) },
+    );
+
+    expect(again.location.searchParams.get("google")).toBe("signed_in");
+    expect(sent).toEqual([]);
   });
 });

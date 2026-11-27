@@ -29,6 +29,10 @@ export default defineConfig({
     poolOptions: {
       forks: {
         singleFork: true,
+        // Every file reloads the workspace packages' builds into this one process, and the heap grows with them:
+        // measured, the suite peaks at 3.9 GB of Node's default 4 GB and a larger build crosses it. vitest reads
+        // `execArgv` for the whole forks pool, as packages/web/vitest.config.mts does for the same reason.
+        execArgv: ["--max-old-space-size=8192"],
       },
     },
     globals: true,

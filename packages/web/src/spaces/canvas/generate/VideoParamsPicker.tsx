@@ -48,7 +48,7 @@ interface VideoParamsPickerProps {
   /** Called with the changed field only. */
   onChange: (partial: object) => void;
   /**
-   * Durations below this cannot be picked: in the multi-shot mode every shot
+   * Durations below this cannot be picked: on Multi-shot every shot
    * needs a second. Undefined when nothing is held back.
    */
   durationFloor?: number;
