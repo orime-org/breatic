@@ -15,10 +15,14 @@ import { LAYER_STEP_PX, ROW_GAP_PX, shiftRightPastOccupied, withTaskCounts } fro
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 import { CREATABLE_NODE_TYPES, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import {
+  boundsOf,
   handlesEmphasized,
   orderSources,
   planConnectedNode,
+  previewWires,
   resolveSelectionAdd,
+  SELECTION_ADD_BUTTON_PX,
+  SELECTION_ADD_OFFSET_PX,
   type SelectionAddNode,
 } from '@web/spaces/canvas/selection-add';
 
@@ -322,6 +326,129 @@ describe('planConnectedNode — what one pick builds (design 4.4)', () => {
           const left = plan.center.x - EMPTY_NODE_SIZE.width / 2;
           expect(left).toBeGreaterThanOrEqual(selectionBounds.x + selectionBounds.width + 72);
           expect(plan.center.y).toBe(selectionBounds.y + selectionBounds.height / 2);
+        },
+      ),
+    );
+  });
+});
+
+/**
+ * A node of any size at an absolute position.
+ * @param id - The node id.
+ * @param x - Absolute x.
+ * @param y - Absolute y.
+ * @param width - Its width.
+ * @param height - Its height.
+ * @returns The node.
+ */
+function sized(id: string, x: number, y: number, width: number, height: number): SelectionAddNode {
+  return { id, type: 'image', position: { x, y }, width, height };
+}
+
+const sizedNode = fc.record({
+  x: fc.integer({ min: -5000, max: 5000 }),
+  y: fc.integer({ min: -5000, max: 5000 }),
+  width: fc.integer({ min: 1, max: 2000 }),
+  height: fc.integer({ min: 1, max: 2000 }),
+});
+
+describe('boundsOf — the rect the plus sits beside (design 4.2)', () => {
+  it('has no bounds for no nodes', () => {
+    expect(boundsOf([])).toBeNull();
+  });
+
+  it('is the node itself for one node', () => {
+    expect(boundsOf([sized('a', 10, -20, 288, 192)])).toEqual({ x: 10, y: -20, width: 288, height: 192 });
+  });
+
+  it('spans from the leftmost and topmost edge to the rightmost and bottom edge', () => {
+    const nodes = [sized('a', 0, 100, 200, 100), sized('b', 50, -40, 300, 80), sized('c', -30, 400, 100, 250)];
+    // left -30, top -40, right 350 (b), bottom 650 (c)
+    expect(boundsOf(nodes)).toEqual({ x: -30, y: -40, width: 380, height: 690 });
+  });
+
+  it('contains every node and touches the outermost edges for any nodes', () => {
+    fc.assert(
+      fc.property(fc.array(sizedNode, { minLength: 1, maxLength: 15 }), (rects) => {
+        const nodes = rects.map((r, i) => sized(`n${i}`, r.x, r.y, r.width, r.height));
+        const b = boundsOf(nodes);
+        expect(b).not.toBeNull();
+        if (b === null) return;
+        for (const n of nodes) {
+          expect(n.position.x).toBeGreaterThanOrEqual(b.x);
+          expect(n.position.y).toBeGreaterThanOrEqual(b.y);
+          expect(n.position.x + n.width).toBeLessThanOrEqual(b.x + b.width);
+          expect(n.position.y + n.height).toBeLessThanOrEqual(b.y + b.height);
+        }
+        expect(nodes.some((n) => n.position.x === b.x)).toBe(true);
+        expect(nodes.some((n) => n.position.y === b.y)).toBe(true);
+        expect(nodes.some((n) => n.position.x + n.width === b.x + b.width)).toBe(true);
+        expect(nodes.some((n) => n.position.y + n.height === b.y + b.height)).toBe(true);
+      }),
+    );
+  });
+});
+
+describe('selection plus size and gap (design 4.2)', () => {
+  it('sits 16 screen px outside the selection edge', () => {
+    expect(SELECTION_ADD_OFFSET_PX).toBe(16);
+  });
+
+  it('is a 24 screen px button', () => {
+    expect(SELECTION_ADD_BUTTON_PX).toBe(24);
+  });
+});
+
+describe('previewWires — the wires drawn while the plus menu is open (design 4.5)', () => {
+  // bounds: left 0, top 0, right 350, bottom 500 -> middle y 250
+  const a = sized('a', 0, 0, 200, 100);
+  const b = sized('b', 50, 300, 300, 200);
+  const bounds = { x: 0, y: 0, width: 350, height: 500 };
+
+  it('runs from each source right edge middle to the plus left edge middle at zoom 1', () => {
+    expect(previewWires([a, b], bounds, 1)).toEqual([
+      { sourceId: 'a', from: { x: 200, y: 50 }, to: { x: 366, y: 250 } },
+      { sourceId: 'b', from: { x: 350, y: 400 }, to: { x: 366, y: 250 } },
+    ]);
+  });
+
+  it('widens the 16 screen px gap to 32 flow px at zoom 0.5', () => {
+    expect(previewWires([a, b], bounds, 0.5)).toEqual([
+      { sourceId: 'a', from: { x: 200, y: 50 }, to: { x: 382, y: 250 } },
+      { sourceId: 'b', from: { x: 350, y: 400 }, to: { x: 382, y: 250 } },
+    ]);
+  });
+
+  it('narrows the 16 screen px gap to 8 flow px at zoom 2', () => {
+    expect(previewWires([a, b], bounds, 2)).toEqual([
+      { sourceId: 'a', from: { x: 200, y: 50 }, to: { x: 358, y: 250 } },
+      { sourceId: 'b', from: { x: 350, y: 400 }, to: { x: 358, y: 250 } },
+    ]);
+  });
+
+  it('keeps the given source order', () => {
+    expect(previewWires([b, a], bounds, 1).map((w) => w.sourceId)).toEqual(['b', 'a']);
+  });
+
+  it('draws no wires for no sources', () => {
+    expect(previewWires([], bounds, 1)).toEqual([]);
+  });
+
+  it('ends every wire at the bounds right edge plus 16/zoom, level with the bounds middle, for any input', () => {
+    fc.assert(
+      fc.property(
+        fc.array(sizedNode, { maxLength: 15 }),
+        sizedNode,
+        fc.double({ min: 0.1, max: 4, noNaN: true }),
+        (rects, box, zoom) => {
+          const sources = rects.map((r, i) => sized(`s${i}`, r.x, r.y, r.width, r.height));
+          const wires = previewWires(sources, box, zoom);
+          expect(wires.map((w) => w.sourceId)).toEqual(sources.map((s) => s.id));
+          wires.forEach((wire, i) => {
+            const s = sources[i];
+            expect(wire.from).toEqual({ x: s.position.x + s.width, y: s.position.y + s.height / 2 });
+            expect(wire.to).toEqual({ x: box.x + box.width + SELECTION_ADD_OFFSET_PX / zoom, y: box.y + box.height / 2 });
+          });
         },
       ),
     );
