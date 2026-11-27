@@ -18,7 +18,7 @@ import type { WebAnimationRenderJobReport, WebAnimationRenderJobRequest } from "
 import { noteFailure } from "@ingest/error-monitoring.js";
 import { askedKey } from "@ingest/object-url.js";
 import { MEDIA_OBJECT_HOST, mediaObjectUrl } from "@ingest/media-object-route.js";
-import { JOB_REPORT_HOST, JobStartFailed } from "@ingest/jobs/mini-tool-container.js";
+import { JOB_REPORT_HOST } from "@ingest/jobs/mini-tool-container.js";
 import { readWebAnimationPackage } from "@ingest/jobs/web-animation-container.js";
 import {
   WEB_ANIMATION_PORT,
@@ -45,7 +45,11 @@ export interface RenderOutput {
 }
 
 /** What a submit answers. */
-export type RenderSubmitAnswer = { kind: "report"; report: WebAnimationRenderJobReport } | { kind: "cancelled_before_submit" };
+export type RenderSubmitAnswer =
+  | { kind: "report"; report: WebAnimationRenderJobReport }
+  | { kind: "cancelled_before_submit" }
+  // A value, as for mini-tool jobs: a thrown error loses its class and name across the Durable Object RPC boundary.
+  | { kind: "start_failed"; reason: string };
 
 /** The keys a render job reads and writes. */
 interface RenderObjects {
@@ -177,8 +181,8 @@ export class WebAnimationRenderContainer extends Container<WebAnimationRenderEnv
   /**
    * Start a render, or answer the one this object already holds.
    * @param request - The job.
-   * @returns Its report, or that a cancel came first.
-   * @throws {JobStartFailed} When the container could not be started or would not take the run.
+   * @returns Its report, that a cancel came first, or `start_failed` when the container could not be started or would
+   *   not take the render.
    */
   async submit(request: WebAnimationRenderJobRequest): Promise<RenderSubmitAnswer> {
     const now = Date.now();
@@ -191,7 +195,10 @@ export class WebAnimationRenderContainer extends Container<WebAnimationRenderEnv
       return next.state === "running" ? ("start" as const) : ("held" as const);
     });
     if (started === "refused") return { kind: "cancelled_before_submit" };
-    if (started === "start") await this.startRun(request);
+    if (started === "start") {
+      const failed = await this.startRun(request);
+      if (failed !== null) return { kind: "start_failed", reason: failed };
+    }
     return { kind: "report", report: reportOf(await this.load(), Date.now())! };
   }
 
@@ -322,10 +329,9 @@ export class WebAnimationRenderContainer extends Container<WebAnimationRenderEnv
   /**
    * Start the container and hand it the render.
    * @param request - The job.
-   * @returns Nothing.
-   * @throws {JobStartFailed} When the container could not be started or would not take the run.
+   * @returns Why the container could not be started or would not take the render, or null once it took it.
    */
-  private async startRun(request: WebAnimationRenderJobRequest): Promise<void> {
+  private async startRun(request: WebAnimationRenderJobRequest): Promise<string | null> {
     await this.schedule(new Date(request.deadlineAt), "expireJob");
     const objects: RenderObjects = { packageKey: request.packageKey, videoKey: request.videoKey, coverKey: request.coverKey };
     const run: WebAnimationRenderRunBody = {
@@ -350,14 +356,17 @@ export class WebAnimationRenderContainer extends Container<WebAnimationRenderEnv
       const answered = await this.containerFetch(new Request(`http://job${WEB_ANIMATION_RUN_PATH}`, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(run),
       }));
-      if (answered.status !== 202) throw new JobStartFailed(`the render was answered ${answered.status}`);
+      if (answered.status !== 202) throw new Error(`the render was answered ${answered.status}`);
     } catch (err) {
       this.deleteSchedules("expireJob");
       await this.ctx.storage.delete([RECORD, ACCEPTED]);
-      await this.destroy().catch(() => undefined);
-      throw err instanceof JobStartFailed ? err : new JobStartFailed(String(err));
+      await this.destroy().catch((destroyErr: unknown) => {
+        noteFailure("ingest_web_animation_render_effect_failed", { containerId: this.ctx.id.toString(), effect: "destroy" }, destroyErr);
+      });
+      return err instanceof Error ? err.message : String(err);
     }
     await this.ctx.storage.put(ACCEPTED, true);
+    return null;
   }
 
   /**

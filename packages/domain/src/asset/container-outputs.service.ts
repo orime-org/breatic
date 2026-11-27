@@ -23,6 +23,8 @@ const STORED_AS: Readonly<Record<MiniToolOutput["modality"], { ext: string; cont
   audio: { ext: ".m4a", contentType: "audio/mp4" },
   text: { ext: ".txt", contentType: "text/plain" },
 };
+/** A video stored as WebM (§93 D5-12). */
+const WEBM = { ext: ".webm", contentType: "video/webm" };
 
 /**
  * Open one grant per output, in output order.
@@ -45,7 +47,7 @@ export async function openContainerOutputs(params: {
   const { upload } = getStorageConfig();
   const opened: MiniToolJobOutput[] = [];
   for (const output of params.outputs) {
-    const stored = STORED_AS[output.modality];
+    const stored = output.modality === "video" && output.container === "webm" ? WEBM : STORED_AS[output.modality];
     const { key } = await issueUploadGrant({
       projectId: params.projectId,
       actingUserId: params.actingUserId,

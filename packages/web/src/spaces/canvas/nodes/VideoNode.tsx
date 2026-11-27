@@ -2,6 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
+import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
+import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { useResolvedVideoPresentation } from '@web/spaces/canvas/video-presentation/use-resolved-video-presentation';
+import { createVideoPresentationRecovery } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
+import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
+import { Button } from '@web/components/ui/button';
+import type { PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
+import type { FrameMode, MediaPlayerProps, MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { useTranslation } from '@web/i18n/use-translation';
 
 import type { VideoNodeView } from '@web/data/yjs/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
@@ -13,6 +24,95 @@ import { useMediaFullscreen } from '@web/spaces/canvas/nodes/_shared/use-media-f
 import { useZoomedPastPreview } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/use-node-resolution';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
+import { miniToolOpenOn, type CanvasSessionState } from '@web/stores/canvas-session';
+import { rectParamOf } from '@web/spaces/canvas/crop/NodeCropLayer';
+
+/**
+ * Whether a canvas surface uses a video node's live frames: a tool panel open on it or a focus crop on it.
+ * @param state - The canvas session.
+ * @param nodeId - The node.
+ * @returns True while one does.
+ * @throws {never} Never.
+ */
+export function videoSurfaceDemanded(state: CanvasSessionState, nodeId: string): boolean {
+  return (state.miniTool !== null && state.panelHostId === nodeId) || state.focusCrop?.nodeId === nodeId;
+}
+
+/**
+ * Resolves one project-authorized source through the existing account query client.
+ * @param props - Canonical player props and this host identity.
+ * @returns The existing player with its actual presentation owner.
+ * @throws {never} Query and renderer failures remain visible on the node.
+ */
+function ResolvedNodeVideo(props: MediaPlayerProps & { nodeId: string; projectId: string }): React.JSX.Element {
+  const { nodeId, projectId, ...player } = props;
+  const actions = useCanvasActions();
+  const { source, failure, query } = useResolvedVideoPresentation(projectId, player.src, true);
+  const client = useQueryClient();
+  const recovery = React.useMemo(() => createVideoPresentationRecovery(client, { projectId, canonicalURL: player.src, active: true }), [client, projectId, player.src]);
+  const identity = JSON.stringify([projectId, player.src]);
+  const currentIdentity = React.useRef(identity);
+  currentIdentity.current = identity;
+  const mounted = React.useRef(false);
+  React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [rendererFailure, setRendererFailure] = React.useState<{ identity: string; error: string } | null>(null);
+  const [retrying, setRetrying] = React.useState<string | null>(null);
+  const [attempt, setAttempt] = React.useState(0);
+  // A local retry gives the existing leaf a fresh resource lifetime while the
+  // player, its volume and the canonical descriptor remain owned in place.
+  const presentedSource = React.useMemo(() => { void attempt; return source === null ? null : { ...source }; }, [source, attempt]);
+  const localFailure = rendererFailure?.identity === identity ? rendererFailure.error : null;
+  const t = useTranslation();
+  /**
+   * Publishes only this canonical node attachment, including unresolved failure.
+   * @param snapshot - Actual resource and React-owned overlay host.
+   * @throws {never} Never.
+   */
+  const onBinding = React.useCallback((snapshot: MediaPlayerVideoSnapshot): void => {
+    if (snapshot.status === 'failed') setRendererFailure((held) => held?.identity === identity && held.error === snapshot.error ? held : { identity, error: snapshot.error ?? 'renderer-failed' });
+    else if (snapshot.status === 'ready') setRendererFailure((held) => held?.identity === identity ? null : held);
+    const notice = { ...snapshot, sourceBinding: query.data?.sourceBinding };
+    actions.onVideoBinding?.(nodeId, player.src, failure === null || snapshot.binding !== null ? notice : { ...notice, status: 'failed', error: failure });
+  }, [actions, nodeId, player.src, failure, query.data?.sourceBinding, identity]);
+  /**
+   * Forwards a committed draw synchronously without treating native time as a frame.
+   * @param frame - The actual canonical drawable frame and its epochs.
+   * @throws {never} The canvas consumer owns pixel-read failures.
+   */
+  const onFrame = React.useCallback((frame: PresentedMediaFrame): void => actions.onVideoFrame?.(nodeId, player.src, frame), [actions, nodeId, player.src]);
+  const { openFrameTool } = actions;
+  // The camera menu opens Extract frames on this node (tools design §4 camera menu); viewers get none.
+  const onPickFrame = React.useMemo(() => openFrameTool === undefined ? undefined : (mode: FrameMode): void => openFrameTool(nodeId, mode), [openFrameTool, nodeId]);
+  /**
+   * Restarts only this source after its existing recovery operation completes.
+   * @throws {never} The source reports errors; this caller resets its wait state.
+   */
+  async function retry(): Promise<void> {
+    if (!mounted.current || currentIdentity.current !== identity) return;
+    setRetrying(identity);
+    try {
+      await recovery.recover(failure === null ? 'renderer' : 'source');
+      if (!mounted.current || currentIdentity.current !== identity) return;
+      setRendererFailure(null);
+      if (source !== null) setAttempt((value) => value + 1);
+    } catch {
+      // Keep the failure visible; repair failures were already reported at source.
+    } finally {
+      if (mounted.current && currentIdentity.current === identity) setRetrying(null);
+    }
+  }
+  // Nothing selected: the node plays the original for display, and the candidate's state is shown over it (§7.9 N).
+  const preparation = React.useMemo(() => ({ failure: source === null ? failure : null, onRetry: () => { void retry(); }, retrying: retrying === identity }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- retry reads the current identity through refs.
+    [source, failure, retrying, identity]);
+  return <MediaPlayer {...player} videoSource={presentedSource} preparation={preparation} onVideoBinding={onBinding} onPresentedFrame={onFrame} onPickFrame={onPickFrame}>
+    {/* N records only the selected version's playback file failing (§7.9 N). */}
+    {localFailure === null ? null : <div className='pointer-events-auto absolute inset-0 z-20 grid place-content-center justify-items-center gap-2 bg-card p-3 text-center'>
+      <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p>
+      <Button variant='outline' size='sm' className='nodrag nokey' loading={retrying === identity} onClick={() => { void retry(); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button>
+    </div>}
+  </MediaPlayer>;
+}
 
 interface VideoNodeProps {
   data: VideoNodeView;
@@ -42,13 +142,21 @@ export const VideoNode = React.memo(function VideoNode({
   onRename,
 }: VideoNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
-  const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height);
+  const nodeId = React.useContext(NodeIdContext);
+  const { projectId } = useCanvasContext();
+  const Player = projectId && nodeId ? ResolvedNodeVideo : MediaPlayer;
+  // The badge shows the selected version's display geometry, the source's resolution (frames-split §7.8).
+  const presented = useQuery(videoPresentationQuery({ projectId, canonicalURL: data.content ?? '', active: Boolean(projectId && nodeId && data.content) }));
+  const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height, presented.data?.presentation?.display ?? null);
   const fullPoster = useZoomedPastPreview(data.coverUrl);
   // Subscribe to the BOOLEAN, not the session object: this node re-renders
   // only when the answer flips, not on every change to an unrelated pick.
   const focusPicking = useCanvasSession(
     (s) => s.pickSession?.purpose === 'focus',
   );
+  // A crop box over the node takes every press inside it, so the player's bar would only hide the frame being framed.
+  const cropToolOpen = useCanvasSession((s) => rectParamOf(miniToolOpenOn(nodeId ?? null)(s)) !== undefined);
+  const demanded = useCanvasSession((s) => videoSurfaceDemanded(s, nodeId ?? ''));
   const player = React.useRef<MediaPlayerHandle>(null);
   const fullscreen = useMediaFullscreen({ name: data.name ?? '', currentSrc: data.content, player });
   const size =
@@ -73,11 +181,13 @@ export const VideoNode = React.memo(function VideoNode({
         content={
           <NodeMediaInset
             onFullscreen={() =>
-              fullscreen.open({ kind: 'video', src: data.content ?? '', poster: data.coverUrl, size })
+              fullscreen.open({ kind: 'video', src: data.content ?? '', poster: data.coverUrl, size, projectId })
             }
           >
-            <MediaPlayer
+            <Player
               ref={player}
+              projectId={projectId}
+              nodeId={nodeId ?? ''}
               modality='video'
               src={data.content ?? ''}
               poster={data.coverUrl}
@@ -85,7 +195,8 @@ export const VideoNode = React.memo(function VideoNode({
               size={size}
               duration={data.duration}
               onDimensions={setResolution}
-              controlsHidden={focusPicking}
+              controlsHidden={focusPicking || cropToolOpen}
+              restsOnCover={!demanded}
             />
             {fullscreen.layer}
           </NodeMediaInset>

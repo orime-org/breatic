@@ -2,11 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
-import { Play, Pause, Volume2, VolumeX } from 'lucide-react';
+import type { VideoPresentationSourceBinding } from '@breatic/shared';
+import { presentedSizeOf, runtimeSourceKeyOf, type VideoPresentationSource, type MediaSurfaceSnapshot, type PresentedMediaFrame, type MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
+import { Camera, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 
+import { VideoPresentationSurface } from '@web/spaces/canvas/video-presentation/VideoPresentationSurface';
+import { bindVideoDisplay } from '@web/spaces/canvas/video-presentation/video-display-geometry';
+import { VideoPreparationNotice, type VideoPreparationState } from '@web/spaces/canvas/video-presentation/VideoPreparationNotice';
+import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { Slider } from '@web/components/ui/slider';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
+import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 import {
   Popover,
   PopoverContent,
@@ -30,11 +38,35 @@ export interface MediaPlayerHandle {
   apply: (state: MediaPlayerState) => void;
 }
 
-interface MediaPlayerProps {
+/** Actual resource notice plus an independently React-owned overlay host. */
+export interface MediaPlayerVideoSnapshot extends MediaSurfaceSnapshot { sourceBinding?: VideoPresentationSourceBinding }
+
+export interface MediaPlayerProps {
   /** The handle a full-screen view reads and writes the player through. */
   ref?: React.Ref<MediaPlayerHandle>;
   /** Where to start: a full-screen view goes on from its source player. */
   start?: MediaPlayerState;
+  /**
+   * The selected version to play; null while there is none, when the original plays for display only (frames-split §7.8
+   * detached × Attach) and a publish swaps to the version keeping time and play or pause (§7.9 T).
+   */
+  videoSource?: VideoPresentationSource | null;
+  /** The candidate's state while nothing is selected, shown over the original (§7.9 last paragraph). */
+  preparation?: VideoPreparationState;
+  /** Whether this resource is currently displayed. */
+  active?: boolean;
+  /**
+   * Nothing outside the player uses its frames: a transparent version with a cover shows the cover and holds no WebGL
+   * renderer until the user reaches the player. Any player the page pool releases rests the same way, whether or not this
+   * is set.
+   */
+  restsOnCover?: boolean;
+  /** Actual source transport lifecycle, never persisted in node data. */
+  onVideoBinding?: (snapshot: MediaPlayerVideoSnapshot) => void;
+  /** Synchronous actual-frame consumer. */
+  onPresentedFrame?: (frame: PresentedMediaFrame) => void;
+  /** Existing tool overlays sharing the displayed canonical box. */
+  children?: React.ReactNode;
   /** Which media kind to render. */
   modality: 'audio' | 'video';
   /** Media source URL (the permanent public `adapter.publicUrl` value). */
@@ -83,6 +115,40 @@ interface MediaPlayerProps {
   controlsHidden?: boolean;
   /** Optional document-owned physical control surface. */
   videoControls?: VideoControlsTarget;
+  /**
+   * Opens Extract frames on this video in the chosen mode (tools design §4 camera menu); with it the full video player shows
+   * a camera menu on hover.
+   */
+  onPickFrame?: (mode: FrameMode) => void;
+}
+
+/** The frames the camera menu offers. */
+export type FrameMode = 'first' | 'last' | 'current';
+const FRAME_MODES: readonly FrameMode[] = ['first', 'last', 'current'];
+
+/**
+ * The camera menu at the end of the video control bar: First, Last and Current frame.
+ * @param props - The button classes and the pick handler.
+ * @param props.className - The control bar's button classes.
+ * @param props.onPickFrame - Reports the chosen frame.
+ * @returns The menu.
+ * @throws {never} Never.
+ */
+function FrameCaptureMenu(props: { className: string; onPickFrame: (mode: FrameMode) => void }): React.JSX.Element {
+  const t = useTranslation();
+  const [open, setOpen] = React.useState(false);
+  useFollowCanvasViewport(open);
+  return <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenuTrigger asChild>
+      <Button type='button' variant={null} size={null} aria-label={t('canvas.miniTool.video.extract-frames.label')} data-testid='frame-capture-menu'
+        className={`${props.className} opacity-0 group-hover/player:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}>
+        <Camera className='h-4 w-4' />
+      </Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align='end' side='top' sideOffset={8} avoidCollisions={false} className='nodrag'>
+      {FRAME_MODES.map((mode) => <DropdownMenuItem key={mode} onSelect={() => props.onPickFrame(mode)}>{t(`canvas.miniTool.videoUI.${mode}`)}</DropdownMenuItem>)}
+    </DropdownMenuContent>
+  </DropdownMenu>;
 }
 
 /**
@@ -133,6 +199,13 @@ function useOriginalCover(url: string | undefined): CoverOutcome {
  * @param root0 - Component props.
  * @param root0.ref - The handle a full-screen view reads and writes the player through.
  * @param root0.start - Where to start.
+ * @param root0.videoSource - The selected version; null plays the original for display only.
+ * @param root0.preparation - The candidate's state while nothing is selected.
+ * @param root0.active - Whether this resource is displayed.
+ * @param root0.restsOnCover - Whether a transparent version may start at rest on its cover while unused.
+ * @param root0.onVideoBinding - Actual resource and independent overlay target.
+ * @param root0.onPresentedFrame - Synchronous canonical frame consumer.
+ * @param root0.children - Tool overlays in the same canonical display box.
  * @param root0.modality - `'audio'` or `'video'`.
  * @param root0.src - Media source URL.
  * @param root0.poster - Poster image (video only).
@@ -143,6 +216,7 @@ function useOriginalCover(url: string | undefined): CoverOutcome {
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
  * @param root0.controlsHidden - Slide the control bar out and make it unreachable (video only, #1987).
  * @param root0.videoControls - The document-owned control destination and interaction callbacks.
+ * @param root0.onPickFrame - Opens Extract frames in the chosen mode; shows the camera menu on the full player.
  * @returns The media player element.
  */
 export function MediaPlayer({
@@ -150,6 +224,13 @@ export function MediaPlayer({
   start,
   modality,
   src,
+  videoSource,
+  preparation,
+  active = true,
+  restsOnCover = false,
+  onVideoBinding,
+  onPresentedFrame,
+  children,
   poster,
   fullPoster = false,
   size,
@@ -158,23 +239,112 @@ export function MediaPlayer({
   variant = 'full',
   controlsHidden = false,
   videoControls,
+  onPickFrame,
 }: MediaPlayerProps): React.JSX.Element {
   const ref = React.useRef<HTMLMediaElement>(null);
-  const p = useMediaPlayer(ref, duration, start);
+
+  const isVideo = modality === 'video';
+  const ownsVideo = isVideo && videoSource != null;
+  const key = videoSource ? runtimeSourceKeyOf(videoSource) : JSON.stringify([src, null]);
+  const wanted = React.useRef({ key, active });
+  wanted.current = { key, active };
+  const consumers = React.useRef({ onVideoBinding, onPresentedFrame, onDimensions });
+  consumers.current = { onVideoBinding, onPresentedFrame, onDimensions };
+  const handoff = React.useRef<{ src: string; time: number; playing: boolean } | null>(null);
+  const previousElement = React.useRef<HTMLVideoElement | null>(null);
+  const adapted = React.useRef<{ original: MediaSurfaceBinding; binding: MediaSurfaceBinding } | null>(null);
+  const [notice, setNotice] = React.useState<{ key: string; value: MediaSurfaceSnapshot } | null>(null);
+  /**
+   * Adapts only the current actual owner and preserves the node's native sound settings.
+   * @param value - Current effect-owned presentation state.
+   * @throws {never} Never.
+   */
+  const acceptBinding = React.useCallback((value: MediaSurfaceSnapshot): void => {
+    if (wanted.current.key !== key) return;
+    if (value.binding !== null && (!wanted.current.active || value.binding.sourceKey !== key)) return;
+    let binding: MediaSurfaceBinding | null = null;
+    if (value.binding !== null) {
+      const original = value.binding;
+      if (previousElement.current !== original.element) {
+        if (previousElement.current !== null) { original.element.volume = previousElement.current.volume; original.element.muted = previousElement.current.muted; }
+        previousElement.current = original.element;
+      }
+      bindVideoDisplay(original.surface, original.element, src);
+      original.surface.setAttribute('data-testid', 'media-element');
+      if (adapted.current?.original !== original) {
+        const owned: MediaSurfaceBinding = {
+          ...original,
+          seek: (time) => {
+            if (adapted.current?.original !== original || wanted.current.key !== key) return;
+            original.seek(time);
+            consumers.current.onVideoBinding?.({ status: 'ready', binding: owned, error: null });
+          },
+        };
+        adapted.current = { original, binding: owned };
+      }
+      binding = adapted.current.binding;
+      // A publish over the original for display keeps where the user was and whether they were playing (§7.9 T).
+      const carried = handoff.current;
+      if (carried !== null && carried.src === src) {
+        handoff.current = null;
+        original.seek(carried.time);
+        if (carried.playing) void original.play().catch(() => undefined);
+      }
+      consumers.current.onDimensions?.({ width: original.original.width, height: original.original.height });
+    } else adapted.current = null;
+    const next = { ...value, binding };
+    setNotice((before) => before?.key === key && before.value.status === next.status && before.value.binding === next.binding && before.value.error === next.error ? before : { key, value: next });
+    consumers.current.onVideoBinding?.(next);
+  }, [key, src]);
+  /**
+   * Delivers just-drawn pixels before the renderer's buffer can clear.
+   * @param frame - Actual current source and seek frame.
+   * @throws {never} Consumers own pixel-read failures.
+   */
+  const acceptFrame = React.useCallback((frame: PresentedMediaFrame): void => {
+    if (wanted.current.active && frame.sourceKey === wanted.current.key) consumers.current.onPresentedFrame?.(frame);
+  }, []);
+  const snapshot = notice?.key === key && active ? notice.value : null;
+  const binding = snapshot?.binding ?? null;
+  const p = useMediaPlayer(ref, duration, start, ownsVideo ? binding : undefined);
+  // A presented video is read and moved through its owned element; the native ref is the original's.
   React.useImperativeHandle(handleRef, () => ({
     read: () => {
-      const el = ref.current;
+      const el = binding?.element ?? ref.current;
       return el
         ? { time: el.currentTime, playing: !el.paused, muted: el.muted, volume: el.volume }
         : { time: 0, playing: false, muted: false, volume: 1 };
     },
-    pause: () => ref.current?.pause(),
+    pause: () => {
+      if (binding) binding.pause();
+      else ref.current?.pause();
+    },
     apply: (state) => {
+      if (binding) {
+        binding.seek(state.time);
+        binding.element.muted = state.muted;
+        binding.element.volume = state.volume;
+        return;
+      }
       const el = ref.current;
       if (el) writePlayerState(el, state);
     },
-  }), []);
-  const isVideo = modality === 'video';
+  }), [binding]);
+  const unavailable = ownsVideo && binding === null;
+  // Chromium keeps at most 16 live WebGL contexts per page, so an unused transparent node shows its cover instead of one,
+  // and a player whose renderer the page pool releases rests (on its cover, or the loading placeholder) until the user
+  // reaches it: restarting at once would release the next one, and a page of them would release each other forever.
+  const restsAtFirst = restsOnCover && videoSource?.presentation.playback.kind === 'alpha-packed' && poster !== undefined;
+  const [wake, setWake] = React.useState<{ key: string; awake: boolean } | null>(null);
+  const awake = wake?.key === key ? wake.awake : !restsAtFirst;
+  const reach = React.useCallback((): void => setWake({ key, awake: true }), [key]);
+  const rest = React.useCallback((): void => setWake({ key, awake: false }), [key]);
+  const displaysOriginal = isVideo && videoSource === null;
+  React.useEffect(() => {
+    if (displaysOriginal) handoff.current = { src, time: p.currentTime, playing: p.playing };
+  }, [displaysOriginal, src, p.currentTime, p.playing]);
+  const [originalFailedFor, setOriginalFailedFor] = React.useState<string | null>(null);
+  const t = useTranslation();
   const pointer = useSeekPointer(p.seekFraction, videoControls);
   React.useLayoutEffect(() => {
     if (controlsHidden) pointer.capture.current?.release();
@@ -194,6 +364,8 @@ export function MediaPlayer({
   // The poster's preview has loaded once its width is recorded; the video's
   // own data ends the wait for a poster that has none.
   const posterLoaded = usePreviewWidth(poster) !== null;
+  // The cover address the presented player's own cover image has loaded or failed at.
+  const [coverSettledFor, setCoverSettledFor] = React.useState<string | null>(null);
   const [frameFor, setFrameFor] = React.useState<string | null>(null);
   const loading = size !== undefined && !posterLoaded && frameFor !== src;
   // The poster shows until the video first plays (HTML's "show poster" flag);
@@ -237,6 +409,7 @@ export function MediaPlayer({
       variant={null}
       size={null}
       onClick={p.togglePlay}
+      disabled={unavailable}
       aria-label={p.playing ? 'Pause' : 'Play'}
       data-testid='play-toggle'
       className={btnCls}
@@ -252,6 +425,7 @@ export function MediaPlayer({
           type='button'
           variant={null}
           size={null}
+          disabled={unavailable}
           aria-label={p.muted ? 'Unmute' : 'Mute'}
           data-testid='volume-button'
           className={btnCls}
@@ -298,7 +472,7 @@ export function MediaPlayer({
       onBlurCapture={(event) => {
         if (!pointer.migrating.current && !event.currentTarget.contains(event.relatedTarget)) videoControls?.onFocusChange?.(false, event.relatedTarget);
       }}
-      className={themedControls ? 'nodrag flex w-full items-center gap-2 px-2 py-1 text-popover-foreground' : `nodrag absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-6 text-white transition-transform ${controlsHidden ? 'translate-y-full' : ''}`}
+      className={themedControls ? 'nodrag flex w-full items-center gap-2 px-2 py-1 text-popover-foreground' : `nodrag absolute z-10 inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-6 text-white transition-transform ${controlsHidden ? 'translate-y-full' : ''}`}
     >
       {playButton}
       <span
@@ -309,6 +483,7 @@ export function MediaPlayer({
       </span>
       <Slider
         data-testid='seek'
+        disabled={unavailable}
         onPointerDown={pointer.onPointerDown}
         onPointerMove={pointer.onPointerMove}
         onPointerUp={pointer.onPointerUp}
@@ -329,15 +504,50 @@ export function MediaPlayer({
         {formatSeconds(p.duration)}
       </span>
       {showVolume ? <span className='hidden @min-[11rem]:contents'>{volumeControl}</span> : null}
+      {variant === 'full' && onPickFrame !== undefined ? <FrameCaptureMenu className={btnCls} onPickFrame={onPickFrame} /> : null}
     </div>
   );
+
+  const controlsOverVideo = !controlsHidden && (videoControls === undefined || videoControls.destination === 'inline');
+  const placedControls = videoControls === undefined ? videoControlsRow : (
+    <>
+      <div ref={setInlineControls} className='absolute inset-x-0 bottom-0' />
+      <MediaControlsPortal
+        destination={controlsHidden ? null : videoControls.destination === 'inline' ? inlineControls : videoControls.destination}
+        capture={pointer.capture}
+        migrating={pointer.migrating}
+        preserveFocus={videoControls.preserveFocus}
+      >{videoControlsRow}</MediaControlsPortal>
+    </>
+  );
+
+  if (ownsVideo && videoSource != null) {
+    const original = presentedSizeOf(videoSource.presentation);
+    const loadingOwner = snapshot?.status !== 'ready';
+    // The skeleton waits on a renderer only while one is loading; with none (at rest, released, inactive) nothing else
+    // would end the wait, so the cover shown, preview or original, ends it through its own load or error.
+    const withoutRenderer = snapshot === null || snapshot.status === 'detached';
+    const skeleton = loadingOwner && (withoutRenderer ? shownPoster === undefined || coverSettledFor !== shownPoster : !posterLoaded);
+    return <div className='group/player @container relative' data-testid='media-player' style={{ aspectRatio: `${original.width}/${original.height}` }}
+      onPointerEnter={awake ? undefined : reach} onFocus={awake ? undefined : reach}>
+      <VideoPresentationSurface source={videoSource} active={active && awake} onBinding={acceptBinding} onPresentedFrame={acceptFrame} onEvicted={rest}>
+        {loadingOwner && shownPoster ? <img src={shownPoster} alt='' className='pointer-events-none absolute inset-0 h-full w-full object-contain'
+          onLoad={() => setCoverSettledFor(shownPoster)} onError={() => setCoverSettledFor(shownPoster)} /> : null}
+        {skeleton ? <Skeleton data-testid='media-skeleton' className='pointer-events-none absolute inset-0 rounded-none' /> : null}
+        {placedControls}
+        {/* data-controls says whether the control bar covers the bottom of the video, for an overlay that must keep clear of it. */}
+        <div data-testid='video-tool-overlay-host' data-controls={controlsOverVideo ? 'shown' : 'hidden'} className='group/media-overlay pointer-events-none absolute inset-0'>{children}</div>
+        {snapshot?.status === 'failed' ? <p className='pointer-events-none absolute inset-0 grid place-content-center bg-card p-3 text-center text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p> : null}
+      </VideoPresentationSurface>
+    </div>;
+  }
 
   if (isVideo) {
     return (
       // Sized as a container: narrower players drop the times, then the
       // volume, keeping play and seek (the breakpoints a
       // responsive Video.js or Plyr player uses the same way).
-      <div className='@container relative' data-testid='media-player'>
+      <div className='group/player @container relative' data-testid='media-player'>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands. */}
         <video
           ref={ref as React.RefObject<HTMLVideoElement>}
@@ -353,6 +563,7 @@ export function MediaPlayer({
           height={size?.height}
           className={cn('block w-full', size !== undefined && 'h-auto', covered && 'opacity-0')}
           onPlay={() => setStartedFor(src)}
+          onError={() => setOriginalFailedFor(src)}
           onLoadedData={() => setFrameFor(src)}
           onLoadedMetadata={(e) => {
             setFrameFor(src);
@@ -368,17 +579,8 @@ export function MediaPlayer({
             className='pointer-events-none absolute inset-0 rounded-none'
           />
         ) : null}
-        {videoControls === undefined ? videoControlsRow : (
-          <>
-            <div ref={setInlineControls} className='absolute inset-x-0 bottom-0' />
-            <MediaControlsPortal
-              destination={controlsHidden ? null : videoControls.destination === 'inline' ? inlineControls : videoControls.destination}
-              capture={pointer.capture}
-              migrating={pointer.migrating}
-              preserveFocus={videoControls.preserveFocus}
-            >{videoControlsRow}</MediaControlsPortal>
-          </>
-        )}
+        {placedControls}
+        {displaysOriginal && preparation !== undefined ? <VideoPreparationNotice {...preparation} originalFailed={originalFailedFor === src} poster={poster} /> : null}
       </div>
     );
   }

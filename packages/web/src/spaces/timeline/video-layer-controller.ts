@@ -11,13 +11,19 @@
  */
 
 import type { TimelineDocumentV1, TimelineRate, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
+import { createVideoRenderer } from '@web/spaces/canvas/video-presentation/create-video-renderer';
+import { runtimeSourceKeyOf, type VideoPresentationSource, type VideoRendererResource } from '@web/spaces/canvas/video-presentation/types';
 
 /** One visible or premounted video clip as the Space hands it over, read from the source the document holds. */
 export interface TimelineVideoLayer {
   clipId: string;
-  /** The source's stored address. */
-  fileUrl: string;
+  /** The source's stored address, played for display only while no version is selected; null while a selected version waits. */
+  fileUrl: string | null;
+  /** The selected version, played through the renderer the canvas uses (frames-split §7.14); null plays `fileUrl`. */
+  presentation?: VideoPresentationSource | null;
   coverUrl: string | null;
+  /** A selected version that cannot be read (its manifest failed): the layer fails, never falling back to the original. */
+  failed?: boolean;
 }
 
 /** What a video layer's preview note shows. */
@@ -27,6 +33,11 @@ export type TimelineVideoLayerState = 'ready' | 'failed';
 export interface VideoLane {
   readonly clipId: string;
   readonly element: HTMLVideoElement;
+  /** What sits in the frame: the element itself, or the renderer's host holding the composited picture. */
+  readonly surface: HTMLElement;
+  /** The renderer a selected version plays through, and whether it reported a failure. */
+  renderer: VideoRendererResource | null;
+  rendererFailed: boolean;
   layer: TimelineVideoLayer;
   /** Not placed yet since it entered, its file changed or it was retried; the playback seeks it to its target on the next check. */
   fresh: boolean;
@@ -57,6 +68,10 @@ export interface VideoLayerController {
   sync: (layers: readonly TimelineVideoLayer[]) => void;
   /** A clip's element. */
   element: (clipId: string) => HTMLVideoElement | undefined;
+  /** What a clip places in the frame. */
+  surface: (clipId: string) => HTMLElement | undefined;
+  /** Start a failed renderer again; true when the lane had one to restart. */
+  restartRenderer: (clipId: string) => boolean;
   /** Every lane, in the order the layers were handed over. */
   lanes: () => VideoLane[];
   /** Each lane's state for its preview note. */
@@ -120,7 +135,7 @@ export function videoLaneMapping(clip: TimelineVideoClip): string {
 }
 
 /**
- * Whether a lane failed: only its element's error counts (#1410 design §6.2); `networkState` 3 right after
+ * Whether a lane failed: its selected version's manifest or renderer, or its element's error (#1410 design §6.2); `networkState` 3 right after
  * a new src is not a failure (`media.js:157-159` uses it only to skip one play()).
  * @param lane - The lane.
  * @returns Whether it failed.
@@ -128,7 +143,17 @@ export function videoLaneMapping(clip: TimelineVideoClip): string {
  */
 export function videoLaneFailed(lane: VideoLane): boolean {
   // jsdom reports a missing error as undefined, the platform as null.
-  return Boolean(lane.element.error);
+  return lane.layer.failed === true || lane.rendererFailed || Boolean(lane.element.error);
+}
+
+/**
+ * The identity a lane plays: the selected version's runtime source key, or the original's address.
+ * @param layer - The layer.
+ * @returns The key; a change means a new lane.
+ * @throws {never} Never.
+ */
+function playedKey(layer: TimelineVideoLayer): string {
+  return layer.presentation == null ? 'original' : runtimeSourceKeyOf(layer.presentation);
 }
 
 /**
@@ -163,7 +188,8 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
    * @throws {never} Never.
    */
   function attach(lane: VideoLane, layer: TimelineVideoLayer): void {
-    if (lane.element.src !== layer.fileUrl) lane.element.src = layer.fileUrl;
+    // The renderer gives a selected version's element its playback file.
+    if (layer.presentation == null && layer.fileUrl !== null && lane.element.src !== layer.fileUrl) lane.element.src = layer.fileUrl;
     if (layer.coverUrl !== null) lane.element.poster = layer.coverUrl;
     else lane.element.removeAttribute('poster');
   }
@@ -179,7 +205,68 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
     for (const event of MEDIA_EVENTS) lane.element.removeEventListener(event, options.onChange);
     lanes.delete(lane.clipId);
     lane.element.pause();
+    lane.renderer?.dispose();
+    lane.renderer = null;
     lane.element.remove();
+    lane.surface.remove();
+  }
+
+  /**
+   * Start the renderer of a lane playing a selected version, through the lane's own element.
+   * @param lane - The lane.
+   * @throws {never} Renderer failures are reported through its callbacks.
+   */
+  function render(lane: VideoLane): void {
+    const source = lane.layer.presentation;
+    if (source == null) return;
+    lane.rendererFailed = false;
+    // Cleared when this renderer is released, so a late report from it cannot fail its successor.
+    const life = { live: true };
+    /**
+     * Records a failure of this renderer while it is still the lane's.
+     * @throws {never} Never.
+     */
+    const failed = (): void => { if (life.live && lanes.get(lane.clipId) === lane) { lane.rendererFailed = true; options.onChange(); } };
+    const resource = createVideoRenderer(lane.surface, source, {
+      ready: () => options.onChange(),
+      frame: () => undefined,
+      // The Timeline seeks through the element; no frame callback here is held to a seek.
+      getSeekEpoch: () => 0,
+      error: failed,
+      contextLost: failed,
+      contextRestored: () => undefined,
+    }, lane.element);
+    lane.renderer = { dispose: () => { life.live = false; resource.dispose(); } };
+    // The renderer loads metadata only; a Timeline layer buffers ahead to play on cue.
+    lane.element.preload = 'auto';
+  }
+
+  /**
+   * Make a lane for a layer.
+   * @param layer - The layer.
+   * @returns The lane.
+   * @throws {never} Never.
+   */
+  function create(layer: TimelineVideoLayer): VideoLane {
+    const element = options.createMedia(layer.clipId);
+    element.setAttribute('data-clip-id', layer.clipId);
+    element.preload = 'auto';
+    element.playsInline = true;
+    let surface: HTMLElement = element;
+    if (layer.presentation != null) {
+      surface = document.createElement('div');
+      surface.setAttribute('data-clip-id', layer.clipId);
+    }
+    const lane: VideoLane = {
+      clipId: layer.clipId, element, surface, renderer: null, rendererFailed: false, layer, fresh: true, target: 0, awaitingSeek: true, seekAssigned: false,
+      pendingPlay: false, token: 0, steer: 0, lastDrift: null, tailSeek: false, mapping: '',
+    };
+    attach(lane, layer);
+    for (const event of MEDIA_EVENTS) element.addEventListener(event, options.onChange);
+    lanes.set(layer.clipId, lane);
+    render(lane);
+    configureLane(lane);
+    return lane;
   }
 
   return {
@@ -189,20 +276,12 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
       const ordered = new Map<string, VideoLane>();
       for (const layer of layers) {
         let lane = lanes.get(layer.clipId);
+        // Another version, or a version in place of the original, is another resource: a new lane (§7.8 Replace).
+        if (lane !== undefined && playedKey(lane.layer) !== playedKey(layer)) { remove(lane); lane = undefined; }
         if (lane === undefined) {
-          const element = options.createMedia(layer.clipId);
-          element.setAttribute('data-clip-id', layer.clipId);
-          element.preload = 'auto';
-          element.playsInline = true;
-          lane = {
-            clipId: layer.clipId, element, layer, fresh: true, target: 0, awaitingSeek: true, seekAssigned: false,
-            pendingPlay: false, token: 0, steer: 0, lastDrift: null, tailSeek: false, mapping: '',
-          };
-          attach(lane, layer);
-          configureLane(lane);
-          for (const event of MEDIA_EVENTS) element.addEventListener(event, options.onChange);
+          lane = create(layer);
         } else {
-          const fileChanged = layer.fileUrl !== lane.layer.fileUrl;
+          const fileChanged = layer.fileUrl !== null && layer.fileUrl !== lane.layer.fileUrl;
           const coverChanged = layer.coverUrl !== lane.layer.coverUrl;
           lane.layer = layer;
           if (fileChanged || coverChanged) attach(lane, layer);
@@ -223,6 +302,13 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
       for (const [id, lane] of ordered) lanes.set(id, lane);
     },
     element: (clipId) => lanes.get(clipId)?.element,
+    surface: (clipId) => lanes.get(clipId)?.surface,
+    restartRenderer(clipId): boolean {
+      const lane = lanes.get(clipId);
+      if (lane === undefined || lane.layer.presentation == null) return false;
+      if (lane.rendererFailed) { lane.renderer?.dispose(); render(lane); configureLane(lane); }
+      return true;
+    },
     lanes: () => [...lanes.values()],
     states(): ReadonlyMap<string, TimelineVideoLayerState> {
       const states = new Map<string, TimelineVideoLayerState>();

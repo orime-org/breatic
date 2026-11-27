@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import type { MiniToolRequest } from '@breatic/shared/mini-tools';
+import type { MiniToolExecutionRecord, MiniToolPlannedRequest, MiniToolRequest } from '@breatic/shared/mini-tools';
 
 import { apiPost, runOnceRequest } from '@web/data/api/request';
 
@@ -11,7 +11,34 @@ export interface MiniToolRunAnswer {
   status: 'pending' | 'failed';
 }
 
+/** The planned admission's existing task identity and all persisted statuses. */
+export interface MiniToolPlannedRunAnswer {
+  task_id: string;
+  status: MiniToolExecutionRecord['status'];
+}
+
 export const miniToolsApi = {
+  /**
+   * Sends one complete planned request with its stable press key.
+   * @param body - The frozen public plan.
+   * @param key - The original press identity.
+   * @returns The admitted task's state.
+   * @throws {import('@web/data/api/types').ApiException} When admission is refused or unreachable.
+   */
+  runPlanned(body: MiniToolPlannedRequest, key: string): Promise<MiniToolPlannedRunAnswer> {
+    return apiPost<MiniToolPlannedRunAnswer>('/mini-tools', body, runOnceRequest(key));
+  },
+
+  /**
+   * Quotes a planned request by the admission's own computation, writing nothing (§97 D26-1).
+   * @param body - The planned request the Run would send.
+   * @returns The credits admission would freeze.
+   * @throws {import('@web/data/api/types').ApiException} When admission would refuse the body, or the server is unreachable.
+   */
+  quotePlannedVideoRun(body: MiniToolPlannedRequest): Promise<{ credits: number }> {
+    return apiPost<{ credits: number }>('/mini-tools/quote', body);
+  },
+
   /**
    * Run a model or container mini-tool into nodes that already exist
    * (inner#888 §6.1).

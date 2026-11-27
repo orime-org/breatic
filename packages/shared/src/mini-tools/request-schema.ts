@@ -222,7 +222,7 @@ export function miniToolRequestMemberSchema(spec: MiniToolSpec): z.ZodType {
   );
 }
 
-const SERVER_TOOLS = MINI_TOOLS.filter((spec) => spec.run.kind !== "browser");
+const SERVER_TOOLS = MINI_TOOLS.filter((spec) => spec.run.kind === "model" || spec.run.kind === "container");
 const SERVER_TOOL_BY_ID = new Map(SERVER_TOOLS.map((spec) => [spec.id, spec]));
 
 // The members are generated from the registry at load time, so zod cannot

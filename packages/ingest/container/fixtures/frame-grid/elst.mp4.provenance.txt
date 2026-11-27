@@ -1,0 +1,6 @@
+elst.mp4
+
+320x240 H.264 (libx264, B-frames) at 25 fps with AAC, cut mid-GOP with `-c copy`: the first keyframe packet is at -0.36 s and the edit list discards it; keyframes every 0.48 s from -0.36 s; 104 displayed frames from 0.
+Made with FFmpeg 8.0.1 for the sample set's seek check, which reads every grid frame through the design's seek rule (no -ss below the earliest keyframe packet time plus the largest keyframe interval, landing check, doubling back-off) and compares it with a whole-file decode through the same placement chain; the exact generating command was not recorded with the sample.
+
+From the maintainers' frame-grid sample set (inner#1306), copied unchanged. Used by container/__tests__/frame-grid-*.node.test.ts.

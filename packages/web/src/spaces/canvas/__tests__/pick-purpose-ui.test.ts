@@ -52,22 +52,20 @@ describe('the pick table names only banners the catalogs answer', () => {
   });
 });
 
-describe('聚焦这个挑选在表里两个面板都有触发器（#1978）', () => {
-  // Exit 之后键盘焦点回哪，靠这张表按面板查触发器的 testId。视频面板接上
-  // 聚焦之后，同一个 purpose 就有了两个面板的入口 —— 表里少一个，视频面板
-  // 那次挑选退出时焦点会掉在画布容器上，而这正是 #1902 首帧挑选踩过、这张
-  // 表被建出来要终结的那个失败。
-  it('focus 同时给得出图片面板和视频面板的触发器', () => {
+describe('the focus pick has a trigger in both panels (#1978)', () => {
+  // Where keyboard focus goes after Exit is looked up per panel in this table. Once the video panel took focus
+  // picks, the same purpose has two panel entries; without one of them, focus lands on the canvas container when
+  // the video panel's pick exits, the failure #1902 hit with the first-frame pick and this table exists to end.
+  it('focus gives the trigger of both the image and the video panel', () => {
     expect(PICK_PURPOSE_UI.focus.trigger.generate).toBe('generate-tool-focus');
     expect(PICK_PURPOSE_UI.focus.trigger.generateVideo).toBe(
       'generate-video-tool-focus',
     );
   });
 
-  // 音频面板的参考工具也起同一个 purpose。表里少它这一条，那次挑选退出时
-  // 焦点会掉在 body 上，键盘用户要从文档开头重新 Tab 回面板 —— 跟上面
-  // 首帧那次是同一个失败，只是换了一个面板。
-  it('参考这个挑选在表里三个面板都有触发器', () => {
+  // The audio panel's reference tool starts the same purpose. Without its row, focus lands on body when that pick
+  // exits and a keyboard user tabs back from the top of the page: the same failure as the first-frame pick above.
+  it('the reference pick has a trigger in all three panels', () => {
     expect(PICK_PURPOSE_UI.reference.trigger.generate).toBe(
       'generate-tool-reference',
     );
@@ -93,3 +91,4 @@ describe('聚焦这个挑选在表里两个面板都有触发器（#1978）', ()
     expect(both.sort()).toEqual(['focus', 'reference', 'style']);
   });
 });
+

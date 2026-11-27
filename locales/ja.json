@@ -220,10 +220,13 @@
       "unavailable": "このツールは現在利用できません。",
       "invalidParam": "「{name}」の値はこのツールでは使えません。",
       "foreignSource": "このファイルは処理できません。",
+      "presentationChanged": "動画が更新されました。フレームと範囲を選び直してください。",
       "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
       "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。",
       "clipsTooLarge": "これらのクリップは合計サイズが大きすぎるため、つなげられません。",
-      "joinClipCount": "結合できるクリップは 2〜{max} 本です。"
+      "joinClipCount": "結合できるクリップは 2〜{max} 本です。",
+      "runTooLong": "この動画は1回の実行で処理するには長すぎます（エンコードジョブが {max} 個を超えます）。出力を減らすか短くしてください。",
+      "tooManyOutputs": "1回の実行で作成できる結果は最大 {max} 個です。"
     },
     "idempotency": {
       "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",
@@ -955,6 +958,7 @@
       "editProposalMarks": "波括弧の中身を書き換えてください。オレンジ色の注意事項はモデルに送られません。",
       "notePrefix": "注意事項：",
       "integerBlank": "空欄で自動",
+      "focusCropExpired": "時間内に切り抜けませんでした——もう一度お試しください。",
       "ownKeyLabel": "あなたのキー",
       "studioKeyLabel": "Studio のキー",
       "alsoCredits": "クレジット",
@@ -1259,6 +1263,12 @@
         },
         "hdr": {
           "label": "HDR"
+        },
+        "extract-frames": {
+          "label": "フレーム抽出"
+        },
+        "split": {
+          "label": "分割"
         }
       },
       "audio": {
@@ -1311,7 +1321,9 @@
           "label": "比率"
         },
         "rect": {
-          "label": "サイズ（px）"
+          "label": "サイズ（px）",
+          "width": "幅",
+          "height": "高さ"
         },
         "orient": {
           "label": "向き"
@@ -1470,6 +1482,44 @@
         "attack": "アタック",
         "release": "リリース",
         "makeup": "メイクアップゲイン"
+      },
+      "videoUI": {
+        "analysisFailed": "解析に失敗しました。再試行してください。",
+        "atCursor": "現在位置を追加",
+        "current": "現在",
+        "currentFrameUnavailable": "現在のフレームを取得できません",
+        "cutPoint": "カット位置",
+        "detectScenes": "シーン検出",
+        "first": "最初",
+        "last": "最後",
+        "ledgerUnsupported": "この動画はまだこのツールで使えません",
+        "mediaError": "動画を読み込めません",
+        "rebuildDraft": "設定をリセット",
+        "removeCut": "削除",
+        "retryPreview": "プレビューを再試行",
+        "sourceUnavailable": "元の動画を利用できません",
+        "unsupportedDraft": "保存した設定を更新してください。",
+        "invalidNumber": "有効な数値を入力してください。",
+        "sourceChanged": "元の素材が変更されました。",
+        "useCurrentSource": "現在の素材を使用",
+        "tooManyOutputs": "1回の実行で作成できる結果は最大 {max} 個です。",
+        "noCuts": "カット位置を追加するかシーンを検出してください。",
+        "detectAgain": "再検出",
+        "cutSummary": "{cuts} カット位置 · {segments} 区間",
+        "segmentPreview": "プレビュー · {start} – {end}",
+        "stopPreview": "プレビューを停止",
+        "detectionError": "シーン検出に失敗しました。再度検出してください。",
+        "detectionSuperseded": "シーン検出は以前の編集に対して完了しました。使うには再検出してください。",
+        "videoUpdated": "動画が更新されました。",
+        "applyToVideo": "現在の動画に適用",
+        "settingsOutOfRange": "一部の設定が更新後の動画の範囲外です。先に調整してください。",
+        "outputCapExceeded": "最大 {cap} 件、現在 {count} 件",
+        "outputCount": "{count} 出力",
+        "viewerMode": "Viewer モード",
+        "connectionUnavailable": "接続できません",
+        "preparingVideo": "動画を準備中…",
+        "preparationFailed": "動画を準備できませんでした",
+        "tooLongToPrepare": "準備できる長さを超えています"
       }
     },
     "template": {

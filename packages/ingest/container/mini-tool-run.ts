@@ -24,6 +24,7 @@ import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js"
 import { clipRefusal, inputRefusal, lengthArgs, mediumOf, opSteps, outputFileName, outputRefusal, readProgressLength, type ExtraInput } from "@ingest/jobs/op-args.js";
 import { pickMediaMetadata, NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
+import { withDecodedDisplay } from "@ingest/container/decoded-display.js";
 import { pngSize } from "@ingest/png-size.js";
 
 import { cpuUsec, runCommand, runSteps } from "./run-steps.js";
@@ -46,17 +47,31 @@ const COVER_MAX_BYTES = 10 * 1024 * 1024;
  * Send a local file to the Worker.
  * @param url - Where it goes.
  * @param file - The file.
+ * @param signal - The original planned deadline, when the caller carries one.
  * @returns Nothing.
  * @throws {Error} When the Worker does not take it.
  */
-async function put(url: string, file: string): Promise<void> {
+export async function put(url: string, file: string, signal?: AbortSignal): Promise<void> {
   const size = (await stat(file)).size;
   const answered = await fetch(url, {
     method: "PUT",
+    signal,
     headers: { "content-length": String(size) },
     body: Readable.toWeb(createReadStream(file)) as ReadableStream<Uint8Array>,
     duplex: "half",
   });
+  if (!answered.ok) throw new Error(`the write of ${url} was answered ${answered.status}`);
+}
+
+/**
+ * Send a stream to the Worker while its producer still writes it; its length is known only once it ends.
+ * @param url - Where it goes.
+ * @param body - The stream.
+ * @param signal - The original planned deadline.
+ * @throws {Error} When the write is not answered 200 or the stream fails.
+ */
+export async function putStream(url: string, body: Readable, signal: AbortSignal): Promise<void> {
+  const answered = await fetch(url, { method: "PUT", signal, body: Readable.toWeb(body) as ReadableStream<Uint8Array>, duplex: "half" });
   if (!answered.ok) throw new Error(`the write of ${url} was answered ${answered.status}`);
 }
 
@@ -67,12 +82,13 @@ const JOINS: ReadonlySet<ContainerOp> = new Set<ContainerOp>(["join", "audio_joi
  * Download the source into the job's directory, whole, before any run reads it.
  * @param url - Where the Durable Object serves the source.
  * @param file - The local copy to write.
+ * @param signal - The original planned deadline, when the caller carries one.
  * @throws {Error} When the answer is not 200 or fewer bytes arrive than it announced.
  */
-async function download(url: string, file: string): Promise<void> {
-  const answered = await fetch(url);
+export async function download(url: string, file: string, signal?: AbortSignal): Promise<void> {
+  const answered = await fetch(url, { signal });
   if (!answered.ok || answered.body === null) throw new Error(`the read of ${url} was answered ${answered.status}`);
-  await pipeline(Readable.fromWeb(answered.body as NodeReadableStream<Uint8Array>), createWriteStream(file));
+  await pipeline(Readable.fromWeb(answered.body as NodeReadableStream<Uint8Array>), createWriteStream(file), { signal });
   const announced = Number(answered.headers.get("content-length"));
   const arrived = (await stat(file)).size;
   if (Number.isFinite(announced) && announced > 0 && arrived !== announced) {
@@ -106,7 +122,9 @@ export async function runJob(job: RunBody): Promise<void> {
      */
     const fetched = async (url: string, file: string, first: boolean): Promise<ProbeReport> => {
       await download(url, file).catch(ours);
-      const probed = readProbeOutput((await runCommand("ffprobe", probeArgs(file, "own-file"))).stdout.toString("utf8"));
+      // An input is read at its first decoded frame's display (frames-split D07), the size it was filed at.
+      const probed = await withDecodedDisplay(readProbeOutput((await runCommand("ffprobe", probeArgs(file, "own-file"))).stdout.toString("utf8")), file,
+        "own-file", (program, args) => runCommand(program, [...args]).then((out) => out.stdout));
       const refused = (first ? inputRefusal(job.op, probed) : null) ?? clipRefusal(job.op, probed);
       if (refused !== null) {
         reason = refused;
@@ -145,7 +163,7 @@ export async function runJob(job: RunBody): Promise<void> {
       const numbers = pickMediaMetadata(report);
       let cover: { width: number | null; height: number | null } | null = null;
       if (output.coverUrl !== undefined && numbers.width !== null) {
-        const frame = await runCommand("ffmpeg", coverArgs(file, "own-file"), COVER_MAX_BYTES).then((out) => out.stdout, () => null);
+        const frame = await runCommand("ffmpeg", coverArgs(file, "own-file", report), COVER_MAX_BYTES).then((out) => out.stdout, () => null);
         if (frame !== null && frame.length > 0) {
           const coverFile = join(dir, "cover.png");
           await writeFile(coverFile, frame);

@@ -3,6 +3,7 @@
 
 import { AlertCircle, Loader2, X } from 'lucide-react';
 import * as React from 'react';
+import { useParams } from 'react-router-dom';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -11,6 +12,7 @@ import { attachmentLabel } from '@web/pages/project/chat/attachment-label';
 import { previewOf, type PreviewRow } from '@web/pages/project/chat/attachment-preview';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import type { TrayFailure, TrayStatus } from '@web/stores/chat-attachments';
 import { PreviewImg } from '@web/components/PreviewImg';
 
@@ -149,11 +151,13 @@ export function AttachmentHover({
   children: React.ReactElement;
 }): React.JSX.Element {
   const preview = React.useMemo(() => previewOf(chip), [chip]);
+  const projectId = projectUuidFromRouteParam(useParams().projectId ?? '');
   return (
     <HoverPreview
       kind={preview && preview.kind !== 'nodes' ? preview.kind : 'image'}
       src={preview && 'src' in preview ? preview.src : undefined}
       poster={preview?.kind === 'video' ? preview.poster : undefined}
+      projectId={projectId}
       text={preview?.kind === 'text' ? preview.text : undefined}
       body={preview?.kind === 'nodes' ? <NodeRows rows={preview.rows} more={preview.more} /> : undefined}
       alt={name}

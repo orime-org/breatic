@@ -76,6 +76,11 @@ export class MaintenanceStorage {
     this.objects.delete(key);
   }
 
+  /** No stored descriptor: a canonical key without a presentation references nothing (inner#1306 §7.15). */
+  async read(_key: string): Promise<string | null> {
+    return null;
+  }
+
   /** Make both the approved duplicate and its canonical keeper available. */
   seed(world: MaintenanceWorld): void {
     this.objects.add(world.storageKey);

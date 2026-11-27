@@ -1,0 +1,5 @@
+tm2.mp4
+
+A 32x32 H.264 (libx264) typing-style capture: 120 frames 150 ms apart, then 60 fps motion; avg_frame_rate about 17.6, grid rate 60; the last frame lasts 1 ms and sits 1.6 slots after the one before it. On its 1360-slot grid 319 distinct source frames remain only when the placement chain pads the last source frame with `tpad=stop=-1` before `fps` (a pad of one slot's duration adds no frame, since tpad converts the duration with the stream's own frame rate). From the sample set's round-10 samples; the exact generating command was not recorded with the sample.
+
+From the maintainers' frame-grid sample set (inner#1306), copied unchanged. Used by container/__tests__/frame-grid-*.node.test.ts.

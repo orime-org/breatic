@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * Exact, owner-approved physical scope; never expanded by suffix or prefix.
+ * Exact, owner-approved physical scope; never expanded by suffix or prefix. A `derived` row's kept key is the canonical
+ * key of a presentation-derived object, and null for a run's or an analysis's intermediate.
  */
 export interface ReclaimScope {
   id: string;
   storageKey: string;
-  keptStorageKey: string;
+  keptStorageKey: string | null;
 }
 
 /**

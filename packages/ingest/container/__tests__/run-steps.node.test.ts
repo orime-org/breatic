@@ -4,16 +4,19 @@
 /**
  * How the container runs an operation's steps (inner#1305 §7.1). `sh`, `tr`
  * and `cat` stand in for ffmpeg and sox: what is under test is how one
- * command's output reaches the next, not the programs.
+ * command's output reaches the next, not the programs. The last part runs a
+ * cut's own steps through the real ffmpeg.
  */
 
+import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { RunStep } from "@ingest/jobs/op-args.js";
+import { opSteps, type RunStep } from "@ingest/jobs/op-args.js";
+import type { ProbeReport } from "@ingest/media-metadata.js";
 import { runSteps } from "../run-steps.js";
 
 let dir = "";
@@ -98,4 +101,75 @@ describe("runSteps", () => {
   it("fails on a single step that fails", async () => {
     await expect(runSteps([run("sh", ["-c", "exit 1"])])).rejects.toThrow();
   });
+});
+
+// The mov demuxer of an MP4 with B-frames and no edit list searches a seek time on the decode clock, which runs two frames
+// behind the presentation clock here, so a cut starting just before a keyframe would land on that keyframe. Every frame n
+// of the fixture has luma 20 + 4n and is presented at 0.08 + n / 25 s, keyframes every 10 frames; the file starts at 0.
+describe("a cut of a B-frame MP4 without an edit list", () => {
+  const PROBE: ProbeReport = {
+    streams: [
+      { index: 0, codecType: "video", codecName: "h264", width: 64, height: 64, attachedPic: false },
+      { index: 1, codecType: "audio", codecName: "aac", width: null, height: null, attachedPic: false },
+    ],
+    durationSeconds: 2,
+  };
+
+  it("holds the ten frames presented from its start on, from every start", async () => {
+    const source = join(dir, "source.mp4");
+    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+      "-f", "lavfi", "-i", "color=c=black:s=64x64:r=25:d=2,format=yuv420p,geq=lum='20+4*N':cb=128:cr=128", "-f", "lavfi", "-i", "sine=f=440:d=2",
+      "-c:v", "libx264", "-qp", "1", "-bf", "2", "-x264-params", "b-adapt=0:colorprim=bt709:transfer=bt709:colormatrix=bt709", "-g", "10",
+      "-pix_fmt", "yuv420p", "-video_track_timescale", "25", "-c:a", "aac", "-use_editlist", "0", source]);
+    const wrong: string[] = [];
+    for (let n = 1; n <= 14; n += 1) {
+      const output = join(dir, `cut-${n}.mp4`);
+      const start = 0.08 + n / 25;
+      await runSteps(opSteps("cut", { range: { start, end: start + 0.4 } }, source, output, dir, PROBE));
+      const planes = execFileSync("ffmpeg", ["-v", "error", "-i", output, "-vf", "crop=16:16:24:24", "-pix_fmt", "yuv420p", "-fps_mode", "passthrough", "-f", "rawvideo", "-"],
+        { maxBuffer: 1 << 24 });
+      const frames = Array.from({ length: planes.length / 384 }, (_unused, frame) =>
+        Math.round((planes.subarray(frame * 384, frame * 384 + 256).reduce((sum, value) => sum + value, 0) / 256 - 20) / 4));
+      const expected = Array.from({ length: 10 }, (_unused, k) => n + k);
+      if (JSON.stringify(frames) !== JSON.stringify(expected)) wrong.push(`from ${n}: ${frames.join(",")}`);
+    }
+    expect(wrong).toEqual([]);
+  }, 120_000);
+});
+
+// A fragmented MP4 with B-frames and a trailing mfra index: the cut's seek probe searches that index, so the cut's decode
+// opens the file the same way. Every frame n has luma 20 + 2n; its presentation time is read from the file, and a range
+// starts at it less the file's start time; 25 fps keeps every frame time whole milliseconds; keyframes every 25 frames.
+describe("a cut of a fragmented B-frame MP4 with an mfra index", () => {
+  const PROBE: ProbeReport = {
+    streams: [
+      { index: 0, codecType: "video", codecName: "h264", width: 64, height: 64, attachedPic: false },
+      { index: 1, codecType: "audio", codecName: "aac", width: null, height: null, attachedPic: false },
+    ],
+    durationSeconds: 3,
+  };
+
+  it("holds the ten frames presented from its start on, from starts on both sides of a keyframe", async () => {
+    const source = join(dir, "source.mp4");
+    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+      "-f", "lavfi", "-i", "color=c=black:s=64x64:r=25:d=3,format=yuv420p,geq=lum='20+2*N':cb=128:cr=128", "-f", "lavfi", "-i", "sine=f=440:d=3",
+      "-c:v", "libx264", "-qp", "1", "-bf", "3", "-x264-params", "b-adapt=0:colorprim=bt709:transfer=bt709:colormatrix=bt709",
+      "-g", "25", "-keyint_min", "25", "-sc_threshold", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+frag_keyframe+empty_moov", source]);
+    const startTime = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=start_time", "-of", "csv=p=0", source]).toString());
+    const pts = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "frame=pts_time", "-of", "csv=p=0", source])
+      .toString().trim().split("\n").map(Number);
+    const wrong: string[] = [];
+    for (const n of [21, 22, 23, 24, 25, 26, 47, 48, 49, 50]) {
+      const output = join(dir, `cut-${n}.mp4`);
+      const [start, end] = [pts[n]! - startTime, pts[n + 10]! - startTime];
+      await runSteps(opSteps("cut", { range: { start: Number(start.toFixed(3)), end: Number(end.toFixed(3)) } }, source, output, dir, PROBE));
+      const planes = execFileSync("ffmpeg", ["-v", "error", "-i", output, "-vf", "crop=16:16:24:24", "-pix_fmt", "yuv420p", "-fps_mode", "passthrough", "-f", "rawvideo", "-"],
+        { maxBuffer: 1 << 24 });
+      const frames = Array.from({ length: planes.length / 384 }, (_unused, frame) =>
+        Math.round((planes.subarray(frame * 384, frame * 384 + 256).reduce((sum, value) => sum + value, 0) / 256 - 20) / 2));
+      const expected = Array.from({ length: 10 }, (_unused, k) => n + k);
+      if (JSON.stringify(frames) !== JSON.stringify(expected)) wrong.push(`from ${n}: ${frames.join(",")}`);
+    }
+    expect(wrong).toEqual([]);
+  }, 120_000);
 });

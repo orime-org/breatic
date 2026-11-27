@@ -78,7 +78,7 @@ function openDraft(): { doc: Y.Doc; draft: TimelineMediaDraft; uploads: Timeline
   clients.push(queryClient);
   const uploads = getTimelineUploads(doc, NAME, { projectId: PROJECT, spaceId: SPACE });
   const startUpload = vi.fn((uploadId: string, file: File) => { uploads.start(uploadId, file); });
-  const draft = getTimelineMediaDraft(doc, NAME, { projectId: PROJECT, spaceId: SPACE, edit: (command, options) => session.edit(command, options), startUpload });
+  const draft = getTimelineMediaDraft(doc, NAME, { projectId: PROJECT, spaceId: SPACE, queryClient, edit: (command, options) => session.edit(command, options), startUpload });
   draft.setCanWrite(true);
   draft.open(0, MAIN);
   return { doc, draft, uploads, startUpload };

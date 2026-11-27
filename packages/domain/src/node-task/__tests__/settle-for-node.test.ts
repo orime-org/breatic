@@ -72,7 +72,7 @@ describe("settling one node's row of a generation", () => {
       outcome: "done",
       nodeHistoryId: "history-1",
     });
-    expect(emit).toHaveBeenCalledWith(REDIS, DOC, NODE, COUNTS, undefined);
+    expect(emit).toHaveBeenCalledWith(REDIS, DOC, NODE, COUNTS, undefined, undefined, undefined);
   });
 
   it("carries the content on the transition that reached done", async () => {
@@ -93,7 +93,7 @@ describe("settling one node's row of a generation", () => {
       result,
     });
 
-    expect(emit).toHaveBeenCalledWith(REDIS, DOC, NODE, COUNTS, result);
+    expect(emit).toHaveBeenCalledWith(REDIS, DOC, NODE, COUNTS, result, undefined, undefined);
   });
 
   it("leaves the content alone when the row settled some other way", async () => {
@@ -116,7 +116,7 @@ describe("settling one node's row of a generation", () => {
       },
     });
 
-    expect(emit).toHaveBeenCalledWith(REDIS, DOC, NODE, COUNTS, undefined);
+    expect(emit).toHaveBeenCalledWith(REDIS, DOC, NODE, COUNTS, undefined, undefined, undefined);
   });
 
   it("sends the content again when the row already holds this outcome", async () => {
@@ -142,7 +142,7 @@ describe("settling one node's row of a generation", () => {
       result,
     });
 
-    expect(emit).toHaveBeenCalledWith(REDIS, DOC, NODE, COUNTS, result);
+    expect(emit).toHaveBeenCalledWith(REDIS, DOC, NODE, COUNTS, result, undefined, undefined);
   });
 
   it("does nothing for a node this job opened no row on", async () => {

@@ -16,6 +16,14 @@
  * `onFailure`.
  */
 
+import { MAX_FOCUS_NAME, newId, t, type NodeTaskEntry, type TaskFailureReason } from '@breatic/shared';
+import { miniToolPlannedRequestSchema, type MiniToolPlannedRequest, type MiniToolPresentationRef, type VideoToolSourceRef } from '@breatic/shared/mini-tools';
+import { miniToolsApi, type MiniToolPlannedRunAnswer } from '@web/data/api/mini-tools';
+import { toast } from '@web/lib/toast';
+import { canvasSessions } from '@web/stores/canvas-session';
+import { runOnce, spaceTaskIntent, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
+import { plannedRunRefusalText } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
+
 import {
   isUploadFailureReason,
   type UploadFailureReason,
@@ -151,4 +159,184 @@ export function focusFailureMessageKey(stage: 'export' | UploadFailureReason): s
   if (stage === 'export') return 'canvas.generatePanel.focusExportFailed';
   if (stage === 'upload' || stage === 'transfer') return 'canvas.generatePanel.focusUploadFailed';
   return uploadFailureMessageKey(stage);
+}
+
+/** One video focus crop this browser started and has not yet seen end (frames-split §7.18 L). */
+export interface VideoFocusCropRun { spaceId: string; panelNodeId: string; admitted: boolean }
+
+// The placeholders that are video crops, by run_id: the canvas layer settles only these; image crops end with their upload.
+// Module state, so a canvas remounted by a tab switch still settles crops it started.
+const videoCropRuns = new Map<string, VideoFocusCropRun>();
+const runListeners = new Set<() => void>();
+let runRevision = 0;
+
+/**
+ * Records a change to the video crop runs and tells the subscribers.
+ * @throws {never} Never.
+ */
+function notifyRuns(): void {
+  runRevision += 1;
+  for (const listener of runListeners) listener();
+}
+
+/**
+ * The video crops this browser waits on.
+ * @returns The runs by run_id.
+ * @throws {never} Never.
+ */
+export function videoFocusCropRuns(): ReadonlyMap<string, VideoFocusCropRun> {
+  return videoCropRuns;
+}
+
+/**
+ * Subscribes to changes of the video crop runs, for `useSyncExternalStore`.
+ * @param listener - Called on each change.
+ * @returns The unsubscribe.
+ * @throws {never} Never.
+ */
+export function subscribeVideoFocusCropRuns(listener: () => void): () => void {
+  runListeners.add(listener);
+  return () => { runListeners.delete(listener); };
+}
+
+/**
+ * The revision of the video crop runs, for `useSyncExternalStore`.
+ * @returns A number that changes with every change.
+ * @throws {never} Never.
+ */
+export function videoFocusCropRunsRevision(): number {
+  return runRevision;
+}
+
+/**
+ * Ends one video crop: its placeholder goes, and the canvas layer stops settling it. A Space closed meanwhile has no
+ * session left and nothing to remove.
+ * @param spaceId - Its Space.
+ * @param runId - Its run_id.
+ * @throws {never} Never.
+ */
+export function endVideoFocusCrop(spaceId: string, runId: string): void {
+  canvasSessions.peek(spaceId)?.getState().removePendingFocusUpload(runId);
+  if (videoCropRuns.delete(runId)) notifyRuns();
+}
+
+/** What one confirmed video marquee hands the press (frames-split §5.5 admission row). */
+export interface VideoFocusCropPress {
+  projectId: string;
+  spaceId: string;
+  /** The node whose Generate panel picks the crop: the run's only output. */
+  panelNodeId: string;
+  /** The boxed video node, bound as the draft's source. */
+  source: VideoToolSourceRef;
+  /** The source node's display name, frozen into the plan. */
+  sourceName: string;
+  /** The selected version the marquee was drawn over. */
+  presentationRef: MiniToolPresentationRef;
+  /** The grid frame the player showed. */
+  frameIndex: number;
+  /** The crop in P.display pixels. */
+  crop: CropRect;
+}
+
+/**
+ * The planned request of one video focus crop (frames-split §5.5 admission and plan shape rows): the panel node is the one
+ * output, a `frame` recipe with the crop; the boxed video is `draft.source`; the source name is cut to `MAX_FOCUS_NAME`.
+ * @param press - The confirmed marquee.
+ * @param runId - The request's run id, also the placeholder's key.
+ * @returns The request.
+ * @throws {z.ZodError} When the press does not make a valid planned request.
+ */
+export function videoFocusCropRequest(press: VideoFocusCropPress, runId: string): MiniToolPlannedRequest {
+  const crop = { x: press.crop.x, y: press.crop.y, width: press.crop.width, height: press.crop.height };
+  return miniToolPlannedRequestSchema.parse({
+    tool: 'video.focus-crop', project_id: press.projectId, space_id: press.spaceId, run_id: runId, analysis_refs: [], presentation_ref: structuredClone(press.presentationRef),
+    draft: { version: 1, draftId: newId(), revision: newId(), source: structuredClone(press.source), inputs: [],
+      params: { frameIndex: press.frameIndex, crop, sourceName: press.sourceName.slice(0, MAX_FOCUS_NAME) } },
+    outputs: [{ outputIndex: 0, nodeId: press.panelNodeId, recipe: { kind: 'frame', frameIndex: press.frameIndex, crop } }],
+  });
+}
+
+/**
+ * Send one video focus crop (frames-split §5.5 admission and result feedback rows, §7.18): a placeholder keyed by the request's
+ * `run_id` appears at once and is counted by the three cap checks; each confirm is its own press under a run-once intent named
+ * by its run_id. A final admission refusal removes the placeholder and says why; a released press removes it without a toast
+ * of its own (run-once already said the result is unknown). An admitted crop keeps it until the canvas layer sees the end.
+ * @param press - The confirmed marquee; the caps and the source state were checked before.
+ * @returns The run-once outcome.
+ * @throws {never} Refusals settle the placeholder.
+ */
+export function runVideoFocusCrop(press: VideoFocusCropPress): Promise<RunOnceOutcome<MiniToolPlannedRunAnswer>> {
+  const runId = newId();
+  const body = videoFocusCropRequest(press, runId);
+  canvasSessions.of(press.spaceId).getState().addPendingFocusUpload({ id: runId, nodeId: press.panelNodeId, name: press.sourceName.slice(0, MAX_FOCUS_NAME) });
+  videoCropRuns.set(runId, { spaceId: press.spaceId, panelNodeId: press.panelNodeId, admitted: false });
+  notifyRuns();
+  return runOnce(spaceTaskIntent('mini-tool', press.spaceId, runId, 'video.focus-crop'), {
+    scope: 'mini-tool',
+    prepare: () => body,
+    send: (key, request) => miniToolsApi.runPlanned(request, key),
+    onDone: () => {
+      const run = videoCropRuns.get(runId);
+      if (run !== undefined) { videoCropRuns.set(runId, { ...run, admitted: true }); notifyRuns(); }
+      return undefined;
+    },
+    onFailure: (error) => { endVideoFocusCrop(press.spaceId, runId); toast.error(plannedRunRefusalText(error, t)); },
+  }).then((outcome) => { if (outcome.kind === 'released') endVideoFocusCrop(press.spaceId, runId); return outcome; });
+}
+
+/** The panel node's task row for one placeholder, as the canvas layer reads it from the task list. */
+export type VideoFocusCropRow = Pick<NodeTaskEntry, 'status' | 'startedAt' | 'budgetMs' | 'errorMessage'>;
+
+/** The reason a row ends with when its person cancels it while it waits for a running slot (inner#1968 design 3.9). */
+const CANCELLED: TaskFailureReason = 'cancelled';
+
+/**
+ * The row the canvas layer reads for one admitted crop from its panel node's task list.
+ * @param entry - The entry whose taskId is the run_id, or none.
+ * @returns Its row, or `cleared` when the list holds none.
+ * @throws {never} Never.
+ */
+export function videoFocusCropRowOf(entry: VideoFocusCropRow | undefined): VideoFocusCropRead['row'] {
+  return entry === undefined ? 'cleared' : { status: entry.status, startedAt: entry.startedAt, budgetMs: entry.budgetMs, errorMessage: entry.errorMessage };
+}
+
+/** The panel node's task row and result marker for one placeholder, as the canvas layer read them (§7.18). */
+export interface VideoFocusCropRead {
+  /** The row whose taskId is the run_id: `admitting` before the press is answered, `cleared` when absent after admission. */
+  row: 'admitting' | 'cleared' | VideoFocusCropRow;
+  /** `focusCropOutcomes[run_id]`, absent until collab handled the append. */
+  outcome: 'added' | 'refused' | undefined;
+  /** Wall clock, ms. */
+  now: number;
+}
+
+/** What the canvas layer does with one placeholder. */
+export interface VideoFocusCropSettlement {
+  placeholder: 'keep' | 'remove';
+  toast: null | 'referencePoolFull' | 'error';
+  /** When a done row without its marker must be read again (its startedAt + budgetMs); null otherwise. */
+  recheckAt: number | null;
+}
+
+const KEEP: VideoFocusCropSettlement = { placeholder: 'keep', toast: null, recheckAt: null };
+const REMOVE: VideoFocusCropSettlement = { placeholder: 'remove', toast: null, recheckAt: null };
+
+/**
+ * The §7.18 outcome table: a marker decides on its own (added removes, refused removes and says the pool is full); a row the
+ * user cancelled while it waited removes silently; any other failed or expired row removes and says so; a done row without a marker waits for its task deadline; a row cleared after admission
+ * without a marker removes silently; admission still waiting or a running row keeps the card.
+ * @param read - What was read.
+ * @returns The settlement.
+ * @throws {never} Never.
+ */
+export function videoFocusCropSettlement(read: VideoFocusCropRead): VideoFocusCropSettlement {
+  if (read.row === 'admitting') return KEEP;
+  if (read.outcome === 'added') return REMOVE;
+  if (read.outcome === 'refused') return { placeholder: 'remove', toast: 'referencePoolFull', recheckAt: null };
+  if (read.row === 'cleared') return REMOVE;
+  if (read.row.status === 'running') return KEEP;
+  if (read.row.status === 'failed' && read.row.errorMessage === CANCELLED) return REMOVE;
+  if (read.row.status === 'failed' || read.row.status === 'expired') return { placeholder: 'remove', toast: 'error', recheckAt: null };
+  const deadline = Date.parse(read.row.startedAt) + read.row.budgetMs;
+  return read.now >= deadline ? REMOVE : { placeholder: 'keep', toast: null, recheckAt: deadline };
 }

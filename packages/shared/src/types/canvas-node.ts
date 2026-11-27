@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
+import type { VideoToolAnalysisRef, VideoToolDraftFields } from '@shared/mini-tools/video-draft.js';
+
 /**
  * Canvas node types shared between frontend, Collab, and server.
  *
@@ -159,6 +161,9 @@ export interface AttachRef {
   uploadedAt: string;
 }
 
+/** What collab did with one video focus crop's result (frames-split §5.5). */
+export type FocusCropOutcome = 'added' | 'refused';
+
 /**
  * One focus crop stored in a node's `focusImages` Y.Array (#1782 focus
  * slice) — a standalone image cropped out of a source node's content at
@@ -170,12 +175,14 @@ export interface AttachRef {
  * source never changes an existing focus image. `name` is a snapshot of
  * the source node's display name at crop time and never follows renames.
  * Collab adds an entry once the crop's upload is registered (#1580,
- * `appendFocusImageCore`); the page only removes entries, and no other backend
- * code reads the field — focus images only reach a generate request when the
- * user `@`-mentions them (same explicit-selection rule as node references).
+ * `appendFocusImageCore`); a video focus crop is appended by collab from
+ * `focusImageAppend` through the same function (frames-split §5.5 delivery
+ * row). The page only removes entries, and no other backend code reads the
+ * field — focus images only reach a generate request when the user
+ * `@`-mentions them (same explicit-selection rule as node references).
  */
 export interface FocusImage {
-  /** Stable id (frontend-generated UUID v4); `@` mentions reference it. */
+  /** Stable id: a frontend-generated UUID v4 for an image crop, the run's taskId for a video focus crop; `@` mentions reference it. */
   id: string;
   /** Public URL of the uploaded crop asset. */
   url: string;
@@ -284,7 +291,7 @@ export interface CanvasNodeFields {
    */
   parentId?: string;
   /** Nested data Y.Map at runtime. */
-  data: {
+  data: VideoToolDraftFields & Partial<Record<`miniToolAnalysis:${string}`, VideoToolAnalysisRef>> & {
     /** Display label. */
     name: string;
 
@@ -319,6 +326,8 @@ export interface CanvasNodeFields {
      * content. Node state, not content: a copy of the node does not carry it.
      */
     taskResultEventId?: string;
+    /** First handled planned output, retained across history restores and excluded from copies. */
+    miniToolResultOrigin?: MiniToolResultOrigin;
     /**
      * The generation template node this node was placed as (inner#1345):
      * the template, its key, and on the guide text node the id of the anchor
@@ -599,6 +608,11 @@ export interface CanvasNodeFields {
      */
     focusImages?: FocusImage[];
     /**
+     * The video focus crops collab already handled, by taskId (frames-split §5.5 delivery row): `added` or `refused` when the
+     * images were full; at most `MAX_FOCUS_ENTRIES`, the oldest dropped. Task state, not content: never copied.
+     */
+    focusCropOutcomes?: Record<string, FocusCropOutcome>;
+    /**
      * Focus crops on this node still uploading (#1580), shown in its reference list as running, the way `taskCounts`
      * shows a task. A `Y.Array` that only collab writes; {@link FocusUpload}.
      */
@@ -690,6 +704,14 @@ export interface NodeTaskResult {
  */
 export type NodeMediaNumbers = Omit<NodeTaskResult, 'content' | 'coverUrl'>;
 
+/** One immutable registered output, independent from its transport or run snapshot version. */
+interface MiniToolResultOrigin {
+  kind: 'mini-tool-output';
+  runId: string;
+  planFingerprint: string;
+  outputIndex: number;
+}
+
 /**
  * The server recounted a node's tasks (#186).
  *
@@ -712,6 +734,13 @@ export interface NodeTaskCountsEvent {
   counts: NodeTaskCounts;
   /** Present only on the transition into `done`. */
   result?: NodeTaskResult;
+  /** Stable business identity of a planned media result; never a Redis stream id. */
+  resultOrigin?: MiniToolResultOrigin;
+  /**
+   * A video focus crop's image to append to the panel node's `focusImages` (frames-split §5.5 delivery row): present only when
+   * the settlement landed; `id` is the taskId, and collab skips a taskId `focusCropOutcomes` already records.
+   */
+  focusImageAppend?: FocusImage;
 }
 
 /**

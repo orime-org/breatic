@@ -44,6 +44,7 @@ import {
   unscheduleAdsUploadSweep,
   adsConversionConfig,
   type AdsConversionJob,
+  MINI_TOOL_SETTLEMENT_QUEUE,
   getCommerceConfig,
 } from "@breatic/core";
 import { onDatabaseWaitTimeout } from "@breatic/core";
@@ -53,10 +54,12 @@ import {
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
   AUDIO_PEAKS_QUEUE,
+  VIDEO_PRESENTATION_QUEUE,
   MAIL_QUEUE,
   UPLOAD_FINISH_QUEUE,
   initProvider,
   type AudioPeaksJob,
+  type VideoPresentationJob,
   type MailJob,
   type MediaReadJob,
   type UploadFinishJob,
@@ -150,8 +153,11 @@ import { settleStalledIngest } from "@worker/handlers/abort-ingest.js";
 import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
 import { runMediaRead } from "@worker/handlers/media-read.js";
 import { runAudioPeaks } from "@worker/handlers/audio-peaks.js";
+import { runVideoPresentation, settleExhaustedVideoPresentation } from '@worker/handlers/video-presentation.js';
 import { runUploadFinish } from "@worker/handlers/upload-finish.js";
 import { runMail } from "@worker/handlers/mail.js";
+import { startMiniToolSettlementWorker } from "@worker/handlers/mini-tool/settlement-worker.js";
+import { startMiniToolDeliveryRecovery } from "@worker/handlers/mini-tool/delivery-worker.js";
 import {
   LONG_MEDIA_DISPATCH_QUEUE,
   LONG_MEDIA_OPERATIONS_QUEUE,
@@ -165,6 +171,7 @@ import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-fail
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
 import { reconcileLotMirror } from "@worker/handlers/commerce-lot-mirror.js";
 import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
+import { sweepPlannedRuns } from "@worker/handlers/planned-run-sweep.js";
 
 /** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
 const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
@@ -178,6 +185,9 @@ const COMMERCE_LOT_MIRROR_QUEUE = "commerce-lot-mirror";
 /** Queue holding the recurring sweep of tasks waiting for a running slot whose job may be lost (inner#1968). */
 const SLOT_WAIT_SWEEP_QUEUE = "slot-wait-sweep";
 
+/** Queue holding the recurring sweep of planned video tool runs whose job may be lost (frames-split §7.19). */
+const PLANNED_RUN_SWEEP_QUEUE = "planned-run-sweep";
+
 /** Every BullMQ queue this process can run a worker for; `config/worker.yaml` may name only these. */
 const WORKER_QUEUES: readonly string[] = [
   "tasks",
@@ -186,19 +196,22 @@ const WORKER_QUEUES: readonly string[] = [
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
   AUDIO_PEAKS_QUEUE,
+  VIDEO_PRESENTATION_QUEUE,
   MAIL_QUEUE,
   ADS_CONVERSION_QUEUE,
+  MINI_TOOL_SETTLEMENT_QUEUE,
   LONG_MEDIA_DISPATCH_QUEUE,
   TIMELINE_QUEUE,
   TIMELINE_SWEEP_QUEUE,
   CREDIT_CHARGE_SWEEP_QUEUE,
   COMMERCE_LOT_MIRROR_QUEUE,
   SLOT_WAIT_SWEEP_QUEUE,
+  PLANNED_RUN_SWEEP_QUEUE,
 ];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
-import type { TaskJobData } from "@worker/handlers/dispatch.js";
+import type { TasksQueueJobData } from "@worker/handlers/dispatch.js";
 import type { Job } from "bullmq";
 
 // Health probe port from the validated config (default 9101).
@@ -222,8 +235,10 @@ function settleWhenStalled(job: Job<{ storageKey: string }> | undefined): void {
 /**
  * Start the worker process: install production error logging on the shared
  * Redis singletons, then begin consuming the BullMQ task queue.
+ * @returns Once required expense recovery and the ordinary workers are registered.
+ * @throws {Error} When required queue registration or discovery scheduling fails.
  */
-export function startWorker(): void {
+export async function startWorker(): Promise<void> {
   // Every call this process makes on a task's chain is bounded by the task's
   // own deadline (inner#1367), so undici's 300-second wait for an answer must
   // not cut one first.
@@ -298,7 +313,15 @@ export function startWorker(): void {
     });
   }
 
-  const worker = createWorker<TaskJobData>("tasks", runTask);
+  const miniToolSettlement = await startMiniToolSettlementWorker();
+  const worker = createWorker<TasksQueueJobData>("tasks", runTask);
+  try {
+    await startMiniToolDeliveryRecovery(worker);
+  } catch (err) {
+    logger.error({ err, ctx: { phase: "delivery-start" } }, "mini_tool_delivery_start_failed");
+    await miniToolSettlement.close();
+    throw err;
+  }
 
   // The read side of the tasks queue: the stale-waiter sweep below and the
   // failed-job cleanup further down look jobs up through it.
@@ -316,6 +339,20 @@ export function startWorker(): void {
     { name: SLOT_WAIT_SWEEP_QUEUE, data: {}, opts: defaultJobOpts() },
   ).catch((err: unknown) => {
     logger.error({ err }, "slot_wait_sweep_schedule_failed");
+  });
+
+  // Planned video tool runs whose job was lost end by their own recovery (frames-split §7.19).
+  const plannedRunSweepQueue = createQueue(PLANNED_RUN_SWEEP_QUEUE);
+  const plannedRunSweep = createWorker<Record<string, never>>(PLANNED_RUN_SWEEP_QUEUE, () => sweepPlannedRuns(tasksQueue));
+  plannedRunSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "planned_run_sweep_failed");
+  });
+  void plannedRunSweepQueue.upsertJobScheduler(
+    PLANNED_RUN_SWEEP_QUEUE,
+    { every: getWorkerConfig().planned_run_sweep_interval_ms },
+    { name: PLANNED_RUN_SWEEP_QUEUE, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "planned_run_sweep_schedule_failed");
   });
 
   // Timeline web-animation executions (inner#1711). A job waiting on its container goes back to the queue as
@@ -459,6 +496,19 @@ export function startWorker(): void {
       "audio_peaks_job_failed",
     );
   });
+  const videoPresentation = createWorker<VideoPresentationJob>(VIDEO_PRESENTATION_QUEUE, (job, token) => runVideoPresentation(job, token));
+  videoPresentation.on('failed', (job, err) => {
+    logger.error({ err, ctx: job?.data, attemptsMade: job?.attemptsMade, attemptsAllowed: job?.opts?.attempts }, 'video_presentation_job_failed');
+  });
+  // Only the worker's job advances a presentation candidate: one that gave up for good is settled from the queue event
+  // every live instance receives, so a crashed worker's job is settled too (frames-split design §7.1 failure sources).
+  const videoPresentationQueue = createQueue(VIDEO_PRESENTATION_QUEUE);
+  const videoPresentationEvents = createQueueEvents(VIDEO_PRESENTATION_QUEUE);
+  videoPresentationEvents.on('failed', ({ jobId }) => {
+    void settleExhaustedVideoPresentation(videoPresentationQueue, jobId).catch((err: unknown) => {
+      logger.error({ err, jobId }, 'video_presentation_settle_failed');
+    });
+  });
 
   // Notification mail a request queued instead of waiting on SMTP (#1232).
   // A send that throws retries on the shared options, except one the server
@@ -505,7 +555,7 @@ export function startWorker(): void {
   });
 
   worker.on("completed", (job) => {
-    logger.info({ jobId: job.id, taskId: job.data.taskId }, "job_completed");
+    logger.info({ jobId: job.id, taskId: "taskId" in job.data ? job.data.taskId : undefined }, "job_completed");
   });
 
   // Local telemetry only. The node write-back is NOT done here:
@@ -639,12 +689,14 @@ export function startWorker(): void {
       releaseListenSocket: () => {},
       drains: [
         () => worker.close(),
+        () => miniToolSettlement.close(),
         () => timelineWorker.close(),
         () => timelineSweep.close(),
         () => deadlineSweep.close(),
         () => creditChargeSweep.close(),
         () => lotMirror?.close() ?? Promise.resolve(),
         () => slotWaitSweep.close(),
+        () => plannedRunSweep.close(),
         () => longMediaDispatch.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),
@@ -652,6 +704,8 @@ export function startWorker(): void {
         () => usageLookup.close(),
         () => mediaRead.close(),
         () => audioPeaks.close(),
+        () => videoPresentation.close(),
+        () => videoPresentationEvents.close(),
         () => mail.close(),
         () => adsConversion.close(),
         () => flushServerAnalytics(),
@@ -684,4 +738,9 @@ try {
   }
   await exitProcess(1);
 }
-startWorker();
+try {
+  await startWorker();
+} catch (err) {
+  logger.error({ err, ctx: { phase: "worker-start" } }, "worker_start_failed");
+  await exitProcess(1);
+}

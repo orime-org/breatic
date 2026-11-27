@@ -47,6 +47,8 @@ vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: async () => 
 vi.mock("@worker/handlers/model-task.js", () => ({ runModelTask: h.runModelTask, abandonedCosts: async () => [] }));
 vi.mock("@worker/services/project-media.service.js", () => ({ resolveRegisteredProjectMedia: h.resolveRegisteredProjectMedia }));
 vi.mock("@breatic/core", () => ({
+  // The video mini-tool delivery jobs dispatch routes before any task; these cases run none of them.
+  MINI_TOOL_DELIVERY_JOB: "deliver-mini-tool-results", MINI_TOOL_DELIVERY_DISCOVERY_JOB: "discover-mini-tool-deliveries",
   runWithConsent: (_consent: unknown, fn: () => unknown) => fn(),
   reportCollaboratorFirstAction: vi.fn(async () => undefined),
   serverAnalyticsWanted: vi.fn(() => false),

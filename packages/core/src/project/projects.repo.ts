@@ -47,13 +47,15 @@ export async function listLiveProjectIdsInStudio(studioId: string): Promise<stri
  * Soft-deleted projects read as absent, matching every other list and lookup
  * in the repository.
  * @param projectId - Project to look up.
+ * @param tx - An enclosing transaction, when the caller holds one.
  * @returns The owning studio's id, or undefined when no live project has
  *   that id.
  */
 export async function findOwnerStudioId(
   projectId: string,
+  tx?: DbTx,
 ): Promise<string | undefined> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({ studioId: projects.studioId })
     .from(projects)
     .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))

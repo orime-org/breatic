@@ -1,0 +1,9 @@
+hevc-alpha.mov: HEVC with an alpha layer in QuickTime (hvc1), 160x96, 25 fps, 10 frames.
+Purpose: S6d D1 alpha classification fixture (inner#1306 test plan §91 D-6). The Linux media
+image has no VideoToolbox encoder, so this clip is committed instead of generated at test time.
+Generated on macOS with FFmpeg 8.0.1 (Homebrew):
+  ffmpeg -f lavfi -i "testsrc2=s=160x96:r=25:d=0.4,format=bgra" -c:v hevc_videotoolbox -alpha_quality 0.75 -tag:v hvc1 hevc-alpha.mov
+SHA-256: 84a265d48e08ede06821a03f6cb882a0cf86e080563736a6fcd9fe6ae33d9baa
+The muxer must be FFmpeg 8.0 or later: earlier mov muxers leave the alpha layer's SPS and PPS out of
+hvcC, so its slices name a PPS the file does not hold and every decoder (FFmpeg, AVFoundation) loses
+the alpha. Measured with FFmpeg 8.0.1: decodes as yuva420p, alpha 254 on all 10 frames.

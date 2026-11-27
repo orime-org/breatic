@@ -183,22 +183,32 @@ let asked: { url: string; ticket: string; body: Record<string, unknown> } = {
   ticket: "",
   body: {},
 };
+let presentationAsked: { url: string; body: Record<string, unknown> }[] = [];
 
 /**
- * Answer the one call this job makes with what `answer` describes.
+ * Observe the transfer separately from automatic presentation admission.
  * @param answer - The Worker's response, or a failure to reach it at all.
  */
 function workerAnswers(answer: Response | Error): void {
   asked = { url: "", ticket: "", body: {} };
+  presentationAsked = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init: RequestInit) => {
       const headers = (init.headers ?? {}) as Record<string, string>;
-      asked = {
+      const call = {
         url: String(url),
         ticket: headers["x-upload-ticket"] ?? "",
         body: JSON.parse(String(init.body ?? "{}")) as Record<string, unknown>,
       };
+      const pathname = new URL(call.url).pathname;
+      if (pathname === '/video-presentation') {
+        presentationAsked.push({ url: call.url, body: call.body });
+        return Response.json({ presentation: null, attempt: {
+          jobId: call.body.jobId, deadlineAt: call.body.deadlineAt, status: 'accepted', usage: null,
+        } });
+      }
+      if (pathname === '/fetch') asked = call;
       if (answer instanceof Error) throw answer;
       return answer.clone();
     }),
@@ -256,6 +266,9 @@ describe("the url ingest job — what it asks the Worker for", () => {
     await run(job);
 
     expect(asked.url).toMatch(/\/fetch$/);
+    expect(presentationAsked).toHaveLength(1);
+    expect(presentationAsked[0]!.body).toMatchObject({ action: 'accept', storageKey: job.storageKey });
+    expect(asked.body.url).toBe(job.url);
   });
 
   it("signs a ticket that tells the Worker to take the source's own type", async () => {

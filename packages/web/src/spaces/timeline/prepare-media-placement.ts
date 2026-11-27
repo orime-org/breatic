@@ -17,6 +17,8 @@ export interface TimelineMediaPlacementInput {
   canWrite: boolean;
   placement: TimelineEditPlacement;
   newTrackId?: string;
+  /** The selected version's grid length (frames-split §7.14 Tv); it wins over the registered duration. */
+  presentedDurationSeconds?: number;
   decodedDurationSeconds?: number;
 }
 
@@ -35,7 +37,8 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
   if (!input.canWrite) return { ok: false, reason: 'readonly' };
   const asset = input.asset;
   if (asset === null || asset.kind !== 'video') return { ok: false, reason: 'source_unavailable' };
-  const duration = asset.durationSeconds === null ? input.decodedDurationSeconds : asset.durationSeconds;
+  const registered = input.presentedDurationSeconds === undefined && asset.durationSeconds !== null;
+  const duration = input.presentedDurationSeconds ?? (asset.durationSeconds === null ? input.decodedDurationSeconds : asset.durationSeconds);
   if (duration === undefined || !Number.isFinite(duration) || duration <= 0) return { ok: false, reason: 'metadata_unavailable' };
   const current = readTimelineDocument(doc);
   let extentFrames: number;
@@ -52,7 +55,7 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
         id: input.sourceId, kind: 'video', url: asset.fileUrl, coverUrl: asset.coverUrl,
         name: timelineSourceName(timelineVideoName(asset)), mimeType: asset.mimeType, width: asset.width, height: asset.height,
         timebase: current.settings.fps, extentFrames, durationSeconds: String(duration),
-        durationOrigin: asset.durationSeconds === null ? 'decoded' : 'registered',
+        durationOrigin: registered ? 'registered' : 'decoded',
       },
       clip: {
         id: input.clipId, kind: 'video', trackId: input.trackId, sourceId: input.sourceId,

@@ -48,6 +48,21 @@ describe('the crop source read as the original', () => {
 
 // Decoding ends when the browser has the bitmap, not after a count of frames;
 // the export waits on the same `decode()` (`prepareCropSource`).
+describe('a video read by the original it presents (frames-split §5.5)', () => {
+  it('reads a video playing its presentation carrier as the canonical original the player marks it with', () => {
+    const video = document.createElement('video');
+    video.setAttribute('src', 'https://cdn/clip.mp4.video-presentation:video-presentation-a:stitch:a1');
+    video.setAttribute('data-canonical-video-display', 'https://cdn/clip.mp4');
+    expect(originalSrc(video)).toBe('https://cdn/clip.mp4');
+  });
+
+  it('reads a video with no presentation marker by its own address', () => {
+    const video = document.createElement('video');
+    video.setAttribute('src', 'https://cdn/clip.mp4');
+    expect(originalSrc(video)).toBe('https://cdn/clip.mp4');
+  });
+});
+
 describe('whenDecoded', () => {
   /**
    * A picture of a given natural width whose decode settles as asked.

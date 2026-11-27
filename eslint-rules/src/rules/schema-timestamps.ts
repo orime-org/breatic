@@ -67,6 +67,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "claims for milestones reported once (0094, inner#1442): a row is the record that the milestone already happened, so removing it would report the same milestone a second time",
   ],
   [
+    "presentationPinObjects",
+    "the object set of a presentation pin (0130, inner#1306 §7.15): a row is a key the pin references now, and whether the reference is live is the parent pin's deleted_at; a row leaves only when the pin stops referencing the key (a selected pin's whole-set Mv, a stitch's Drop), in the transaction that registers the key for reclaim, so a soft-deleted row would be a second, stale answer to whether a key is pinned",
+  ],
+  [
     "storageReclaimQueue",
     "internal work queue for the offline reclaim job: the physical object still needs reclaiming after its project is gone, so the row must not follow a project delete",
   ],

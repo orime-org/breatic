@@ -168,6 +168,20 @@ describe('Button loading', () => {
     expect(el).toHaveTextContent('Send');
   });
 
+  it('spaces the icon, and the spinner that replaces it, from the label', () => {
+    const { rerender } = render(<Button icon={<svg className='h-4 w-4' />}>Send</Button>);
+    expect(screen.getByRole('button')).toHaveClass('gap-1.5');
+    rerender(<Button loading icon={<svg className='h-4 w-4' />}>Send</Button>);
+    expect(screen.getByRole('button')).toHaveClass('gap-1.5');
+  });
+
+  it('adds no spacing to a button without an icon or without a label', () => {
+    const { rerender } = render(<Button>Send</Button>);
+    expect(screen.getByRole('button')).not.toHaveClass('gap-1.5');
+    rerender(<Button aria-label='Generate' icon={<svg className='h-4 w-4' />} />);
+    expect(screen.getByRole('button')).not.toHaveClass('gap-1.5');
+  });
+
   it('replaces the icon with a spinner that takes the icon classes', () => {
     render(
       <Button loading icon={<svg data-testid='send' className='h-4 w-4' />}>

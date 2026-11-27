@@ -20,6 +20,8 @@
 
 // ── Database ─────────────────────────────────────────────────────
 export { db, rawPg, pingDb, closeDb, createPgClient } from "@core/db/client.js";
+export { MINI_TOOL_SETTLEMENT_QUEUE, MINI_TOOL_SETTLEMENT_JOB, MINI_TOOL_SETTLEMENT_DISCOVERY_JOB, miniToolSettlementWakeSchema, miniToolSettlementDiscoverySchema, type MiniToolSettlementWake, type MiniToolSettlementDiscovery } from "@core/infra/mini-tool-settlement.js";
+export { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, miniToolDeliveryWakeSchema, miniToolDeliveryDiscoverySchema, type MiniToolDeliveryWake, type MiniToolDeliveryDiscovery } from "@core/infra/mini-tool-delivery.js";
 export { onDatabaseWaitTimeout, type DatabaseWaitTimeout } from "@core/db/wait-timeouts.js";
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
@@ -150,6 +152,7 @@ export {
 export {
   publishActivityNew,
   publishAssetPeaksReady,
+  publishVideoPresentationChanged,
   publishSceneLookSettled,
   publishProjectConnectionsClose,
   projectControlChannelPattern,

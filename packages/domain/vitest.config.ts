@@ -1,4 +1,7 @@
-import { defineConfig } from "vitest/config";
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
+
+import { configDefaults, defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 
 // The `@domain` alias must match tsconfig's `@domain/*` path so vitest
@@ -11,6 +14,7 @@ import { resolve } from "node:path";
 // packages/core/vitest.config.ts.
 export default defineConfig({
   test: {
+    exclude: [...configDefaults.exclude, "src/**/*.integration.test.ts"],
     // One process for this package instead of one per file — rationale and
     // measurements in packages/web/vitest.config.mts, where the effect was
     // largest.

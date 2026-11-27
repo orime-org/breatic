@@ -21,6 +21,7 @@ import {
   pickedCellsOf,
   UPRIGHT,
   type LocalToolSpec,
+  type PlannedToolSpec,
   type MiniToolMedium,
   type MiniToolParam,
   type MiniToolSlotValue,
@@ -52,7 +53,8 @@ import { DrawingControls } from '@web/spaces/canvas/mini-tool/DrawingControls';
 import { MarkControls } from '@web/spaces/canvas/mini-tool/MarkControls';
 import { signedReading } from '@web/spaces/canvas/mini-tool/signed-reading';
 import { EXPAND_RATIOS, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
-import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
+import { PresentedFilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
+import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
 import { isJoinTool, joinClipsOf, joinCrossfadeCap, joinShortestClip, joinTotalSeconds } from '@web/spaces/canvas/mini-tool/join';
 import { JoinClipRow } from '@web/spaces/canvas/mini-tool/JoinClipRow';
 import {
@@ -73,6 +75,12 @@ type HeldSlot = MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined;
 
 export interface MiniToolPanelProps {
   spec: MiniToolSpec;
+  /** Approved tool-specific content inside the standard panel and footer. */
+  customBody?: React.ReactNode;
+  /** Whether the title starts with the tool's icon (demo 2026-10-23-1306 main.tsx, the video tool panels). */
+  titleIcon?: boolean;
+  /** A count beside the title, such as the outputs a run plans. */
+  aside?: React.ReactNode;
   /** A model tool's controls, read from its pinned model. */
   modelControls: readonly ModelControl[] | undefined;
   /** The pinned model's catalog entry, for a model tool. */
@@ -102,6 +110,8 @@ export interface MiniToolPanelProps {
   /** On the payer's key, the full sentence its short name stands for (inner#1953). */
   creditDetail?: string;
   refusal: MiniToolRefusal;
+  /** Why Run cannot run now although its inputs are there; a press shows it (packages/web/AGENTS.md#disabled-controls). */
+  runBlockedReason?: string;
   onRun: () => void;
   onClose: () => void;
   /** An expand tool's ratio presets: the one in use, which fit under the model's cap, and the setter. */
@@ -345,10 +355,12 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     creditText,
     creditDetail,
     refusal,
+    runBlockedReason,
     onRun,
     onClose,
   } = props;
   const t = useTranslation();
+  const TitleIcon = MINI_TOOL_ICONS[spec.icon];
   const blocked = BLOCKING_REFUSALS.has(refusal);
   // A prompt that may stay empty is an addition, drawn last across the panel;
   // one that holds Run back is the tool's main input, drawn before the params.
@@ -508,10 +520,12 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
   return (
     <CanvasPanel
       title={
-        <span data-testid='mini-tool-panel-title' className='text-sm font-semibold'>
+        <span data-testid='mini-tool-panel-title' className={props.titleIcon === true ? 'flex items-center gap-2 text-sm font-semibold' : 'text-sm font-semibold'}>
+          {props.titleIcon === true ? <TitleIcon className='size-4' aria-hidden='true' /> : null}
           {t(spec.labelKey)}
         </span>
       }
+      aside={props.aside}
       closeLabel={t('canvas.miniTool.panel.close')}
       closeTestId='mini-tool-panel-close'
       onClose={onClose}
@@ -520,71 +534,74 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       testId='mini-tool-panel'
     >
       <div data-testid={joinSlot === undefined ? undefined : 'join-panel'} className='flex flex-col gap-2.5 px-3 pb-2.5'>
-        {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
-        {spec.markup === true ? <MarkControls /> : null}
-        {props.expand !== undefined ? (
-          <ExpandRatioGroup expand={props.expand} />
-        ) : null}
-        {isModelTool(spec) ? (
-          columns ? (
-            <div className='grid grid-cols-2 gap-5'>
-              <div data-testid='mini-tool-column-left' className='flex flex-col gap-2.5'>
-                {referenceShown !== undefined ? (
-                  <ReferencePreview
-                    url={referenceShown.url}
-                    note={t('canvas.miniTool.relight.referenceNote')}
-                    title={t('canvas.miniTool.relight.lightTitle')}
-                    source={t('canvas.miniTool.relight.sourceFromReference')}
-                  />
-                ) : (
-                  controlsOf(leftControls)
-                )}
+        {props.customBody ?? <>
+          {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
+          {spec.markup === true ? <MarkControls /> : null}
+          {props.expand !== undefined ? (
+            <ExpandRatioGroup expand={props.expand} />
+          ) : null}
+          {isModelTool(spec) ? (
+            columns ? (
+              <div className='grid grid-cols-2 gap-5'>
+                <div data-testid='mini-tool-column-left' className='flex flex-col gap-2.5'>
+                  {referenceShown !== undefined ? (
+                    <ReferencePreview
+                      url={referenceShown.url}
+                      note={t('canvas.miniTool.relight.referenceNote')}
+                      title={t('canvas.miniTool.relight.lightTitle')}
+                      source={t('canvas.miniTool.relight.sourceFromReference')}
+                    />
+                  ) : (
+                    controlsOf(leftControls)
+                  )}
+                </div>
+                <div data-testid='mini-tool-column-right' className='flex flex-col justify-between gap-2.5'>
+                  {modelBody}
+                </div>
               </div>
-              <div data-testid='mini-tool-column-right' className='flex flex-col justify-between gap-2.5'>
-                {modelBody}
-              </div>
-            </div>
+            ) : (
+              modelBody
+            )
           ) : (
-            modelBody
-          )
-        ) : (
-          <>
-            {slotTiles}
-            {spec.params.map((param) => (
-              <LocalParamControl
-                key={param.key}
-                param={param}
-                spec={spec}
-                params={params}
-                onParams={onParams}
-                source={props.source}
-                slots={slots}
-              />
-            ))}
-            {joinSlot !== undefined && joinClips.length < 2 ? (
-              <p data-testid='join-needs-clip' className='text-xs text-muted-foreground'>
-                {t('canvas.miniTool.panel.joinNeedsClip')}
-              </p>
-            ) : null}
-            {refusal === 'joinTooMany' && joinSlot !== undefined ? (
-              <p data-testid='join-too-many' className='text-xs text-muted-foreground'>
-                {t('canvas.miniTool.panel.joinTooMany', { n: slotCaps[joinSlot.key] ?? 0 })}
-              </p>
-            ) : null}
-          </>
-        )}
-        {spec.noteKey === undefined ? null : (
-          <p data-testid='mini-tool-note' className='text-xs text-muted-foreground'>
-            {t(spec.noteKey)}
-          </p>
-        )}
-        {promptFirst ? null : promptBox}
+            <>
+              {slotTiles}
+              {spec.params.map((param) => (
+                <LocalParamControl
+                  key={param.key}
+                  param={param}
+                  spec={spec}
+                  params={params}
+                  onParams={onParams}
+                  source={props.source}
+                  slots={slots}
+                />
+              ))}
+              {joinSlot !== undefined && joinClips.length < 2 ? (
+                <p data-testid='join-needs-clip' className='text-xs text-muted-foreground'>
+                  {t('canvas.miniTool.panel.joinNeedsClip')}
+                </p>
+              ) : null}
+              {refusal === 'joinTooMany' && joinSlot !== undefined ? (
+                <p data-testid='join-too-many' className='text-xs text-muted-foreground'>
+                  {t('canvas.miniTool.panel.joinTooMany', { n: slotCaps[joinSlot.key] ?? 0 })}
+                </p>
+              ) : null}
+            </>
+          )}
+          {spec.noteKey === undefined ? null : (
+            <p data-testid='mini-tool-note' className='text-xs text-muted-foreground'>
+              {t(spec.noteKey)}
+            </p>
+          )}
+          {promptFirst ? null : promptBox}
+        </>}
       </div>
       <PanelRunFooter
         creditText={creditText}
         creditDetail={creditDetail}
         runLabel={t('canvas.miniTool.panel.run')}
         disabled={blocked}
+        blockedReason={blocked ? undefined : runBlockedReason}
         loading={refusal === 'exporting'}
         onRun={onRun}
         creditTestId='mini-tool-credit'
@@ -619,7 +636,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
 
 interface LocalParamControlProps {
   param: MiniToolParam;
-  spec: LocalToolSpec;
+  spec: LocalToolSpec | PlannedToolSpec;
   params: Readonly<Record<string, unknown>>;
   onParams: (partial: Record<string, unknown>) => void;
   source: MiniToolSourceInfo;
@@ -659,14 +676,13 @@ function RectSideInput({ side, value, onCommit }: RectSideInputProps): React.JSX
       inputMode='numeric'
       autoComplete='off'
       data-testid={`mini-tool-rect-${side}`}
-      aria-label={side === 'w' ? 'W' : 'H'}
       value={draft ?? String(value)}
       onChange={(event) => setDraft(event.target.value.replace(/[^0-9]/g, ''))}
       onBlur={commit}
       onKeyDown={(event) => {
         if (event.key === 'Enter') commit();
       }}
-      className='h-8 w-24 text-xs tabular-nums md:text-xs'
+      className='h-8 min-w-0 flex-1 text-xs tabular-nums md:text-xs'
     />
   );
 }
@@ -798,10 +814,15 @@ function LocalParamControl({ param, spec, params, onParams, source, slots }: Loc
       return (
         <div className='flex flex-col gap-1.5'>
           <span className='text-xs font-medium text-muted-foreground'>{label}</span>
-          <div className='flex items-center gap-1.5'>
-            <RectSideInput side='w' value={Math.round(rect.w)} onCommit={set} />
-            <span className='text-xs text-muted-foreground'>×</span>
-            <RectSideInput side='h' value={Math.round(rect.h)} onCommit={set} />
+          <div className='flex items-center gap-2 text-xs'>
+            <label className='flex min-w-0 flex-1 items-center gap-1.5'>
+              <span className='text-muted-foreground'>{t('canvas.miniTool.param.rect.width')}</span>
+              <RectSideInput side='w' value={Math.round(rect.w)} onCommit={set} />
+            </label>
+            <label className='flex min-w-0 flex-1 items-center gap-1.5'>
+              <span className='text-muted-foreground'>{t('canvas.miniTool.param.rect.height')}</span>
+              <RectSideInput side='h' value={Math.round(rect.h)} onCommit={set} />
+            </label>
           </div>
         </div>
       );
@@ -818,7 +839,7 @@ function LocalParamControl({ param, spec, params, onParams, source, slots }: Loc
           {/* The band shows what stays: the cut-away ends dimmed, the kept span framed. */}
           <div data-testid='mini-tool-range-band' className='relative h-9 overflow-hidden rounded-chrome-sm bg-muted'>
             {source.url !== undefined && source.width !== undefined && source.height !== undefined ? (
-              <FilmStrip src={source.url} duration={duration} aspect={source.width / source.height} />
+              <PresentedFilmStrip src={source.url} duration={duration} aspect={source.width / source.height} />
             ) : spec.source === 'audio' && source.url !== undefined ? (
               <AudioBandWaveform url={source.url} duration={source.duration} sizeBytes={source.sizeBytes} />
             ) : null}

@@ -12,7 +12,8 @@
  */
 
 import { afterEach, describe, it, expect } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import type { CanvasNodeFields, NodeTaskCounts } from '@breatic/shared';
 
 import { toNodeView } from '@web/data/yjs/node-view';

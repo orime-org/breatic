@@ -123,15 +123,15 @@ export interface MediaLimits {
 
 /** What finishing or fetching an upload is told, beyond the bytes. */
 export interface IngestRun {
-  /** Where to write a cut frame, named on every finish and fetch. */
-  coverKey: string;
+  /** Where to write a cut frame; absent for a derived object, which has no cover. */
+  coverKey?: string;
   /**
    * When the task this upload belongs to runs out, in epoch ms (inner#1367).
    * The Worker holds the media container to it and to nothing of its own.
    */
   deadlineAt: number;
-  /** What a picture with an EXIF orientation is turned upright under. */
-  limits: MediaLimits;
+  /** What a picture with an EXIF orientation is turned upright under; absent for a derived object, which is never one. */
+  limits?: MediaLimits;
 }
 
 /** What one part's write left behind: R2's receipt for it. */

@@ -47,6 +47,7 @@ import {
   applyIngestReport,
   INGEST_SIDE_EFFECT_EVENTS,
   type IngestReportOutcome,
+  type IngestReport,
   type IngestSideEffects,
 } from "@domain/asset/ingest-report.service.js";
 
@@ -154,6 +155,17 @@ export interface BackendUploadContext {
 }
 
 /**
+ * Preserve the caller's original video budget at the registration boundary.
+ * @param report - Trusted stored-byte measurements.
+ * @param deadlineAt - Parent task's original absolute deadline.
+ * @returns The unchanged canonical registration outcome and typed side effects.
+ * @throws {Error} When canonical registration fails.
+ */
+function registerBackendOutcome(report: Extract<IngestReport, { outcome: 'completed' }>, deadlineAt: number): Promise<IngestReportOutcome> {
+  return report.contentType.startsWith('video/') ? applyIngestReport(report, { presentation: { deadlineAt } }) : applyIngestReport(report);
+}
+
+/**
  * Issue the grant for something the backend produced, and say what its ticket
  * is signed from.
  *
@@ -249,11 +261,11 @@ export async function uploadBytesToStorage(
     ingestRunFor(storageKey, ctx.deadlineAt),
   );
   return landed(
-    await applyIngestReport({
+    await registerBackendOutcome({
       storageKey,
       outcome: "completed",
       ...measured,
-    }),
+    }, ctx.deadlineAt),
     `the upload for project ${ctx.projectId}`,
   );
 }
@@ -287,11 +299,11 @@ export async function transferUrlToStorage(
     ingestRunFor(granted.storageKey, ctx.deadlineAt),
   );
   return landed(
-    await applyIngestReport({
+    await registerBackendOutcome({
       storageKey: granted.storageKey,
       outcome: "completed",
       ...measured,
-    }),
+    }, ctx.deadlineAt),
     `the transfer of ${sourceUrl}`,
   );
 }
@@ -446,6 +458,6 @@ export async function pullUserLink(
     return { status: "failed", reason: INGEST_TYPE_NOT_REPORTED, settled, reported: measured.contentType };
   }
 
-  const outcome = await applyIngestReport({ storageKey, outcome: "completed", ...measured, contentType: storedType });
+  const outcome = await registerBackendOutcome({ storageKey, outcome: "completed", ...measured, contentType: storedType }, deadlineAt);
   return { status: "reported", outcome };
 }

@@ -19,7 +19,7 @@ import { expect, type Browser, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
-import { blankPoint, bodySelection } from '../helpers/document-body';
+import { blankPoint, bodySelection, pickFromPlus } from '../helpers/document-body';
 import { pressAndSettle } from '../helpers/editor-keys';
 import { wavBytes } from '../helpers/media-bytes';
 import { storedPicture, uniquePicture } from '../helpers/upload';
@@ -148,28 +148,6 @@ async function types(p: Page): Promise<string[]> {
       (row) => row.getAttribute('data-content-type') ?? '?',
     );
   }, EDITOR);
-}
-
-/**
- * Picks a file through the plus on the empty line's insert menu.
- * @param p - The page.
- * @param kind - The entry.
- * @param file - What to choose.
- * @param file.name - Its name.
- * @param file.mimeType - Its type.
- * @param file.buffer - Its bytes.
- */
-async function pickFromPlus(
-  p: Page,
-  kind: 'image' | 'audio' | 'video',
-  file: { name: string; mimeType: string; buffer: Buffer },
-): Promise<void> {
-  const firstRow = p.locator(`${EDITOR} .bn-block-content`).first();
-  await firstRow.hover();
-  await visibleSpace(p).getByTestId('doc-block-plus').click();
-  const chooser = p.waitForEvent('filechooser');
-  await p.getByTestId(`doc-block-insert-${kind}`).click();
-  await (await chooser).setFiles(file);
 }
 
 /**

@@ -128,7 +128,7 @@ describe('G-38 each count opens its own list', () => {
             now={NOW}
             isLoading={false}
             isError={false}
-            hasRetryFile={(): boolean => false}
+            canRetry={(): boolean => false}
             isWaiting={(): boolean => false}
             readOnly={false}
             onReload={(): void => {}}
@@ -184,7 +184,7 @@ describe('G-38 a waiting row of the task list', () => {
     const props = {
       entry: waitingEntry(),
       now: NOW,
-      hasRetryFile: false,
+      canRetry: false,
       readOnly: false,
       retrying: false,
       dismissing: false,

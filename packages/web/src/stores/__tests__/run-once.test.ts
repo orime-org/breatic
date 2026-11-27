@@ -163,25 +163,97 @@ describe('runOnce', () => {
     ['a gateway error', { status: 502, message: 'bad gateway' }],
     ['a throttle', { status: 429, message: 'slow', retryAfterSeconds: 3 }],
   ])('re-sends the same key and body after %s, until the server finishes', async (_case, error) => {
-    const body = { prompt: 'cat' };
-    const send = vi
-      .fn<(key: string, sent: unknown) => Promise<string>>()
-      .mockRejectedValueOnce(failed(error))
-      .mockResolvedValueOnce('done');
-    const onDone = vi.fn();
-    // The first re-send waits a jittered time that can round to 0 ms; pin it
-    // above zero so the press is still waiting when the case first looks.
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
-    void runOnce('generate:s:n', { scope: 'generate', prepare: () => body, send, onDone });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(getRunning('generate:s:n')).toBe(true);
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const answer = pending<string>();
+    try {
+      const body = { prompt: 'cat' };
+      const prepare = vi.fn(() => body);
+      const send = vi
+        .fn<(key: string, sent: unknown) => Promise<string>>()
+        .mockRejectedValueOnce(failed(error))
+        .mockImplementationOnce(() => answer.promise);
+      const onDone = vi.fn();
+      const onFailure = vi.fn();
+      const outcome = runOnce('generate:s:n', { scope: 'generate', prepare, send, onDone, onFailure });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(getRunning('generate:s:n')).toBe(true);
+      expect(onDone).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(send).toHaveBeenCalledTimes(2);
-    expect(send.mock.calls[1]?.[0]).toBe(send.mock.calls[0]?.[0]);
-    expect(send.mock.calls[1]?.[1]).toBe(body);
-    expect(onDone).toHaveBeenCalledWith('done');
-    expect(getRunning('generate:s:n')).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(prepare).toHaveBeenCalledTimes(1);
+      expect(send.mock.calls[1]?.[0]).toBe(send.mock.calls[0]?.[0]);
+      expect(send.mock.calls[0]?.[1]).toBe(body);
+      expect(send.mock.calls[1]?.[1]).toBe(body);
+      expect(getRunning('generate:s:n')).toBe(true);
+      expect(onDone).not.toHaveBeenCalled();
+      expect(onFailure).not.toHaveBeenCalled();
+      const otherPrepare = vi.fn(() => ({ prompt: 'another' }));
+      const otherSend = vi.fn(() => Promise.resolve('other'));
+      expect(runOnce('generate:s:n', { scope: 'generate', prepare: otherPrepare, send: otherSend })).toBe(outcome);
+      expect(otherPrepare).not.toHaveBeenCalled();
+      expect(otherSend).not.toHaveBeenCalled();
+
+      answer.resolve('done');
+      await expect(outcome).resolves.toEqual({ kind: 'done', result: 'done' });
+      expect(onDone).toHaveBeenCalledTimes(1);
+      expect(onDone).toHaveBeenCalledWith('done');
+      expect(onFailure).not.toHaveBeenCalled();
+      expect(getRunning('generate:s:n')).toBeUndefined();
+      expect(send).toHaveBeenCalledTimes(2);
+    } finally {
+      answer.resolve('done');
+      random.mockRestore();
+    }
+  });
+
+  it('accepts a final answer after a zero-delay resend', async () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const body = { prompt: 'cat' };
+      const prepare = vi.fn(() => body);
+      const send = vi.fn<(key: string, sent: unknown) => Promise<string>>()
+        .mockRejectedValueOnce(failed({ status: 0, message: 'net', network: true }))
+        .mockResolvedValueOnce('done');
+      const onDone = vi.fn();
+      const outcome = runOnce('generate:s:n', { scope: 'generate', prepare, send, onDone });
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(outcome).resolves.toEqual({ kind: 'done', result: 'done' });
+      expect(prepare).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(send.mock.calls[1]?.[0]).toBe(send.mock.calls[0]?.[0]);
+      expect(send.mock.calls[0]?.[1]).toBe(body);
+      expect(send.mock.calls[1]?.[1]).toBe(body);
+      expect(onDone).toHaveBeenCalledTimes(1);
+      expect(onDone).toHaveBeenCalledWith('done');
+      expect(getRunning('generate:s:n')).toBeUndefined();
+    } finally { random.mockRestore(); }
+  });
+
+  it('keeps the press pending across a positive-delay resend until its answer', async () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const answer = pending<string>();
+    try {
+      const send = vi.fn<() => Promise<string>>()
+        .mockRejectedValueOnce(failed({ status: 0, message: 'net', network: true }))
+        .mockImplementationOnce(() => answer.promise);
+      const outcome = runOnce('generate:s:n', { scope: 'generate', prepare: () => ({}), send });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(getRunning('generate:s:n')).toBe(true);
+      await vi.advanceTimersByTimeAsync(499);
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(getRunning('generate:s:n')).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(getRunning('generate:s:n')).toBe(true);
+      answer.resolve('done');
+      await expect(outcome).resolves.toEqual({ kind: 'done', result: 'done' });
+      expect(getRunning('generate:s:n')).toBeUndefined();
+    } finally {
+      answer.resolve('done');
+      random.mockRestore();
+    }
   });
 
   it('waits as long as a throttle names before asking again', async () => {

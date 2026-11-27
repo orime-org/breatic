@@ -136,6 +136,31 @@ export function assetPeaksReadyChannel(prefix: string, projectId: string): strin
 }
 
 /**
+ * Control event announcing that what users see of a video's presentation changed (a failure, the expiry, abandon,
+ * a new job or the job's end; frames-split §7.20), sent once to each live Project referencing a live row under the
+ * video's storage key; collab relays it as the `video-presentation:changed` stateless signal on that Project's meta
+ * doc, and every surface showing the video reads its presentation again.
+ */
+export interface VideoPresentationChangedControlEvent {
+  type: "project-video-presentation:changed";
+  projectId: string;
+  assetId: string;
+  /** The video's registered address, which is what a node knows its source by. */
+  url: string;
+  ts: number;
+}
+
+/**
+ * Pub/sub channel for {@link VideoPresentationChangedControlEvent}. Matched by {@link allProjectChannelsPattern}.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
+ * @param projectId - A Project referencing the video.
+ * @returns The channel name `{prefix}:project:{projectId}:video-presentation:changed`.
+ */
+export function videoPresentationChangedChannel(prefix: string, projectId: string): string {
+  return `${prefix}:project:${projectId}:video-presentation:changed`;
+}
+
+/**
  * Control event announcing how collab settled an uploaded picture for a 3D
  * part (inner#1693 design 6.3): written, or why not. Collab relays it as the
  * `scene-look:settled` stateless signal on the project meta doc; the

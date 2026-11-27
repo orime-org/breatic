@@ -10,7 +10,7 @@ import '@testing-library/jest-dom/vitest';
 // silently does nothing and tests fail with "Invalid Chai property:
 // toHaveNoViolations". Wiring the matcher by hand is the documented
 // workaround until vitest-axe ships a fixed dist.
-import { afterAll, afterEach, beforeAll, expect, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from 'vitest';
 // Namespace import: vitest-axe v0.1.0's `dist/matchers.d.ts` mis-types
 // `toHaveNoViolations` as a type-only re-export (it is actually a
 // runtime function), so a named import errors at tsc. Importing as a
@@ -49,7 +49,7 @@ import { LOCALE_CATALOGS } from '@web/test-utils/locale-catalogs';
 // reason. The next locale we add should not need anyone to remember this file.
 beforeAll(() => {
   for (const [tag, catalog] of LOCALE_CATALOGS) {
-    setLocaleMessages(tag, catalog as Record<string, unknown>);
+    setLocaleMessages(tag, catalog);
   }
   setLocale('en');
 });
@@ -186,6 +186,13 @@ afterEach(() => {
 // isolated run had. An earlier commit on this branch claimed a peak of 105;
 // that figure does not reproduce, and what it actually counted is not known.
 
+// jsdom has no WebGL constructor. Libraries may check it before asking a
+// canvas for a context; individual tests still own their getContext/GL mocks.
+// Reapply after vitest's per-test unstub, and restore with the shared cleanup.
+beforeEach(() => {
+  vi.stubGlobal('WebGLRenderingContext', class {});
+});
+
 // jsdom lacks several APIs that Radix / cmdk / shadcn primitives use.
 // Provide minimal polyfills so component tests focus on contracts.
 class ResizeObserverStub {
@@ -234,7 +241,7 @@ if (typeof Element !== 'undefined') {
       width: 0,
       height: 0,
       toJSON: () => ({}),
-    }) as DOMRect;
+    });
   const emptyRects = (): DOMRectList => [] as unknown as DOMRectList;
   const protos = [
     typeof Node !== 'undefined' ? Node.prototype : null,

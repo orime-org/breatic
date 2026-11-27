@@ -14,6 +14,8 @@ export const findLiveInStudio: typeof assetRepo.findLiveInStudio = assetRepo.fin
 export const findLiveByKeyInStudio: typeof assetRepo.findLiveByKeyInStudio = assetRepo.findLiveByKeyInStudio;
 /** The shared repository implementation of findById. */
 export const findById: typeof assetRepo.findById = assetRepo.findById;
+/** The shared repository implementation of listProjectsReferencingStorageKey. */
+export const listProjectsReferencingStorageKey: typeof assetRepo.listProjectsReferencingStorageKey = assetRepo.listProjectsReferencingStorageKey;
 /** The shared repository implementation of fillMediaNumbers. */
 export const fillMediaNumbers: typeof assetRepo.fillMediaNumbers = assetRepo.fillMediaNumbers;
 /** The shared repository implementation of findLiveByStorageKey. */
@@ -22,6 +24,8 @@ export const findLiveByStorageKey: typeof assetRepo.findLiveByStorageKey = asset
 export const registerWithDedup: typeof assetRepo.registerWithDedup = assetRepo.registerWithDedup;
 /** The shared repository implementation of setCoverAsset. */
 export const setCoverAsset: typeof assetRepo.setCoverAsset = assetRepo.setCoverAsset;
+/** The shared repository implementation of findCoverOf. */
+export const findCoverOf: typeof assetRepo.findCoverOf = assetRepo.findCoverOf;
 /** The shared repository implementation of findCoverUrlOf. */
 export const findCoverUrlOf: typeof assetRepo.findCoverUrlOf = assetRepo.findCoverUrlOf;
 /** The shared repository implementation of findByStorageKeys. */

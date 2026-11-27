@@ -38,6 +38,7 @@ import * as nodeTaskRepo from "@domain/node-task/node-task.repo.js";
 import * as nodeTaskService from "@domain/node-task/node-task.service.js";
 import * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
+import { endMiniToolOutsideRun } from "@domain/mini-tool/run-ended-outside.service.js";
 import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
 import { StillRunning } from "@domain/task/still-running.js";
 
@@ -258,7 +259,8 @@ async function judgeExecution(row: { id: string; actorUserId: string; createdAt:
  * @returns The signals that failed.
  */
 async function closeFailed(row: taskRepo.GateTaskRow): Promise<unknown[]> {
-  await creditHoldRepo.releaseHold(row.id);
+  // A run whose settlement period is open releases its hold in its settlement's own transaction (settleMiniToolCharge).
+  if (!row.settling) await creditHoldRepo.releaseHold(row.id);
   return (await failRows(row.id, row.errorMessage ?? "internal", "internal")).publishFailures;
 }
 
@@ -343,9 +345,9 @@ export interface CancelOutcome {
 }
 
 /**
- * Cancel a task that has not started (design 3.9): the task and its credit
- * hold in one commit under the person's lock, then its rows
- * end as failed with the reason `cancelled`.
+ * Cancel a task that has not started (design 3.9): the task, its credit
+ * hold and a mini-tool task's own lane (`endMiniToolOutsideRun`) in one commit
+ * under the person's lock, then its rows end as failed with the reason `cancelled`.
  * @param taskId - The task.
  * @returns Whether it was cancelled, and each of its nodes' counts.
  * @throws {Error} When the task does not exist, or a write fails.
@@ -357,6 +359,7 @@ export async function cancelQueued(taskId: string): Promise<CancelOutcome> {
     await taskRepo.lockRunningSlots(row.userId, tx);
     if (!(await taskRepo.cancelPending(taskId, tx))) return false;
     await creditHoldRepo.releaseHold(taskId, tx);
+    await endMiniToolOutsideRun(taskId, tx);
     return true;
   });
   if (!cancelled) return { cancelled: false, counts: new Map(), publishFailures: [] };
@@ -365,8 +368,9 @@ export async function cancelQueued(taskId: string): Promise<CancelOutcome> {
 
 /**
  * End a task for good, waiting or running (design 3.9, failure cleanup and
- * the stale-waiter sweep): the task fails and its credit hold is released
- * in one commit under the person's lock, then its open rows end as failed.
+ * the stale-waiter sweep): the task fails, its credit hold is released and a
+ * mini-tool task's own lane ends (`endMiniToolOutsideRun`) in one commit under
+ * the person's lock, then its open rows end as failed.
  * @param taskId - The task.
  * @param errorMessage - What the task and its nodes' rows show; a 3D Space's own row shows `internal`.
  * @returns Whether this call failed the task, and the signals that failed.
@@ -379,9 +383,12 @@ export async function failTask(taskId: string, errorMessage: string): Promise<{ 
     await taskRepo.lockRunningSlots(row.userId, tx);
     const moved = await taskRepo.failOpen(taskId, errorMessage, tx);
     await creditHoldRepo.releaseHold(taskId, tx);
+    if (moved) await endMiniToolOutsideRun(taskId, tx);
     return moved;
   });
-  return { failed, publishFailures: (await failRows(taskId, errorMessage, "internal")).publishFailures };
+  // The rows end with the reason the task row stores, so a cancel that committed first leaves them cancelled.
+  const ended = await taskRepo.findForGate(taskId);
+  return { failed, publishFailures: (await failRows(taskId, ended?.errorMessage ?? errorMessage, "internal")).publishFailures };
 }
 
 /**

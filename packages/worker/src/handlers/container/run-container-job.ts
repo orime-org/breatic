@@ -12,7 +12,7 @@
  * charged for the seconds the report says it used.
  */
 
-import { env, getMiniToolsConfig, logger, reportGraceMs } from "@breatic/core";
+import { env, getMiniToolsConfig, logger } from "@breatic/core";
 import {
   containerCostUsd,
   createUsageRecorder,
@@ -24,6 +24,7 @@ import {
 import {
   readMiniToolJob,
   assertBeforeDeadline,
+  untilDeadline,
   untilDeadlineIfAhead,
   submitMiniToolJob,
   UploadHttpError,
@@ -37,6 +38,7 @@ import {
   type MiniToolSpec,
 } from "@breatic/shared/mini-tools";
 
+import { planReadUntil, planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { storedAsOutput } from "@worker/handlers/persisted-output.js";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import type { PersistedOutput } from "@worker/handlers/persisted-output.js";
@@ -147,17 +149,17 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
  */
 async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJob): Promise<EndedReport> {
   const { poll_interval_ms: poll } = getMiniToolsConfig();
-  // The job's own deadline and the room for its last report bound every call
-  // (inner#1367). Past it, the read that finds the ending still goes out, under
-  // the transport's own bound.
-  const endsAt = job.deadlineAt + reportGraceMs(poll);
+  // The job's own deadline and the room for its last report bound the
+  // submission (inner#1367). The read of what ingest holds starts no new work,
+  // so it is never cut at that window's end (`planReadUntil`).
+  const endsAt = planReportingEnd(job.deadlineAt);
   const bound = untilDeadlineIfAhead(endsAt);
   let report = await readMiniToolJob(
     env.INGEST_BASE_URL,
     env.INGEST_SHARED_SECRET,
     job.containerClass,
     job.jobId,
-    bound,
+    untilDeadline(planReadUntil(job.deadlineAt)),
   );
   if (report === null) {
     try {

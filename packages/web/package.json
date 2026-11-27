@@ -135,7 +135,8 @@
     "y-protocols": "catalog:",
     "yjs": "catalog:",
     "zod": "catalog:",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.14",
+    "video-animation-player": "1.0.5"
   },
   "scripts": {
     "dev": "vite",

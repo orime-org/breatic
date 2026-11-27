@@ -155,7 +155,9 @@ function OpenNodeTaskPanel({
   );
   const now = useTickingClock(counting);
 
-  const holdsFile = React.useCallback(
+  // A row offers Retry when this session holds its File; a video tool run is rerun only as a whole, from its panel
+  // (frames-split §7.19).
+  const retryable = React.useCallback(
     (taskId: string): boolean => hasRetryFile(projectId, spaceId, taskId),
     [projectId, spaceId],
   );
@@ -270,7 +272,7 @@ function OpenNodeTaskPanel({
         now={now}
         isLoading={query.isPending}
         isError={query.isLoadingError}
-        hasRetryFile={holdsFile}
+        canRetry={retryable}
         isWaiting={isWaiting}
         onReload={reload}
         onClose={closeActivePanel}

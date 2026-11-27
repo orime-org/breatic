@@ -19,6 +19,10 @@ import {
   readProbeOutput,
   peaksArgs,
   longMediaSegmentArgs,
+  landingDemuxer,
+  MFRA,
+  seekBeforeLanding,
+  seekLandingArgs,
 } from "@ingest/probe-command.js";
 
 const URL_FOR_KEY = "http://r2.local/video/2026-09-10/1_clip.mp4";
@@ -63,6 +67,39 @@ describe("what FFmpeg is asked to encode for long media", () => {
   });
 });
 
+describe("moving a seek back until it lands no later than its target", () => {
+  it("moves back by the lead of a keyframe presented after the target, below that keyframe's decode time", () => {
+    expect(seekBeforeLanding(400_000n, 400_000n, "0.480000,0.400000\n", null)).toEqual({ seekUs: 320_000n, dtsUs: 400_000n });
+    expect(seekBeforeLanding(-400_000n, -400_000n, "-0.300000,-0.380000", null)).toEqual({ seekUs: -480_000n, dtsUs: -380_000n });
+  });
+
+  it("keeps a seek that lands at or before the target, on no packet, or on the keyframe it landed on before", () => {
+    expect(seekBeforeLanding(480_000n, 480_000n, "0.480000,0.400000", null)).toBeNull();
+    expect(seekBeforeLanding(400_000n, 400_000n, "", null)).toBeNull();
+    expect(seekBeforeLanding(400_000n, 400_000n, "N/A,N/A", null)).toBeNull();
+    expect(seekBeforeLanding(0n, -80_000n, "0.080000,0.000000", 0n)).toBeNull();
+    expect(seekBeforeLanding(0n, 0n, "0.040000,0.040000", null)).toBeNull();
+  });
+
+  it("opens a segment at the moved seek and drops the frames before its start", () => {
+    const args = longMediaSegmentArgs(URL_FOR_KEY, "video", { startUs: "400000", endUs: "800000" }, ENCODING_PROFILE, 320_000n);
+    expect(args.slice(args.indexOf("-seek_timestamp"), args.indexOf("-map"))).toEqual([
+      "-seek_timestamp", "1", "-ss", "0.320000", "-i", URL_FOR_KEY, "-ss", "0.080000", "-t", "0.400000",
+    ]);
+    expect(() => longMediaSegmentArgs(URL_FOR_KEY, "video", { startUs: "400000", endUs: "800000" }, ENCODING_PROFILE, 400_001n)).toThrow(RangeError);
+  });
+
+  it("asks the probe for the input's format, and opens the decode with the demuxer options the probe searched with", () => {
+    expect(seekLandingArgs(URL_FOR_KEY, 400_000n)).toEqual(expect.arrayContaining([...MFRA, "packet=pts_time,dts_time:format=format_name"]));
+    expect(landingDemuxer('0.480000,0.400000\n"mov,mp4,m4a,3gp,3g2,mj2"\n')).toEqual(MFRA);
+    // FFmpeg refuses the mov demuxer's option for any other input ("Option use_mfra_for not found").
+    expect(landingDemuxer('0.000000,0.000000\n"matroska,webm"\n')).toEqual([]);
+    expect(landingDemuxer("0.480000,0.400000\n")).toEqual([]);
+    const args = longMediaSegmentArgs(URL_FOR_KEY, "video", { startUs: "400000", endUs: "800000" }, ENCODING_PROFILE, 400_000n, MFRA);
+    expect(args.slice(args.indexOf("-ss"), args.indexOf("-i") + 2)).toEqual(["-ss", "0.400000", ...MFRA, "-i", URL_FOR_KEY]);
+  });
+});
+
 describe("what ffprobe is asked", () => {
   it("asks for the stream fields and the format duration in one call", () => {
     const args = probeArgs(URL_FOR_KEY);
@@ -76,6 +113,8 @@ describe("what ffprobe is asked", () => {
     // a portrait phone video is filed at its stored pair while the cover cut
     // in the same run comes out the other way round.
     expect(entries).toContain("stream_side_data=rotation");
+    // The sample aspect ratio is part of what the picture shows.
+    expect(entries).toContain("sample_aspect_ratio");
     expect(entries).toContain("format=duration");
     expect(entries).toContain("start_pts");
     expect(entries).toContain("duration_ts");
@@ -441,6 +480,18 @@ describe("what the display matrix reads as", () => {
 // a video with a display matrix reports the same angle in both places.
 // Measured on ffmpeg 8.0.1 — what the container ships — with the production
 // argument list; the JSON below is that output with the empty sections dropped.
+// The cover is the source's picture as FFmpeg's default decode shows it (frames-split D07): the container crop applies.
+describe("what the cover of a cropped stream is cut from", () => {
+  it("decodes with FFmpeg's default cropping and adds no crop of its own", () => {
+    const read = readProbeOutput(JSON.stringify({ streams: [{ index: 0, codec_type: "video", codec_name: "vp9", width: 160, height: 96, disposition: { attached_pic: 0 },
+      side_data_list: [{ side_data_type: "Frame Cropping", crop_top: 1, crop_bottom: 0, crop_left: 3, crop_right: 0 }] }], format: { duration: "2.000000", format_name: "matroska,webm" } }));
+    const args = coverArgs(URL_FOR_KEY, "object", read);
+
+    expect(args.slice(0, args.indexOf("-i"))).not.toContain("-apply_cropping");
+    expect(args[args.indexOf("-vf") + 1]).toBe("scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease");
+  });
+});
+
 describe("what the first frame's rotation reads as", () => {
   it("takes a JPEG's orientation off its first frame", () => {
     const read = readProbeOutput(

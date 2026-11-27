@@ -389,7 +389,7 @@ interface LedgerEntryInput {
  * @param tx - The transaction this entry belongs in. Required, so an entry
  *   that draws a lot down can never commit without the write that drew it.
  *   Entries that draw no lot down reach here through
- *   {@link recordStandaloneUsage}, which opens the transaction itself.
+ *   {@link recordStandaloneUsage}, which opens or reuses their transaction.
  * @returns The appended row.
  */
 export async function appendLedgerEntry(
@@ -422,14 +422,18 @@ export async function appendLedgerEntry(
  * Two deployments reach here: one that charges nobody, and an account whose
  * work had no studio to bill. Both still want the ledger to say what was
  * produced, and neither has a lot to keep in step with — so this write is
- * whole on its own, which is the difference {@link appendLedgerEntry} cannot
- * express while it demands a transaction.
+ * whole on its own. A parent billing transaction can also own this entry and
+ * its hold release, using the same transaction as {@link appendLedgerEntry}.
  * @param entry - What happened, with `lotId` necessarily absent.
+ * @param outer - Optional transaction that also claims the parent and releases its hold.
  * @returns The appended row.
+ * @throws {Error} When the ledger write fails.
  */
 export async function recordStandaloneUsage(
   entry: Omit<LedgerEntryInput, "lotId">,
+  outer?: DbTx,
 ): Promise<CreditLedgerEntryEntity> {
+  if (outer) return appendLedgerEntry({ ...entry, lotId: null }, outer);
   return db.transaction((tx) => appendLedgerEntry({ ...entry, lotId: null }, tx));
 }
 
