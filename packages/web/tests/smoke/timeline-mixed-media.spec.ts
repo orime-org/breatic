@@ -350,7 +350,7 @@ test('a picture whose uploader closed the page once it was sent lands as a pictu
 test.describe('a Timeline beside the widest Agent column', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  test('keeps the editor left of the property panel, moves the toolbar\'s rightmost controls behind More and narrows the play bar', async ({ page }) => {
+  test('keeps the editor left of the property panel, moves the toolbar\'s rightmost controls behind More and narrows the play bar down to the narrowest Space', async ({ page }) => {
     const errors = watchTimelineErrors(page);
     await openSmokeProject(page);
     const spaceId = await createSpace(page, 'timeline', `Timeline narrow ${crypto.randomUUID()}`);
@@ -407,6 +407,18 @@ test.describe('a Timeline beside the widest Agent column', () => {
       await outlet.getByTestId('timeline-more').click();
       await expect(page.getByTestId('timeline-toggle-snap-item')).toHaveAttribute('aria-checked', 'false');
       await page.keyboard.press('Escape');
+
+      // At the narrowest Space the ratio control is a square icon that still stays left of the property panel.
+      await page.setViewportSize({ width: 640 + 1 + 420, height: 800 });
+      await expect(ratio).toHaveText('');
+      await expect(outlet.getByTestId('timeline-timecode')).toHaveCount(0);
+      const narrowPanelLeft = await outlet.getByTestId('timeline-side-panel').evaluate((el) => el.getBoundingClientRect().left);
+      expect(await ratio.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(narrowPanelLeft + 0.5);
+      await ratio.hover();
+      // More keeps focus after Escape closed its menu, so its own tooltip may be open beside this one.
+      await expect(page.getByRole('tooltip').filter({ hasText: '16:9' })).toBeVisible();
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await expect(ratio).toHaveText(/^16:9$/);
 
       await dragAgentEdge(-600);
       await expect(ratio).toHaveText('16:9 · 1920×1080');
