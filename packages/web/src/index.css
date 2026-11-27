@@ -493,6 +493,13 @@ body {
 .canvas-connecting .react-flow__handle::before {
   pointer-events: none;
 }
+/* The emphasized handle's inward ::after circle (inner#2216) stands down the
+   same way, so a wire dragged from another node resolves its target through
+   the anchors and connectionRadius exactly as without the plus. Its own rule:
+   the ::before contract test reads that selector followed by its block. */
+.canvas-connecting .react-flow__handle::after {
+  pointer-events: none;
+}
 .react-flow .react-flow__node.canvas-pick-selectable {
   cursor: pointer;
 }

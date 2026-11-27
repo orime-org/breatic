@@ -73,3 +73,14 @@ export const XYFLOW_SELECTED_NODE_Z = 1000;
  * its z-index inline and the viewport carries 2.
  */
 export const VIEWPORT_TOP_Z = FOCUS_TARGET_Z + XYFLOW_SELECTED_NODE_Z + 1;
+
+/**
+ * Stacking for the selection plus's preview wires (inner#2216): below every
+ * node and edge, as a drawn wire sits. They render through the viewport
+ * portal, which comes after `.react-flow__nodes` in the DOM and shares the
+ * `.react-flow__viewport` stacking context with the node wrappers (see
+ * {@link VIEWPORT_TOP_Z}), so at z auto they would paint over every node at
+ * z 0. Edges sit at z 0 and up; one below keeps the wires under both, while
+ * the pane and background sit outside the viewport and stay beneath.
+ */
+export const SELECTION_ADD_PREVIEW_Z = -1;

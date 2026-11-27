@@ -30,6 +30,20 @@ export function connectableCreatableTypes(
 }
 
 /**
+ * The creatable modalities at least one of `sourceKinds` connects into, in
+ * library order: the rows the selection plus offers (inner#2216).
+ * @param sourceKinds - The selected nodes' modalities.
+ * @returns The offerable creatable types (possibly empty).
+ * @throws {never} Never.
+ */
+export function connectableCreatableTypesForAny(
+  sourceKinds: readonly string[],
+): CreatableNodeType[] {
+  const offered = new Set(sourceKinds.flatMap((kind) => connectableCreatableTypes(kind)));
+  return CREATABLE_NODE_TYPES.filter((type) => offered.has(type));
+}
+
+/**
  * Classifies the element under a connection-drag release as "visually blank
  * canvas". The caller resolves that element via `document.elementFromPoint`
  * at the RELEASE coordinates — never `event.target`, which lies twice

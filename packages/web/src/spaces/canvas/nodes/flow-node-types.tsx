@@ -13,6 +13,7 @@ import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
 import { GroupResizer } from '@web/spaces/canvas/nodes/GroupResizer';
 import { MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
+import { countSelectedNonNotes, handlesEmphasized } from '@web/spaces/canvas/selection-add';
 import {
   NodeOccupantsContext,
   NOBODY,
@@ -202,6 +203,18 @@ function makeFlowNode(
     // draws its own edge and eight grips on the node's border, so the counts,
     // the selected border and the connection dots give way while it is open.
     const expanding = useCanvasSession((s) => miniToolOpenOn(props.id)(s)?.expand != null);
+    // The plus on the handles (inner#2216): only the one selected node, with
+    // no mini tool drawing over its picture. Unselected nodes read a constant
+    // 0, so a selection change elsewhere never re-renders them.
+    const selected = Boolean(props.selected);
+    const miniToolOpen = useCanvasSession((s) => miniToolOpenOn(props.id)(s) != null);
+    const selectedNonNoteCount = useStore((s) => (selected ? countSelectedNonNotes(s.nodes) : 0));
+    const plusOnHandles = handlesEmphasized({
+      selected,
+      selectedNonNoteCount,
+      connectable: props.isConnectable,
+      miniToolOpen,
+    });
     const openTaskPanel = useCanvasSession((s) => s.openTaskPanel);
     const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
     const onOpenTasks = React.useCallback(
@@ -271,11 +284,13 @@ function makeFlowNode(
                         type='target'
                         isConnectable={props.isConnectable}
                         hidden={expanding}
+                        emphasized={plusOnHandles}
                       />
                       <MagneticHandle
                         type='source'
                         isConnectable={props.isConnectable}
                         hidden={expanding}
+                        emphasized={plusOnHandles}
                       />
                     </>
                   ) : null}

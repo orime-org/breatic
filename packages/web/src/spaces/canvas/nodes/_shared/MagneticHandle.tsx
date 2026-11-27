@@ -20,7 +20,10 @@
  */
 
 import { Handle, Position, useStore } from '@xyflow/react';
+import { Plus } from 'lucide-react';
 import * as React from 'react';
+
+import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 
 /** The anchor element (and the dot) are 8px — matches the historic handle dot. */
 const ANCHOR_PX = 8;
@@ -32,6 +35,32 @@ const ZONE_OUT_PX = 36;
 const MAX_OUT = ZONE_OUT_PX - DOT_RADIUS;
 /** Max vertical travel of the dot center (zone is 36 tall = ±18 from border). */
 const MAX_V = ZONE_OUT_PX / 2 - DOT_RADIUS;
+/** The plus a lone selected node shows on its handles is this wide on screen. */
+const PLUS_SCREEN_PX = 20;
+
+/**
+ * Stacking for an emphasized handle inside its node (inner#2216): above the
+ * video node's playback-error cover (`z-20`, VideoNode) and its control bar
+ * (`z-10`, MediaPlayer), which otherwise paint over the plus's inner half
+ * because the handle shares the node's stacking context with them. The class
+ * written below is the literal `z-21` so Tailwind can see it; the handle test
+ * keeps the two in step.
+ */
+export const EMPHASIZED_HANDLE_Z = 21;
+
+/**
+ * The press zones of an emphasized handle, sized from `--handle-plus-r` (the
+ * plus's radius in canvas px). The outward `::before` grows tall enough to
+ * hold the plus; the `::after` is a circle of the plus's size centred on the
+ * border, so the plus's inner half presses into a connection while the node
+ * body above and below it does not (a press is clipped to the rounded edge).
+ * `index.css` stands both down while a wire is dragged.
+ */
+const EMPHASIZED_ZONE_CLASS =
+  'z-21 before:h-[max(36px,calc(var(--handle-plus-r)*2))] after:absolute after:top-1/2 after:h-[calc(var(--handle-plus-r)*2)] after:w-[calc(var(--handle-plus-r)*2)] after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:content-[""]';
+
+/** The plain zone's height, replaced by the emphasized one above. */
+const PLAIN_ZONE_HEIGHT = 'before:h-9';
 
 /** Props for {@link MagneticHandle}. */
 interface MagneticHandleProps {
@@ -50,6 +79,12 @@ interface MagneticHandleProps {
    * takes no press.
    */
   hidden?: boolean;
+  /**
+   * Whether the handle shows the plus: the node is the one selected and takes
+   * connections (inner#2216). Appearance and press area only; every gesture
+   * behaves as on the plain dot.
+   */
+  emphasized?: boolean;
 }
 
 /**
@@ -71,16 +106,27 @@ function clamp(v: number, min: number, max: number): number {
  * @param root0.type - `source` (right) or `target` (left).
  * @param root0.isConnectable - Whether the handle accepts connections.
  * @param root0.hidden - Whether the handle gives way to a tool on the node's border.
+ * @param root0.emphasized - Whether the handle shows the plus.
  * @returns The magnetic handle.
  */
 export function MagneticHandle({
   type,
   isConnectable: connectable,
   hidden = false,
+  emphasized = false,
 }: MagneticHandleProps): React.JSX.Element {
   const isConnectable = connectable && !hidden;
+  const plus = emphasized && !hidden;
   const handleRef = React.useRef<HTMLDivElement>(null);
   const dotRef = React.useRef<HTMLSpanElement>(null);
+  // The node's counter-scale (1 / max(zoom, floor)), the same one the name
+  // header uses, so the plus keeps its screen size down to the floor zoom.
+  const scale = React.useContext(NodeScaleContext);
+  // The plus's radius in canvas px; the chase keeps the whole plus inside
+  // the 36px zone, as it keeps the 4px-radius dot.
+  const plusRadius = (PLUS_SCREEN_PX / 2) * scale;
+  const maxOut = plus ? ZONE_OUT_PX - plusRadius : MAX_OUT;
+  const maxV = plus ? Math.max(0, ZONE_OUT_PX / 2 - plusRadius) : MAX_V;
   // Whether ANY connection drag is in progress (boolean selector → this only
   // re-renders on the flip, not per pointer-move). Used to REST the dot during
   // a drag (cosmetic — a one-frame lag is invisible). The correctness-critical
@@ -136,11 +182,12 @@ export function MagneticHandle({
       // Outward only: a source dot never crosses inward past the border (into
       // the node), a target dot never crosses outward past it.
       const dx =
-        type === 'source' ? clamp(rawX, 0, MAX_OUT) : clamp(rawX, -MAX_OUT, 0);
-      const dy = clamp(rawY, -MAX_V, MAX_V);
+        type === 'source' ? clamp(rawX, 0, maxOut) : clamp(rawX, -maxOut, 0);
+      // `+ 0` turns a clamped -0 into 0 so the transform reads `0px`.
+      const dy = clamp(rawY, -maxV, maxV) + 0;
       dot.style.transform = `translate(${dx}px, ${dy}px)`;
     },
-    [isConnectable, connecting, type],
+    [isConnectable, connecting, type, maxOut, maxV],
   );
 
   // The 8px element is invisible (bg-transparent, border-0); the visual is the
@@ -170,6 +217,25 @@ export function MagneticHandle({
     'pointer-events-none absolute inset-y-0 w-2 rounded-full border border-border bg-muted transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]';
   const dotClass =
     type === 'source' ? `${dotBase} left-1` : `${dotBase} -left-1`;
+  // The emphasized dot keeps the chase box (same place, same transform) and
+  // draws nothing itself; the plus inside it is the visual.
+  const plusDotBase =
+    'pointer-events-none absolute inset-y-0 w-2 transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]';
+  const plusDotClass =
+    type === 'source' ? `${plusDotBase} left-1` : `${plusDotBase} -left-1`;
+  // The ::after circle is centred on the border: the anchor's outer edge,
+  // its right edge for a source (left-2 = 8px) and its left edge for a target.
+  const plusZoneClass = `${zoneClass.replace(PLAIN_ZONE_HEIGHT, '')} ${EMPHASIZED_ZONE_CLASS} ${
+    type === 'source' ? 'after:left-2' : 'after:left-0'
+  }`;
+  const handleClass = plus ? plusZoneClass : zoneClass;
+  const handleStyle = React.useMemo<React.CSSProperties | undefined>(
+    () =>
+      plus
+        ? ({ '--handle-plus-r': `${plusRadius}px` } as React.CSSProperties)
+        : undefined,
+    [plus, plusRadius],
+  );
 
   return (
     <Handle
@@ -182,7 +248,8 @@ export function MagneticHandle({
       onPointerMove={chase}
       onPointerLeave={rest}
       onPointerDown={rest}
-      className={hidden ? `${zoneClass} !invisible` : zoneClass}
+      className={hidden ? `${zoneClass} !invisible` : handleClass}
+      style={handleStyle}
     >
       {/* Visible dot: centre straddles the border, springs toward the cursor. */}
       {hidden ? null : (
@@ -190,8 +257,20 @@ export function MagneticHandle({
           ref={dotRef}
           data-testid='handle-dot'
           aria-hidden='true'
-          className={dotClass}
-        />
+          className={plus ? plusDotClass : dotClass}
+        >
+          {plus ? (
+            // Centred on the dot's centre; the counter-scale lives here so it
+            // never shares `transform` with the chase written on the dot.
+            <span
+              data-testid='handle-plus'
+              className='absolute left-1/2 top-1/2 flex size-5 items-center justify-center rounded-full border border-border bg-popover text-foreground'
+              style={{ transform: `translate(-50%, -50%) scale(${scale})` }}
+            >
+              <Plus className='size-3.5' aria-hidden='true' />
+            </span>
+          ) : null}
+        </span>
       )}
     </Handle>
   );
