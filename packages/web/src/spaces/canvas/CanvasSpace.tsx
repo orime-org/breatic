@@ -128,7 +128,7 @@ import {
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
 import { frameProposal, occupiedRects } from '@web/spaces/canvas/lib/place-flow';
-import { docName, getDoc } from '@web/data/yjs/manager';
+import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -298,6 +298,7 @@ import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePane
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { AnnotationPanelContainer } from '@web/spaces/canvas/annotation/AnnotationPanelContainer';
+import { TextNodeFullscreen } from '@web/spaces/canvas/nodes/TextNodeFullscreen';
 import { PIN_ORIGIN } from '@web/spaces/canvas/annotation/pin-geometry';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
@@ -727,6 +728,15 @@ function CanvasSpaceInner({
   const openEmptyImagePanel = useCanvasSession((s) => s.openEmptyImagePanel);
   const openHistoryPanel = useCanvasSession((s) => s.openHistoryPanel);
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  // The text node open full screen (inner#2115), read from the graph mirror,
+  // which culling never trims, so a node scrolled out of view keeps it.
+  const fullscreenTextNodeId = useCanvasSession((s) => s.fullscreenTextNode);
+  const fullscreenTextNode = React.useMemo(() => {
+    if (fullscreenTextNodeId === null) return null;
+    const node = flowNodes.find((n) => n.id === fullscreenTextNodeId);
+    const data = node?.data as { name?: string; locked?: boolean } | undefined;
+    return { id: fullscreenTextNodeId, exists: node !== undefined, name: data?.name, locked: data?.locked === true };
+  }, [fullscreenTextNodeId, flowNodes]);
   const panelHostId = useCanvasSession((s) => s.panelHostId);
   const panelKind = useCanvasSession((s) => s.panelKind);
   const pickSession = useCanvasSession((s) => s.pickSession);
@@ -1109,6 +1119,11 @@ function CanvasSpaceInner({
     },
     [setFlowNodes, setFlowEdges, rfStoreApi],
   );
+  // Opening a text node full screen selects it alone, as entering it in place
+  // does, so collaborators see who holds it.
+  React.useEffect(() => {
+    if (fullscreenTextNodeId !== null) selectOnlyNode(fullscreenTextNodeId);
+  }, [fullscreenTextNodeId, selectOnlyNode]);
   const hostSelected = React.useMemo((): boolean | null => {
     if (panelHostId == null) return null;
     const host = flowNodes.find((n) => n.id === panelHostId);
@@ -2295,7 +2310,6 @@ function CanvasSpaceInner({
     (s) => s.consumePendingNodeCreate,
   );
   const setCanvasListening = useCanvasStore((s) => s.setCanvasListening);
-  const reportProposalOutcome = useCanvasStore((s) => s.reportProposalOutcome);
   const [selectAfterCreate, setSelectAfterCreate] = React.useState<
     string[] | null
   >(null);
@@ -2726,57 +2740,81 @@ function CanvasSpaceInner({
       // A card that posted a proposal is waiting on an answer, and its button
       // stays disabled until one comes. Dropping the intent silently leaves it
       // disabled for the life of the conversation.
-      if (isProposalIntent(intent)) reportProposalOutcome('failed');
+      if (isProposalIntent(intent)) intent.settle('failed');
       consumePendingNodeCreate();
       return;
     }
     const middle = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     if (isProposalIntent(intent)) {
-      const center = screenToFlowPosition(middle);
-      try {
-        // Sized as `occupiedRects` describes, from the document and the
-        // canvas's measurements together.
-        const occupied = occupiedRects(readNodePlacements(projectId, spaceId), (id) => {
-          const measured = getInternalNode(id)?.measured;
-          return measured?.width && measured.height
-            ? { width: measured.width, height: measured.height }
-            : undefined;
-        });
-        // The card reports a refusal by the size cap itself, so no toast here.
-        const placed = placeProposalAt(intent.proposal, center, occupied, undefined, undefined, false);
-        if ('ok' in placed) {
-          reportProposalOutcome(placed);
-          consumePendingNodeCreate();
-          return;
-        }
-        const focus = whatToFocus(intent.proposal, placed);
-        // A Space opened empty and never framed still has its opening fit
-        // queued for the first nodes to arrive; the framing below is that one.
-        if (placed.bounds) clearOpeningFit();
-        if (focus.panel) {
-          // The panel that opens under one of them is framed with them once
-          // it has landed, in one move.
-          openGeneratePanel(focus.panel.nodeId, focus.panel.type);
-          showPlaced(placed, focus.panel.nodeId, PROPOSAL_FRAME_MS);
-        } else if (placed.bounds) {
-          // The camera follows what landed: centred on it, zoomed out only as
-          // far as it takes to show all of it (inner#1443 A4).
-          const zoom = rfStoreApi.getState().transform[2];
-          void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
-            duration: PROPOSAL_FRAME_MS,
-            // A straight slide, like the other framings: the default arc zooms
-            // out on the way and back in.
-            interpolate: 'linear',
+      const { proposal: posted, settle } = intent;
+      /**
+       * Place a proposal whose material already has this Project's addresses.
+       * @param proposal - The proposal.
+       */
+      const place = (proposal: CanvasProposal): void => {
+        const center = screenToFlowPosition(middle);
+        try {
+          // Sized as `occupiedRects` describes, from the document and the
+          // canvas's measurements together.
+          const occupied = occupiedRects(readNodePlacements(projectId, spaceId), (id) => {
+            const measured = getInternalNode(id)?.measured;
+            return measured?.width && measured.height
+              ? { width: measured.width, height: measured.height }
+              : undefined;
           });
+          // The card reports a refusal by the size cap itself, so no toast here.
+          const placed = placeProposalAt(proposal, center, occupied, undefined, undefined, false);
+          if ('ok' in placed) {
+            settle(placed);
+            return;
+          }
+          const focus = whatToFocus(proposal, placed);
+          // A Space opened empty and never framed still has its opening fit
+          // queued for the first nodes to arrive; the framing below is that one.
+          if (placed.bounds) clearOpeningFit();
+          if (focus.panel) {
+            // The panel that opens under one of them is framed with them once
+            // it has landed, in one move.
+            openGeneratePanel(focus.panel.nodeId, focus.panel.type);
+            showPlaced(placed, focus.panel.nodeId, PROPOSAL_FRAME_MS);
+          } else if (placed.bounds) {
+            // The camera follows what landed: centred on it, zoomed out only as
+            // far as it takes to show all of it (inner#1443 A4).
+            const zoom = rfStoreApi.getState().transform[2];
+            void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
+              duration: PROPOSAL_FRAME_MS,
+              // A straight slide, like the other framings: the default arc zooms
+              // out on the way and back in.
+              interpolate: 'linear',
+            });
+          }
+          if (focus.select.length > 0) setSelectAfterCreate(focus.select);
+          settle('placed');
+        } catch {
+          // `placeProposalAt` takes back whatever it wrote before it threw, so
+          // nothing half-placed is left behind -- but the card is still waiting,
+          // and a button that stays disabled forever is worse than one that says
+          // it did not work.
+          settle('failed');
         }
-        if (focus.select.length > 0) setSelectAfterCreate(focus.select);
-        reportProposalOutcome('placed');
-      } catch {
-        // `placeProposalAt` takes back whatever it wrote before it threw, so
-        // nothing half-placed is left behind -- but the card is still waiting,
-        // and a button that stays disabled forever is worse than one that says
-        // it did not work.
-        reportProposalOutcome('failed');
+      };
+      // The user's material joins this Project the way a paste does before the nodes are written (inner#2171 design
+      // §5.2); the write itself stays one synchronous batch, so it runs once the answer is in.
+      const materials = [...new Set(posted.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material])))];
+      if (materials.length === 0) place(posted);
+      else {
+        const name = docName.canvasSpace(projectId, spaceId);
+        void canvasApi.paste({ project_id: projectId, urls: materials, pairs: [], history: [] }).then(({ map }) => {
+          // A Space closed meanwhile is not written, as a paste is not (`pastePayload`).
+          if (!hasDoc(name)) { settle('failed'); return; }
+          place({ ...posted, nodes: posted.nodes.map((node) => {
+            const copy = node.material === undefined ? undefined : map[node.material];
+            return typeof copy === 'string' ? { ...node, material: copy } : node;
+          }) });
+        }, () => {
+          // The card says the proposal failed, once.
+          settle('failed');
+        });
       }
     } else {
       const offset = (staggerRef.current % STAGGER_WRAP) * STAGGER_STEP_PX;
@@ -2791,7 +2829,6 @@ function CanvasSpaceInner({
     screenToFlowPosition,
     createNode,
     placeProposalAt,
-    reportProposalOutcome,
     openGeneratePanel,
     projectId,
     spaceId,
@@ -4917,6 +4954,14 @@ function CanvasSpaceInner({
             {/* An expanded annotation: the fifth panel in that same host +
               lifecycle, floating beside its pin. */}
             <AnnotationPanelContainer nodes={nodes} deletedByPeer={deletedByPeer} />
+            {fullscreenTextNode ? (
+              <TextNodeFullscreen
+                nodeId={fullscreenTextNode.id}
+                name={fullscreenTextNode.name}
+                exists={fullscreenTextNode.exists}
+                locked={fullscreenTextNode.locked}
+              />
+            ) : null}
             {/* Reset-empty-image panel: shares the host + lifecycle with Generate
               (panelHostId + panelKind), mutually exclusive, floats below its
               node via NodeToolbar. */}

@@ -29,6 +29,7 @@ export const authConfigSchema = z.object({
   google_login: z
     .object({ state_ttl_seconds: positiveInt.default(600) })
     .default({ state_ttl_seconds: 600 }),
+  desktop_handoff: z.object({ ttl_seconds: positiveInt.default(300) }).default({ ttl_seconds: 300 }),
 });
 
 /** The sign-up code settings, in the units the service works in. */
@@ -39,6 +40,8 @@ export interface SignupCodeConfig {
 }
 
 let _cached: SignupCodeConfig | null = null;
+let _desktopHandoffTtl: number | null = null;
+let _googleCached: { stateTtlSeconds: number } | null = null;
 
 /**
  * Whether an email sign-up must prove the address with a code. True for the
@@ -56,8 +59,7 @@ export function emailVerificationEnabled(): boolean {
  */
 export function getSignupCodeConfig(): SignupCodeConfig {
   if (_cached) return _cached;
-  const raw = readFileSync(resolve(MONOREPO_ROOT, "config", "auth.yaml"), "utf-8");
-  const { signup_code: c } = authConfigSchema.parse(parse(raw) as unknown);
+  const { signup_code: c } = readAuthConfig();
   _cached = {
     ttlSeconds: c.ttl_seconds,
     maxAttemptsPerCode: c.max_attempts_per_code,
@@ -66,16 +68,33 @@ export function getSignupCodeConfig(): SignupCodeConfig {
   return _cached;
 }
 
-let _googleCached: { stateTtlSeconds: number } | null = null;
-
 /**
  * Load and cache the full-page Google sign-in settings (inner#2157).
  * @returns How long a started sign-in lives, in seconds.
  * @throws {z.ZodError} if a value is malformed.
  */
 export function getGoogleLoginConfig(): { stateTtlSeconds: number } {
-  if (_googleCached) return _googleCached;
-  const raw = readFileSync(resolve(MONOREPO_ROOT, "config", "auth.yaml"), "utf-8");
-  _googleCached = { stateTtlSeconds: authConfigSchema.parse(parse(raw) as unknown).google_login.state_ttl_seconds };
+  _googleCached ??= { stateTtlSeconds: readAuthConfig().google_login.state_ttl_seconds };
   return _googleCached;
+}
+
+/**
+ * Read and validate `config/auth.yaml`.
+ * @returns The parsed settings, defaults filled in.
+ * @throws {z.ZodError} if a value is malformed.
+ * @throws {Error} if the file cannot be read.
+ */
+function readAuthConfig(): z.infer<typeof authConfigSchema> {
+  const raw = readFileSync(resolve(MONOREPO_ROOT, "config", "auth.yaml"), "utf-8");
+  return authConfigSchema.parse(parse(raw) as unknown);
+}
+
+/**
+ * How long a desktop sign-in handoff code stays redeemable (inner#2041).
+ * @returns Seconds (memoized after the first read).
+ * @throws {z.ZodError} if the value is malformed.
+ */
+export function getDesktopHandoffTtlSeconds(): number {
+  _desktopHandoffTtl ??= readAuthConfig().desktop_handoff.ttl_seconds;
+  return _desktopHandoffTtl;
 }

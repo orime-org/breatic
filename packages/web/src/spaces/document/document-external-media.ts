@@ -7,10 +7,11 @@
  *
  * A block in this body carries an address our storage registered, so each
  * medium put in is judged by its own address (§5.4.4): under our public
- * prefix it stays; an outside address the ingest Worker can fetch, or a
- * `data:` or `blob:` one the browser can read, becomes a pending block whose
- * upload brings it into storage; anything else is left out and the user is
- * told how many were. A pending block copied from a body keeps its upload id.
+ * prefix it becomes a pending block whose upload registers it for this
+ * Project through the paste request, as a canvas paste does (inner#2171); an
+ * outside address the ingest Worker can fetch, or a `data:` or `blob:` one
+ * the browser can read, becomes a pending block whose upload brings it into
+ * storage; anything else is left out and the user is told how many were. A pending block copied from a body keeps its upload id.
  * While our prefix is not known yet, every medium whose address can reach
  * storage becomes pending, and its upload sorts ours from outside once the
  * prefix is in. The uploads start once the paste or the drop is done, for
@@ -110,6 +111,39 @@ export function ownMediaOnly(blocks: readonly WrittenBlock[], prefix: string | n
   return { blocks: kept, count };
 }
 
+/**
+ * The media addresses of some blocks, nested ones included.
+ * @param blocks - The blocks.
+ * @returns Each media block's address.
+ */
+export function mediaUrlsOf(blocks: readonly WrittenBlock[]): string[] {
+  return blocks.flatMap((block) => {
+    const url = block.props?.['url'];
+    const own = block.type !== undefined && isMediaBlockType(block.type) && typeof url === 'string' && url !== '' ? [url] : [];
+    return [...own, ...mediaUrlsOf(block.children ?? [])];
+  });
+}
+
+/**
+ * The blocks with each media address the paste request mapped replaced; one it left out keeps its own address, as a
+ * canvas paste keeps it.
+ * @param blocks - The blocks.
+ * @param map - Old address to this Project's address.
+ * @returns The rewritten blocks.
+ */
+export function withMediaUrls(blocks: readonly WrittenBlock[], map: Readonly<Record<string, string | null>>): WrittenBlock[] {
+  return blocks.map((block) => {
+    const url = block.props?.['url'];
+    const copy = typeof url === 'string' ? map[url] : undefined;
+    const props = typeof copy === 'string' ? { ...block.props, url: copy } : block.props;
+    return {
+      ...block,
+      ...(props === undefined ? {} : { props }),
+      ...(block.children === undefined ? {} : { children: withMediaUrls(block.children, map) }),
+    };
+  });
+}
+
 /** What the body needs to judge pasted media. */
 export interface PastedMediaOptions {
   /** What every address of ours starts with, or null while it is not known. */
@@ -132,6 +166,8 @@ export interface PastedMediaOptions {
 interface Queued {
   readonly uploadId: string;
   readonly url: string;
+  /** One of our media, registered for this Project through the paste request; otherwise fetched from outside. */
+  readonly ours: boolean;
 }
 
 /**
@@ -184,8 +220,8 @@ export function documentPastedMediaExtension(
         leftOut = 0;
         stillUploading = 0;
         const missing = waiting.filter(({ uploadId }) => !present.has(uploadId)).length;
-        for (const { uploadId, url } of waiting) {
-          if (present.has(uploadId)) options?.start?.(uploadId, { kind: 'address', url });
+        for (const { uploadId, url, ours } of waiting) {
+          if (present.has(uploadId)) options?.start?.(uploadId, ours ? { kind: 'ours', url } : { kind: 'address', url });
         }
         if (judgedOut + missing > 0) options?.onLeftOut(judgedOut + missing);
         if (otherDocument > 0) options?.onStillUploading?.(otherDocument);
@@ -218,9 +254,11 @@ export function documentPastedMediaExtension(
           media.leaveOut(1);
           return null;
         }
-        if (how === 'ours') return props;
+        // One of ours joins this Project the way a canvas paste does: its block waits for the paste request's answer
+        // (inner#2171 design §5.2). A body with nowhere to upload to keeps it as it is.
+        if (how === 'ours' && options?.start === undefined) return props;
         const uploadId = newId();
-        queued.push({ uploadId, url: url as string });
+        queued.push({ uploadId, url: url as string, ours: how === 'ours' });
         settle();
         return { ...props, url: '', uploadId, ...(options?.docName != null && { uploadHome: options.docName }) };
       },

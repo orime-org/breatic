@@ -370,7 +370,7 @@ describe('useCanvasStore', () => {
   // type and the other as a group, so a proposal mistaken for a type string
   // would be dropped without a word on screen.
   it('requestNodeCreate queues a whole proposal the same way (chat → canvas mailbox)', () => {
-    useCanvasStore.getState().requestNodeCreate({ proposal: PAIR });
+    useCanvasStore.getState().requestNodeCreate({ proposal: PAIR, settle: () => undefined });
 
     const pending = useCanvasStore.getState().pendingNodeCreate;
     expect(pending).not.toBeNull();

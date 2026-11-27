@@ -15,6 +15,8 @@ export {
   setupStudioSchema,
   loginSchema,
   googleBeginSchema,
+  desktopHandoffSchema,
+  desktopExchangeSchema,
   chatMessageSchema,
   taskCreateSchema,
   understandSchema,

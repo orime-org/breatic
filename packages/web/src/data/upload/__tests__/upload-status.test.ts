@@ -38,7 +38,8 @@ function completed(key: string): UploadStatus {
   return {
     key,
     state: 'completed',
-    result: { assetId: `a-${key}`, fileUrl: `https://assets.example.test/${key}`, kind: 'image', width: 64, height: 48 },
+    result: { assetId: `a-${key}`, fileUrl: `https://assets.example.test/${key}`, kind: 'image', width: 64, height: 48,
+      coverUrl: null, durationSeconds: null, mimeType: 'image/png', sizeBytes: 1024 },
   };
 }
 

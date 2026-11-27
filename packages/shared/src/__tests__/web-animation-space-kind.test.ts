@@ -55,6 +55,6 @@ describe("web_animation Space type", () => {
     const thread = new Y.Map<unknown>();
     doc.getMap("webAnimationAnnotationThreads").set("t1", thread);
     thread.set("comments", "https://cdn.example/a.png");
-    expect(readSpaceMediaReferences("web_animation", doc)).toEqual({ assetIds: [], urls: [] });
+    expect(readSpaceMediaReferences("web_animation", doc)).toEqual({ urls: [] });
   });
 });

@@ -182,7 +182,7 @@ function stored(doc: Y.Doc): string[] {
  */
 function freshSource(n: number): TimelineVideoSource {
   const suffix = String(n).padStart(12, '0');
-  return { ...SOURCE, id: `10000000-0000-4000-8000-${suffix}`, assetId: `20000000-0000-4000-8000-${suffix}` };
+  return { ...SOURCE, id: `10000000-0000-4000-8000-${suffix}`, url: `https://cdn.example/assets/source-${suffix}.mp4` };
 }
 
 /**

@@ -94,7 +94,7 @@ beforeEach(() => {
   sessionStorage.clear();
   carry.code = null;
   useCurrentUserStore.setState({ user: null, role: null, loading: false, bootstrapped: true });
-  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: true, googleSignIn: true } as never);
+  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: true, googleSignIn: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' } as never);
   vi.mocked(authApi.me).mockResolvedValue(USER as never);
   recorder = recordGoogleBeginPosts();
 });
@@ -209,7 +209,7 @@ describe('the sign-in page referral row with Google (inner#2157 §7.9)', () => {
 
   it('has no referral row where nothing is sold', async () => {
     carry.code = 'ALICE';
-    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false, googleSignIn: true } as never);
+    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false, googleSignIn: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' } as never);
     setup();
     await google();
     expect(screen.queryByText(/will use referral code/)).toBeNull();

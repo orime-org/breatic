@@ -320,11 +320,13 @@ test('a picture from the computer uploads onto the part it was chosen for @needs
     await expect(page.getByTestId('scene-look-remove-image')).toBeVisible();
 
     const [uploaded] = await committedLooks(page, id);
-    const assetId = uploaded?.['0']?.map as string;
+    // A part stores its picture's address (inner#2171).
+    const pictureUrl = uploaded?.['0']?.map as string;
+    expect(new URL(pictureUrl).protocol).toMatch(/^https?:$/);
 
     // Collab put the picture on, so it is in nobody's undo: undo takes back the colour and leaves the picture.
     await visibleSpace(page).getByRole('button', { name: 'Undo', exact: true }).click();
-    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: { map: assetId } }]);
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: { map: pictureUrl } }]);
     // With no colour of its own, the picture shows on the part at white, its colours its own.
     await expect.poll(async () => (await rendered(page))[0].parts['0'], { timeout: 60_000 }).toMatchObject({ map: true, color: '#ffffff' });
 
@@ -335,8 +337,8 @@ test('a picture from the computer uploads onto the part it was chosen for @needs
     // The uploaded picture is now one of the Project's pictures, and picking it puts it back.
     await page.getByTestId('scene-look-choose-image').click();
     await page.getByTestId('scene-image-picker-project').click();
-    await page.getByTestId(`scene-image-picker-item-${assetId}`).click();
-    await expect.poll(() => committedLooks(page, id), { timeout: 30_000 }).toEqual([{ 0: { map: assetId } }]);
+    await page.locator('[data-testid^="scene-image-picker-item-"]').filter({ has: page.locator(`img[src="${pictureUrl}"]`) }).click();
+    await expect.poll(() => committedLooks(page, id), { timeout: 30_000 }).toEqual([{ 0: { map: pictureUrl } }]);
     await expect.poll(async () => (await rendered(page))[0].parts['0'], { timeout: 60_000 }).toMatchObject({ map: true, color: '#ffffff' });
 
     // The same file from the computer again: the server already holds it, and collab still puts it on the part.
@@ -347,7 +349,7 @@ test('a picture from the computer uploads onto the part it was chosen for @needs
     const again = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: 'Choose file', exact: true }).click();
     await (await again).setFiles({ name: 'pattern.png', mimeType: 'image/png', buffer: picture });
-    await expect.poll(() => committedLooks(page, id), { timeout: 60_000 }).toEqual([{ 0: { map: assetId } }]);
+    await expect.poll(() => committedLooks(page, id), { timeout: 60_000 }).toEqual([{ 0: { map: pictureUrl } }]);
     await expect(page.getByTestId('scene-look-remove-image')).toBeVisible();
   } finally {
     await deleteSpace(page, id);

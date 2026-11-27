@@ -11,9 +11,9 @@ import { describe, expect, it } from 'vitest';
 import * as budget from '@web/spaces/three-d/look-texture-budget';
 import { uploadBytes } from '@web/spaces/three-d/texture-upload-bytes';
 
-const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const A = 'https://cdn.example/assets/a.png';
+const B = 'https://cdn.example/assets/b.png';
+const C = 'https://cdn.example/assets/c.png';
 const LIMITS = { maxTextureEdge: 8192, maxTextureBytes: 268_435_456, maxPictureHeaderBytes: 67108864 };
 /** RGBA with a full mip chain, as the import budget counts it. */
 const bytes = (edge: number): number => Math.round((edge * edge * 4 * 4) / 3);

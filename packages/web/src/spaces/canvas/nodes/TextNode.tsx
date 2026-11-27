@@ -21,6 +21,7 @@ import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFr
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
+import { TextFullscreenButton } from '@web/spaces/canvas/nodes/_shared/TextFullscreenButton';
 import {
   TEXT_BODY_BOX,
   TEXT_BODY_MAX_HEIGHT,
@@ -240,6 +241,18 @@ export const TextNode = React.memo(function TextNode({
     // target is the editor, so it is let through untouched.
   }, [nodeId, spaceId]);
 
+  // Full screen (inner#2115) reads the node's body in a layer of the canvas's
+  // own. Writing in place ends first, so one editor at a time holds this
+  // person's caret; a writer's node gets its body repaired on the way in, as
+  // `startEdit` does. Left out while a pick owns presses on the node.
+  const picking = useCanvasSession((s) => s.pickSession !== null);
+  const openFullscreen = React.useCallback((): void => {
+    if (!nodeId || sessionStore.getState().pickSession) return;
+    if (editing) endWriting();
+    if (canEdit) ensureTextBody(projectId, spaceId, nodeId);
+    sessionStore.getState().openTextFullscreen(nodeId);
+  }, [nodeId, sessionStore, editing, endWriting, canEdit, projectId, spaceId]);
+
   const hasContent = text.length > 0;
 
   return (
@@ -250,6 +263,16 @@ export const TextNode = React.memo(function TextNode({
       locked={locked}
       onRename={onRename}
       testId='text-node'
+      cornerAction={
+        picking ? null : (
+          <TextFullscreenButton
+            label={t(canEdit ? 'canvas.textFullscreen.edit' : 'canvas.textFullscreen.view')}
+            onOpen={openFullscreen}
+            testId='text-fullscreen-button'
+            onHover
+          />
+        )
+      }
     >
       <NodeContent
         // While editing, show the editor even for an empty body — a fresh node

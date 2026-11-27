@@ -12,17 +12,16 @@
 
 import type { TimelineDocumentV1, TimelineRate, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
 
-/** One visible or premounted video clip as the Space hands it over, with its asset state. */
+/** One visible or premounted video clip as the Space hands it over, read from the source the document holds. */
 export interface TimelineVideoLayer {
   clipId: string;
-  /** The file address once the asset is ready. */
-  fileUrl: string | null;
+  /** The source's stored address. */
+  fileUrl: string;
   coverUrl: string | null;
-  state: 'loading' | 'ready' | 'failed';
 }
 
 /** What a video layer's preview note shows. */
-export type TimelineVideoLayerState = TimelineVideoLayer['state'];
+export type TimelineVideoLayerState = 'ready' | 'failed';
 
 /** One video lane: an element and what the playback asked of it. */
 export interface VideoLane {
@@ -121,7 +120,7 @@ export function videoLaneMapping(clip: TimelineVideoClip): string {
 }
 
 /**
- * Whether a lane failed: only its asset or its element's error count (#1410 design §6.2); `networkState` 3 right after
+ * Whether a lane failed: only its element's error counts (#1410 design §6.2); `networkState` 3 right after
  * a new src is not a failure (`media.js:157-159` uses it only to skip one play()).
  * @param lane - The lane.
  * @returns Whether it failed.
@@ -129,7 +128,7 @@ export function videoLaneMapping(clip: TimelineVideoClip): string {
  */
 export function videoLaneFailed(lane: VideoLane): boolean {
   // jsdom reports a missing error as undefined, the platform as null.
-  return lane.layer.state === 'failed' || Boolean(lane.element.error);
+  return Boolean(lane.element.error);
 }
 
 /**
@@ -164,7 +163,7 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
    * @throws {never} Never.
    */
   function attach(lane: VideoLane, layer: TimelineVideoLayer): void {
-    if (layer.fileUrl !== null && lane.element.src !== layer.fileUrl) lane.element.src = layer.fileUrl;
+    if (lane.element.src !== layer.fileUrl) lane.element.src = layer.fileUrl;
     if (layer.coverUrl !== null) lane.element.poster = layer.coverUrl;
     else lane.element.removeAttribute('poster');
   }
@@ -203,7 +202,7 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
           configureLane(lane);
           for (const event of MEDIA_EVENTS) element.addEventListener(event, options.onChange);
         } else {
-          const fileChanged = layer.fileUrl !== null && layer.fileUrl !== lane.layer.fileUrl;
+          const fileChanged = layer.fileUrl !== lane.layer.fileUrl;
           const coverChanged = layer.coverUrl !== lane.layer.coverUrl;
           lane.layer = layer;
           if (fileChanged || coverChanged) attach(lane, layer);
@@ -227,7 +226,7 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
     lanes: () => [...lanes.values()],
     states(): ReadonlyMap<string, TimelineVideoLayerState> {
       const states = new Map<string, TimelineVideoLayerState>();
-      for (const lane of lanes.values()) states.set(lane.clipId, videoLaneFailed(lane) ? 'failed' : lane.layer.state);
+      for (const lane of lanes.values()) states.set(lane.clipId, videoLaneFailed(lane) ? 'failed' : 'ready');
       return states;
     },
     configure(): void {

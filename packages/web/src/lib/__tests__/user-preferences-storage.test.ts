@@ -45,6 +45,7 @@ describe('user preferences storage', () => {
       timelineLinkage: true,
       documentOutlineVisible: true,
       voiceSampleLanguage: null,
+      downloadPanelPosition: null,
     });
     expect(DEFAULT_USER_PREFERENCES).toEqual(readUserPreferences(ALICE));
   });
@@ -105,7 +106,16 @@ describe('user preferences storage', () => {
       timelineLinkage: true,
       documentOutlineVisible: true,
       voiceSampleLanguage: null,
+      downloadPanelPosition: null,
     });
+  });
+
+  it('keeps where each account dragged the desktop Downloads panel, and drops an unusable place (inner#2041)', () => {
+    writeUserPreference(ALICE, { downloadPanelPosition: { left: 300, bottom: 40 } });
+    expect(readUserPreferences(ALICE).downloadPanelPosition).toEqual({ left: 300, bottom: 40 });
+    expect(readUserPreferences(BOB).downloadPanelPosition).toBeNull();
+    window.localStorage.setItem(KEY, JSON.stringify({ [ALICE]: { downloadPanelPosition: { left: 'far' } } }));
+    expect(readUserPreferences(ALICE).downloadPanelPosition).toBeNull();
   });
 
   it('keeps the three Timeline switches per account (inner#1708 E13)', () => {

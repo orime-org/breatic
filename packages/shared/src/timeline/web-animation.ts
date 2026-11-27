@@ -185,7 +185,16 @@ const rowCommon = {
   usageCredits: z.number().nonnegative(),
   createdAt: isoTime,
   resultSourceVersionId: z.uuid().nullable(),
-  resultAssetId: z.uuid().nullable(),
+  /** An export's video, by its address with its media facts, or null (inner#2171 design §4). */
+  resultAsset: z.object({
+    url: z.string().url(),
+    coverUrl: z.string().url().nullable(),
+    width: z.number().int().positive().nullable(),
+    height: z.number().int().positive().nullable(),
+    durationSeconds: z.number().nonnegative().nullable(),
+    mimeType: z.string().min(1),
+    sizeBytes: z.number().int().nonnegative(),
+  }).strict().nullable(),
   /** Who started it, so a run waiting for a running slot can say whose limit it waits under (inner#1968). */
   actorUserId: z.uuid(),
   /** When it started waiting for a running slot, or null when it never waited (inner#1968). */

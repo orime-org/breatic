@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
 import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
 import { keptQuery, saveGoogleStart } from '@web/pages/auth/google-return';
 import { useGoogleArrival, useGoogleReturn, useGoogleSignInShown } from '@web/pages/auth/use-google-return';
+import { DesktopGoogleSignIn } from '@web/pages/auth/DesktopGoogleSignIn';
+import { getDesktopBridge } from '@web/lib/desktop-bridge';
 
 import { authApi } from '@web/data/api/auth';
-import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 import { ApiException } from '@web/data/api/types';
 import { trackEvent } from '@web/data/analytics';
 import { Button } from '@web/components/ui/button';
@@ -17,7 +18,7 @@ import { Input } from '@web/components/ui/input';
 import { PasswordInput } from '@web/components/ui/password-input';
 import { Label } from '@web/components/ui/label';
 import { useTranslation } from '@web/i18n/use-translation';
-import { changeLocale } from '@web/i18n/locale-bootstrap';
+import { useCompleteSignIn } from '@web/pages/auth/use-complete-sign-in';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 import { TermsNotice } from '@web/pages/auth/_shared/TermsNotice';
 import { FieldError } from '@web/components/FieldError';
@@ -55,13 +56,12 @@ import { X } from 'lucide-react';
  */
 export default function LoginPage(): React.JSX.Element {
   const t = useTranslation();
-  const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = safeNextPath(params.get('next'));
   const registerPath = params.has('next')
     ? `/register?next=${encodeURIComponent(next)}`
     : '/register';
-  const setUser = useCurrentUserStore((s) => s.setUser);
+  const completeSignIn = useCompleteSignIn();
 
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -195,9 +195,7 @@ export default function LoginPage(): React.JSX.Element {
     try {
       const { user } = await authApi.login({ email: trimmedEmail, password });
       if (!mounted.current) return;
-      setUser(toCurrentUser(user));
-      void changeLocale(user.locale);
-      navigate(next, { replace: true });
+      completeSignIn(user, next);
     } catch (err) {
       const message =
         err instanceof ApiException ? err.message : t('auth.login.failed');
@@ -285,14 +283,18 @@ export default function LoginPage(): React.JSX.Element {
             <div className='h-px flex-1 bg-border' />
           </div>
           {referralRow()}
-          <GoogleSignIn
-            page='login'
-            next={next}
-            referral={referral.body()}
-            disabled={submitting || referral.field === 'loading'}
-            error={googleError}
-            onLeave={leaveForGoogle}
-          />
+          {getDesktopBridge() ? (
+            <DesktopGoogleSignIn referralCode={referral.value || null} next={next} busy={submitting} />
+          ) : (
+            <GoogleSignIn
+              page='login'
+              next={next}
+              referral={referral.body()}
+              disabled={submitting || referral.field === 'loading'}
+              error={googleError}
+              onLeave={leaveForGoogle}
+            />
+          )}
         </div>
       ) : null}
     </AuthCardShell>

@@ -269,10 +269,8 @@ describe('StudioAccountMenu', () => {
     expect(labels[7]).toBe('Sign out');
   });
 
-  it('opens the licence, the trademark policy and the third-party notices this instance serves, each in a new tab', async () => {
-    // LICENSE section 12: the applicable licence and attribution notices stay
-    // reachable. The links are site paths, so a self-hosted copy shows the
-    // files its own image carries.
+  it('opens the licence, the trademark policy and the third-party notices in the public repository, each in a new tab (inner#2183)', async () => {
+    // LICENSE section 12: the applicable licence and attribution notices stay reachable.
     const user = userEvent.setup();
     useCurrentUserStore.getState().setUser(ALEX);
     setup();

@@ -7,11 +7,16 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Texture, type Object3D, type Scene, type WebGLRenderer } from 'three';
+import { httpRequest } from '@breatic/shared';
 import type { SceneObject } from '@breatic/shared';
+import type * as SharedModule from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
-import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { SceneViewportRuntime } from '@web/spaces/three-d/viewport/scene-viewport-runtime';
 import type { SceneViewportRuntimeProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+
+vi.mock('@breatic/shared', async (importOriginal) => ({ ...await importOriginal<typeof SharedModule>(), httpRequest: vi.fn() }));
+// jsdom never decodes the format probe images.
+vi.mock('@web/spaces/three-d/model-texture-format', () => ({ detectTextureFormatSupport: vi.fn(async () => ({ webp: true, avif: true })) }));
 
 const compiles: Array<{ scene: Object3D; target: Scene | null | undefined; types: string[] }> = [];
 const steps: string[] = [];
@@ -45,7 +50,7 @@ function props(extra: Partial<SceneViewportRuntimeProps> = {}): SceneViewportRun
     scaleSensitivity: 0.006, importLimits: IMPORT_LIMITS,
     jointMode: false, selectedJoint: null, onJointSelect: vi.fn(), onSkeletonState: vi.fn(),
     onSelect: vi.fn(), onGestureStart: vi.fn(() => true), onGestureChange: vi.fn(), onGestureEnd: vi.fn(), onViewChange: vi.fn(), onError: vi.fn(),
-    onModelStateChange: vi.fn(), resolveAsset: vi.fn(), onLookReport: vi.fn(),
+    onModelStateChange: vi.fn(), onLookReport: vi.fn(),
     ...extra,
   } as SceneViewportRuntimeProps;
 }
@@ -236,19 +241,22 @@ describe('Retry (inner#1693 design 6.2)', () => {
   });
 
   it('loads again a model that failed to arrive, never one whose content was refused', async () => {
-    const REFUSED = '22222222-2222-4222-8222-22222222222a';
-    const LOST = '22222222-2222-4222-8222-22222222222b';
-    const resolveAsset = vi.fn(async (assetId: string) => {
-      if (assetId === REFUSED) throw new ModelImportError('invalid', 'refused content', { detail: 'model.glb' });
+    const REFUSED = 'https://cdn.example/assets/refused.glb';
+    const LOST = 'https://cdn.example/assets/lost.glb';
+    // The refused model arrives but is not a binary glTF; the lost one never arrives.
+    vi.mocked(httpRequest).mockReset().mockImplementation(async (url) => {
+      if (url === REFUSED) return new Response(new Uint8Array([1, 2, 3, 4]));
       throw new Error('network');
     });
-    const objects = [REFUSED, LOST].map((assetId) => ({ ...BOX, id: assetId, model: { kind: 'asset', assetId } }) as SceneObject);
-    const initial = props({ objects, resolveAsset } as Partial<SceneViewportRuntimeProps>);
+    const objects = [REFUSED, LOST].map((url, index) => ({
+      ...BOX, id: `model-${index}`, model: { kind: 'asset', url, mimeType: 'model/gltf-binary', sizeBytes: 4 },
+    }) as SceneObject);
+    const initial = props({ objects });
     const host = document.createElement('div'); document.body.append(host);
     Object.defineProperties(host, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
     const runtime = new SceneViewportRuntime(host, initial); owners.push(() => runtime.dispose());
     await vi.waitFor(() => expect(vi.mocked(initial.onModelStateChange!).mock.calls.filter(([, state]) => state === 'failed')).toHaveLength(2));
-    const calls = (assetId: string): number => resolveAsset.mock.calls.filter(([id]) => id === assetId).length;
+    const calls = (url: string): number => vi.mocked(httpRequest).mock.calls.filter(([requested]) => requested === url).length;
     const refused = calls(REFUSED);
     const lost = calls(LOST);
     runtime.update({ ...initial, modelRetryRevision: 1 });

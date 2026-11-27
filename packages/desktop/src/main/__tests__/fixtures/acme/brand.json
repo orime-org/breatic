@@ -1,0 +1,8 @@
+{
+  "id": "acme",
+  "productName": "Acme Studio",
+  "appId": "com.acme.studio",
+  "serverUrl": "https://studio.acme.test",
+  "icon": "icon.png",
+  "logo": "logo.svg"
+}

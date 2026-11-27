@@ -43,6 +43,7 @@ function row(n: number, over: Partial<SpaceTask> = {}): SpaceTask {
     startedAt: new Date().toISOString(),
     deadlineAt: new Date(Date.now() + 3_600_000).toISOString(),
     assetId: null,
+    modelFile: null,
     ...over,
   };
 }
@@ -86,7 +87,10 @@ describe('useSpaceTasks', () => {
     vi.mocked(listSpaceTasks).mockResolvedValue(list([
       row(1),
       row(2, { deadlineAt: null, waitingSince: new Date().toISOString(), slotWaitLimit: 2 }),
-      row(3, { status: 'done', assetId: 'a0000000-0000-4000-8000-000000000001' }),
+      row(3, {
+        status: 'done', assetId: 'a0000000-0000-4000-8000-000000000001',
+        modelFile: { url: 'https://cdn.example/assets/lamp-3.glb', mimeType: 'model/gltf-binary', sizeBytes: 2048 },
+      }),
       row(4, { status: 'failed' }),
       row(5, { status: 'expired' }),
     ]));

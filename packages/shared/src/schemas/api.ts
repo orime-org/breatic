@@ -14,6 +14,7 @@
 import { creditAmountFormatQuerySchema } from "@shared/credit-amount.js";
 
 import { z } from "zod";
+import { BASE64URL_32_BYTES } from "@shared/desktop-bridge.js";
 import { routeSchema } from "@shared/schemas/route.js";
 import {
   BILLING_PERIODS,
@@ -226,6 +227,21 @@ export const googleBeginSchema = z.object({
   ...signupReferralFields,
 });
 export type GoogleBeginInput = z.infer<typeof googleBeginSchema>;
+
+const base64Url32 = z.string().regex(BASE64URL_32_BYTES);
+
+/**
+ * The desktop client's sign-in through the system browser (inner#2041). The browser,
+ * signed in, asks for a one-time code bound to the challenge the client made.
+ */
+export const desktopHandoffSchema = z.object({ challenge: base64Url32 });
+
+/**
+ * The client page trades the code and the verifier behind the challenge for a
+ * session. The verifier's length follows RFC 7636 §4.1; any other content is a
+ * wrong verifier, answered like one.
+ */
+export const desktopExchangeSchema = z.object({ code: base64Url32, verifier: z.string().min(43).max(128) });
 
 // ── Chat ─────────────────────────────────────────────────────────────
 

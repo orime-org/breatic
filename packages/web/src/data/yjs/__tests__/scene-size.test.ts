@@ -37,7 +37,6 @@ const O2 = '22222222-2222-4222-8222-222222222222';
 const O3 = '33333333-3333-4333-8333-333333333333';
 const NEW = '44444444-4444-4444-8444-444444444444';
 const COPY = '55555555-5555-4555-8555-555555555555';
-const ASSET = '66666666-6666-4666-8666-666666666666';
 
 /**
  * A builtin scene object.
@@ -271,7 +270,7 @@ describe('RQ-12 placing an imported model on a full Space is stopped by SceneSes
     toast.warning.mockClear();
     const before = Y.encodeStateAsUpdate(doc);
     // The command `placeTask` in SceneEditor sends for a finished model row.
-    const captured = captureWrite(doc, () => session.execute({ type: 'create', objects: [{ id: NEW, name: 'Lamp', model: { kind: 'asset', assetId: ASSET },
+    const captured = captureWrite(doc, () => session.execute({ type: 'create', objects: [{ id: NEW, name: 'Lamp', model: { kind: 'asset', url: 'https://cdn.example/assets/lamp.glb', mimeType: 'model/gltf-binary', sizeBytes: 2048 },
       position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false }] }));
     expect(captured.result).toEqual({ ok: false, reason: 'full' });
     expect(captured.shape).toBe('∅');

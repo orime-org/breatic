@@ -10,14 +10,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { StudioAssetEntity } from "@breatic/shared";
 
 const findLiveByKeyInStudio = vi.fn();
-const findCoverOf = vi.fn();
+const findCoverUrlOf = vi.fn();
 
 vi.mock("@breatic/core", () => ({
   getStorageAdapter: async () => ({
     keyFromUrl: (url: string) => (url.startsWith("https://ours.example/") ? url.slice("https://ours.example/".length) : null),
   }),
 }));
-vi.mock("@domain/asset/asset.repo.js", () => ({ findLiveByKeyInStudio, findCoverOf }));
+vi.mock("@domain/asset/asset.repo.js", () => ({ findLiveByKeyInStudio, findCoverUrlOf }));
 
 const { materialFacts } = await import("@domain/asset/material-facts.js");
 
@@ -51,7 +51,7 @@ function row(kind: StudioAssetEntity["kind"], extra: Partial<StudioAssetEntity> 
 
 beforeEach(() => {
   vi.clearAllMocks();
-  findCoverOf.mockResolvedValue(null);
+  findCoverUrlOf.mockResolvedValue(null);
 });
 
 describe("materialFacts", () => {
@@ -96,11 +96,11 @@ describe("materialFacts", () => {
 
   it("carries a video's cover", async () => {
     findLiveByKeyInStudio.mockResolvedValue(row("video"));
-    findCoverOf.mockResolvedValue(row("image", { id: "c1", fileUrl: "https://ours.example/cover.png" }));
+    findCoverUrlOf.mockResolvedValue("https://ours.example/cover.png");
 
     const table = await materialFacts("s1", ["https://ours.example/video/c.mp4"]);
 
-    expect(findCoverOf).toHaveBeenCalledWith("a1");
+    expect(findCoverUrlOf).toHaveBeenCalledWith(expect.objectContaining({ id: "a1", kind: "video" }));
     expect(table.get("https://ours.example/video/c.mp4")).toMatchObject({ media: { coverUrl: "https://ours.example/cover.png", duration: 5 } });
   });
 

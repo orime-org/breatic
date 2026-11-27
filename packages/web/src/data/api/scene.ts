@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
-import type { ProjectAssetPage, SceneControlsConfig, SceneGenerationAnswer, SceneGenerationBody, SceneGenerationOrigin, SceneTaskNotice } from '@breatic/shared';
+import type { ProjectAssetPage, SceneControlsConfig, SceneModel, SceneGenerationAnswer, SceneGenerationBody, SceneGenerationOrigin, SceneTaskNotice } from '@breatic/shared';
 
 /**
  * Scene controls and model import budgets from the owning Project's readable API.
@@ -12,17 +12,6 @@ import type { ProjectAssetPage, SceneControlsConfig, SceneGenerationAnswer, Scen
  */
 export function getSceneControls(projectId: string, signal?: AbortSignal): Promise<SceneControlsConfig> {
   return apiGet(`/projects/${projectId}/three-d/config`, { signal });
-}
-
-/**
- * Resolve an already registered GLB, model package or part picture using Project access and its Studio's asset ledger.
- * @param projectId - Project whose scene asset is being read.
- * @param assetId - Registered asset identity stored in the scene.
- * @param signal - Cancellation signal for this request.
- * @returns Registered asset URL, MIME type and registered size.
- */
-export function resolveSceneAsset(projectId: string, assetId: string, signal: AbortSignal): Promise<{ url: string; mimeType: string; sizeBytes: number }> {
-  return apiGet(`/projects/${projectId}/three-d/assets/${assetId}`, { signal });
 }
 
 /**
@@ -44,6 +33,8 @@ export interface SpaceTask {
   /** The running-task limit it waits under (inner#1968); null or absent when it does not wait. */
   slotWaitLimit?: number | null;
   assetId: string | null;
+  /** The model file "Place in scene" stores, by address, type and size; null while there is none to place (inner#2171). */
+  modelFile: Omit<Extract<SceneModel, { kind: 'asset' }>, 'kind'> | null;
   /** Absent on rows from a server that knew only imports. */
   kind?: 'import' | 'generation';
   /** The `task-failure` code, or the upstream's own words for a failure it gave. */

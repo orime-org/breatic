@@ -263,8 +263,10 @@ body {
 /* Group manual-resize controls (NodeResizer). The group's OWN dashed border
    already turns to the selected colour when selected, so the resize LINE is
    hidden (transparent) — a second solid outline on top of the dashed one is
-   redundant; the edge is still drag-resizable, just not drawn. Only the corner /
-   edge handle squares show. The square is a background-coloured CENTRE ringed by
+   redundant; the edge is still drag-resizable, just not drawn. Only the corner
+   handles show, as circles: a Group resizes at a free ratio, and a round knob
+   means a free ratio (a square one means a fixed ratio), as on the crop and
+   expand frames (inner#1627). The knob is a background-coloured CENTRE ringed by
    the foreground colour, both mode-aware: light mode = white centre + dark ring,
    dark mode = dark centre + light ring — so the handle contrasts with the canvas
    either way. */
@@ -274,10 +276,11 @@ body {
 .react-flow .react-flow__resize-control.handle {
   background-color: var(--color-background);
   border-color: var(--color-foreground);
+  border-radius: 9999px;
 }
-/* Enlarge the handle's HIT area without enlarging the visible square (Bug 4 A):
+/* Enlarge the handle's HIT area without enlarging the visible knob (Bug 4 A):
    a transparent inset:-5px overlay extends the grabbable zone ~5px past each
-   edge of the square. Pointer events on the pseudo-element target the handle, so
+   edge of the knob. Pointer events on the pseudo-element target the handle, so
    ReactFlow's resize drag still fires — the corner is just easier to grab when a
    member sits near it. */
 .react-flow .react-flow__resize-control.handle::after {
@@ -306,6 +309,19 @@ body {
   background-size: 300% 100%;
   background-repeat: no-repeat;
   animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+/* Indeterminate fill of `components/ui/progress.tsx`: a band sliding across the track. */
+.progress-indeterminate {
+  width: 30%;
+  animation: progress-indeterminate 1.1s ease-in-out infinite;
+}
+@keyframes progress-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
 }
 @keyframes skeleton-shimmer {
   from {

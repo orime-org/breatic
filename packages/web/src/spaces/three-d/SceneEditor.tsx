@@ -9,7 +9,7 @@ import {
   SCENE_POSE_MAX_KEYS, type SceneLightType, type SceneObject, type ViewfinderRatio,
 } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
-import { resolveSceneAsset, type SpaceTask } from '@web/data/api/scene';
+import type { SpaceTask } from '@web/data/api/scene';
 import { useSceneControls } from '@web/data/api/use-scene-controls';
 import { docName } from '@web/data/yjs/manager';
 import { isOlderSceneFormat, isSceneSizeRefusal, type SceneEnvironmentValues } from '@web/data/yjs/scene-document';
@@ -106,7 +106,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const placeFailedText = t('spaces.threeD.taskList.placeFailed');
   const lockText = t('spaces.threeD.lock');
   const unlockText = t('spaces.threeD.unlock');
-  const pictureAccess = React.useMemo(() => pageLookPictureAccess(projectId), [projectId]);
+  const pictureAccess = pageLookPictureAccess();
   const controls = useSceneControls(projectId, userId);
   const [mode, setMode] = React.useState<SceneTransformMode>('translate');
   const [focusRevision, setFocusRevision] = React.useState(0);
@@ -386,10 +386,6 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     return (): void => window.removeEventListener('keydown', onKeyDown);
   }, [session, duplicate, ownsKeyboard, onHistory]);
 
-  /** Resolve one registered model through the same Project's access boundary. */
-  const resolveAsset = React.useCallback((assetId: string, signal: AbortSignal): Promise<{ url: string; mimeType: string; sizeBytes: number }> =>
-    resolveSceneAsset(projectId, assetId, signal), [projectId]);
-
   /** Persist the personal camera and publish it for followers; it never enters shared content. */
   const onViewChange = React.useCallback((next: SceneView, nextFov: number): void => {
     view.current = next;
@@ -502,9 +498,12 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * @returns Once placed or refused.
    */
   const placeTask = React.useCallback(async (task: SpaceTask): Promise<void> => {
-    if (task.assetId === null) return;
+    // The row carries the model's address, type and size, which the object stores (inner#2171 design §4).
+    const file = task.modelFile;
+    if (file === null) return;
+    const model = { kind: 'asset' as const, ...file };
     const acquire = acquireModel.current ?? await new Promise<SceneModelAcquire>((resolve) => { acquireWaiters.current.push(resolve); });
-    const lease = acquire({ kind: 'asset', assetId: task.assetId });
+    const lease = acquire(model);
     let bounds;
     try {
       bounds = await lease.bounds;
@@ -517,7 +516,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       return;
     }
     const id = crypto.randomUUID();
-    const result = session.execute({ type: 'create', objects: [{ id, name: task.label, model: { kind: 'asset', assetId: task.assetId },
+    const result = session.execute({ type: 'create', objects: [{ id, name: task.label, model,
       position: [view.current.target[0] - bounds.center[0], -bounds.min[1], view.current.target[2] - bounds.center[2]],
       rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false }] });
     // A refused command is reported by the session's own command feedback.
@@ -531,13 +530,13 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     session.select(id, false);
   }, [session, placeFailedText, t]);
 
-  const placedAssetIds = React.useMemo(() => new Set(snapshot.objects.flatMap((object) => (object.model.kind === 'asset' ? [object.model.assetId] : []))), [snapshot.objects]);
+  const placedModelUrls = React.useMemo(() => new Set(snapshot.objects.flatMap((object) => (object.model.kind === 'asset' ? [object.model.url] : []))), [snapshot.objects]);
   /**
    * Select the scene's objects of one model and frame them all, keeping the task list open.
-   * @param assetId - The model.
+   * @param url - The model's address.
    */
-  const locateAsset = React.useCallback((assetId: string): void => {
-    const ids = snapshot.objects.filter((object) => object.model.kind === 'asset' && object.model.assetId === assetId).map((object) => object.id);
+  const locateAsset = React.useCallback((url: string): void => {
+    const ids = snapshot.objects.filter((object) => object.model.kind === 'asset' && object.model.url === url).map((object) => object.id);
     if (ids.length === 0) return;
     keepTasksPanel.current = true;
     ids.forEach((id, index) => session.select(id, index > 0));
@@ -858,9 +857,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
         : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
           remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
-          onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
+          onRetryGeneration={retryGeneration} placedModelUrls={placedModelUrls} onLocate={locateAsset} filterHost={filterHost} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, lookInputs, modelStates, showSelectedProperties,
-    projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost,
+    projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedModelUrls, locateAsset, filterHost,
     lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, cancelAmbient, beginAmbient, onAmbientWrite, viewFailed]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
@@ -885,7 +884,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   selectedPart={selectedPart} onSelectPart={onSelectPart} lookPictures={pictureAccess} onLookReport={onLookReport} onLookPictures={onLookPictures}
                   onSelect={onSelect} onGestureStart={onGestureStart}
                   onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
-                  onViewChange={onViewChange} onUserCameraMove={stopFollowing} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources}
+                  onViewChange={onViewChange} onUserCameraMove={stopFollowing} onError={onError} onModelStateChange={onModelStateChange} onResources={onResources}
                   onCapture={onCapture} viewLocked={shotTaken} cameraView={cameraView} viewFrame={viewFrame} environment={environment} director={director}
                   onPilotPreview={onPilotPreview} onPilotEnd={onPilotEnd} onPilotLocked={onPilotLocked} onPilotControl={onPilotControl}
                   onLightPlan={setLightPlan} monitors={monitors} />

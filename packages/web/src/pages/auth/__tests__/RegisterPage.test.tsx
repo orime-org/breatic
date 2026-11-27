@@ -72,7 +72,7 @@ beforeEach(() => {
     bootstrapped: true,
   });
   // The page holds Create account until it knows whether it takes a referral code.
-  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: true, referralEnabled: true, googleSignIn: false });
+  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: true, referralEnabled: true, googleSignIn: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
 });
 
 afterEach(() => {

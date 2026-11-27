@@ -106,7 +106,7 @@ beforeEach(() => {
   sessionStorage.clear();
   carry.code = null;
   useCurrentUserStore.setState({ user: null, role: null, loading: false, bootstrapped: true });
-  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: true, googleSignIn: true } as never);
+  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: true, googleSignIn: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' } as never);
   vi.mocked(authApi.me).mockResolvedValue(USER as never);
   recorder = recordGoogleBeginPosts();
 });
@@ -126,7 +126,7 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
 
   it('has no field and sends no code where nothing is sold', async () => {
     carry.code = 'ALICE';
-    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false, googleSignIn: true } as never);
+    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false, googleSignIn: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' } as never);
     vi.mocked(authApi.register).mockResolvedValue({ status: 'created', user: USER, recoveryCode: 'AAAA-BBBB-CCCC-DDDD' } as never);
     const user = userEvent.setup();
     setup();
@@ -168,7 +168,7 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
 
   it('warns that the code was not used when step two reports it, then goes on', async () => {
     carry.code = 'ALICE';
-    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: true, referralEnabled: true, googleSignIn: true } as never);
+    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: true, referralEnabled: true, googleSignIn: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' } as never);
     vi.mocked(authApi.register).mockResolvedValue({ status: 'code_sent', expiresInSeconds: 600, resendAfterSeconds: 60 });
     vi.mocked(authApi.verifySignupCode).mockResolvedValue({ user: USER, referral: 'not_applied' } as never);
     const user = userEvent.setup();
@@ -184,7 +184,7 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
 
   it('shows no warning when step two reports the code is pending', async () => {
     carry.code = 'ALICE';
-    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: true, referralEnabled: true, googleSignIn: true } as never);
+    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: true, referralEnabled: true, googleSignIn: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' } as never);
     vi.mocked(authApi.register).mockResolvedValue({ status: 'code_sent', expiresInSeconds: 600, resendAfterSeconds: 60 });
     const pending: SignupReferralOutcome = 'pending';
     vi.mocked(authApi.verifySignupCode).mockResolvedValue({ user: USER, referral: pending } as never);

@@ -496,6 +496,37 @@ describe("POST /assets/upload-ticket", () => {
     expect(payload.data).toMatchObject({ width: 3000, height: 4000 });
   });
 
+  // A Timeline stores a dedup hit's media facts straight into its source (inner#2171 design §4).
+  it("answers a dedup hit with the cover, duration, type and size the studio holds", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    const coverUrl = await registerVideoWithCover(studioId, userId, hash, size);
+    await sql`UPDATE studio_assets SET duration_seconds = 4.25, width = 1280, height = 720 WHERE studio_id = ${studioId} AND content_hash = ${hash}`;
+
+    const res = await requestTicket(cookie, body({ project_id: projectId, client_hash: hash, size }));
+
+    const payload = (await res.json()) as { data: Record<string, unknown> };
+    expect(payload.data).toMatchObject({
+      alreadyExists: true, fileUrl: `https://cdn.test.invalid/${hash}.mp4`, kind: "video",
+      width: 1280, height: 720, coverUrl, durationSeconds: 4.25, mimeType: "video/mp4", sizeBytes: size,
+    });
+  });
+
+  it("answers a dedup hit on a picture with no cover and no duration", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    await sql`
+      INSERT INTO studio_assets (studio_id, content_hash, storage_key, file_url, size_bytes, mime_type, kind, source, produced_by_user_id, width, height)
+      VALUES (${studioId}, ${hash}, ${`image/${hash}.png`}, ${`https://cdn.test.invalid/${hash}.png`}, 4096, 'image/png', 'image', 'upload', ${userId}, 10, 20)
+    `;
+
+    const res = await requestTicket(cookie, body({ project_id: projectId, client_hash: hash, size: 4096, filename: "a.png", content_type: "image/png" }));
+
+    const payload = (await res.json()) as { data: Record<string, unknown> };
+    expect(payload.data).toMatchObject({ alreadyExists: true, coverUrl: null, durationSeconds: null, mimeType: "image/png", sizeBytes: 4096 });
+  });
+
   it("records the node's new content in its history on a dedup hit", async () => {
     const { projectId, cookie, studioId, userId } = await seedEditor();
     const hash = crypto.randomBytes(32).toString("hex");

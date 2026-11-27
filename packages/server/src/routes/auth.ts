@@ -28,14 +28,22 @@ import {
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import { SUPPORTED } from "@server/middleware/i18n.js";
 
-import { registerSchema, signupVerifySchema, loginSchema, googleBeginSchema, setupStudioSchema } from "@server/routes/schemas.js";
+import {
+  registerSchema,
+  signupVerifySchema,
+  loginSchema,
+  googleBeginSchema,
+  setupStudioSchema,
+  desktopHandoffSchema,
+  desktopExchangeSchema,
+} from "@server/routes/schemas.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { authService, googleLoginService, invitationService, signupCodeService, studioService } from "@server/modules";
+import { authService, desktopHandoffService, googleLoginService, invitationService, signupCodeService, studioService } from "@server/modules";
 import { randomUUID } from "node:crypto";
 import { emailSchema, getActiveLocale, parseAttribution, t } from "@breatic/shared";
-import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
+import type { PersonalStudioRef, SignupReferralSource, UserEntity } from "@breatic/shared";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
   setSessionCookie,
@@ -89,13 +97,51 @@ function toPersonalStudioRef(
 }
 
 /**
+ * The last steps every sign-in shares: the session cookie, the audit line,
+ * the login count and the user as the page shows it.
+ * @param c - Hono context the cookie is set on.
+ * @param signedIn - The user and the session token.
+ * @param signedIn.user - The signed-in user.
+ * @param signedIn.token - The new session's token.
+ * @param method - How the user signed in, in the log and the event.
+ * @param countLogin - False for a sign-in that is a sign-up, already counted as one.
+ * @returns The user with the tier in force and the personal studio.
+ */
+async function finishSignIn(
+  c: Context,
+  signedIn: { user: UserEntity; token: string },
+  method: "email" | "desktop_handoff",
+  countLogin = true,
+): Promise<UserEntity & { personalStudio: PersonalStudioRef | null }> {
+  const { user, token } = signedIn;
+  setSessionCookie(c, token);
+  const [shown, studio] = await Promise.all([
+    authService.withTierInForce(user),
+    studioService.getPersonalStudio(user.id),
+  ]);
+  // Audit log moved from auth.service.ts (17B mandate).
+  logger.info({ userId: user.id, method }, "user_logged_in");
+  if (countLogin) {
+    trackServerEvent("login_completed", {
+      userId: user.id,
+      insertId: `login:${randomUUID()}`,
+      properties: { method },
+    });
+  }
+  return { ...shown, personalStudio: toPersonalStudioRef(studio) };
+}
+
+/**
  * `GET /auth/options` - what the sign-up and recovery pages need to know
  * about this deployment: whether an email sign-up proves the address with a
  * code (and so whether recovery goes by email or by recovery code).
  * Also whether the referral code field exists: only where the deployment
- * sells (`SELLING`, inner#1868 §2), and whether Google sign-in is offered
- * (client id and secret both set, inner#2157).
- * @returns `200` with `{ emailVerification, referralEnabled, googleSignIn }`
+ * sells (`SELLING`, inner#1868 §2), whether Google sign-in is offered
+ * (client id and secret both set, inner#2157), and the desktop build this
+ * deployment hands browser sign-ins back to: the confirmation page names it
+ * and returns the code on its scheme, never on one the address asks for
+ * (inner#2041).
+ * @returns `200` with `{ emailVerification, referralEnabled, googleSignIn, desktopAppScheme, desktopAppName }`
  */
 auth.get("/options", (c) => {
   return c.json({
@@ -103,6 +149,8 @@ auth.get("/options", (c) => {
       emailVerification: signupCodeService.emailVerificationEnabled(),
       referralEnabled: env.SELLING,
       googleSignIn: googleLoginService.googleSignInAvailable(),
+      desktopAppScheme: env.DESKTOP_APP_SCHEME,
+      desktopAppName: env.DESKTOP_APP_NAME,
     },
   });
 });
@@ -310,22 +358,8 @@ auth.post(
   rateLimitForAll([{ action: "login-ip" }, { action: "login", keyBy: "ip+email" }]),
   async (c) => {
     const { email, password } = c.req.valid("json");
-    const { user, token } = await authService.loginEmail(email, password);
-    setSessionCookie(c, token);
-    const [shown, studio] = await Promise.all([
-      authService.withTierInForce(user),
-      studioService.getPersonalStudio(user.id),
-    ]);
-    // Audit log moved from auth.service.ts (17B mandate).
-    logger.info({ userId: user.id, method: "email" }, "user_logged_in");
-    trackServerEvent("login_completed", {
-      userId: user.id,
-      insertId: `login:${randomUUID()}`,
-      properties: { method: "email" },
-    });
-    return c.json({
-      data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) } },
-    });
+    const user = await finishSignIn(c, await authService.loginEmail(email, password), "email");
+    return c.json({ data: { user } });
   },
 );
 
@@ -503,6 +537,50 @@ auth.get("/google/callback", async (c) => {
     ...(referral === "not_applied" ? { referral } : {}),
     next: stored.next,
   });
+});
+
+/**
+ * `POST /auth/desktop-handoff` - hand a signed-in browser's account to the
+ * desktop client (inner#2041). The browser page calls it only after the user
+ * pressed Continue, so a program that opens the page cannot take the account
+ * silently (RFC 8252 §8.6).
+ * @param c - Hono context with the challenge in the body
+ * @returns `200` with `{ data: { code } }`
+ * @throws {AppError} `401` without a session; `429` past `desktop-handoff` in `config/rate-limits.yaml`
+ */
+auth.post(
+  "/desktop-handoff",
+  requireAuth,
+  rateLimitForAll([{ action: "desktop-handoff", keyBy: "user" }]),
+  validate("json", desktopHandoffSchema),
+  async (c) => {
+    const user = c.get("user");
+    // requireAuth has read this cookie, so it is present.
+    const session = readSessionCookie(c) ?? "";
+    const code = await desktopHandoffService.issueDesktopHandoff(user.id, c.req.valid("json").challenge, session);
+    logger.info({ userId: user.id }, "desktop_handoff_issued");
+    return c.json({ data: { code } });
+  },
+);
+
+/**
+ * `POST /auth/desktop-exchange` - the desktop client trades a handoff code and
+ * the verifier behind its challenge for a session of its own (inner#2041). The
+ * session token leaves in the cookie; the user is shaped like the Google
+ * sign-in answer.
+ * @param c - Hono context with code and verifier in the body
+ * @returns `200` with `{ data: { user: { ...user, personalStudio } } }`
+ * @throws {AppError} `401` for an unknown, spent or expired code, a wrong verifier, a browser session that has since ended, or a deleted account
+ */
+auth.post("/desktop-exchange", rateLimitFor("desktop-exchange"), validate("json", desktopExchangeSchema), async (c) => {
+  const { code, verifier } = c.req.valid("json");
+  const outcome = await desktopHandoffService.redeemDesktopHandoff(code, verifier);
+  if (!outcome.ok) {
+    logger.warn({ reason: outcome.reason }, "desktop_exchange_refused");
+    throw new UnauthorizedError(t("server.auth.desktop_exchange_invalid"));
+  }
+  const user = await finishSignIn(c, outcome, "desktop_handoff");
+  return c.json({ data: { user } });
 });
 
 /**

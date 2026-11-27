@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as looks from '@web/spaces/three-d/viewport/look-materials';
 import { uploadBytes } from '@web/spaces/three-d/texture-upload-bytes';
 
-const IMAGE = '66666666-6666-4666-8666-666666666666';
+const IMAGE = 'https://cdn.example/assets/wood.png';
 const THEME = '#5f5f5f';
 
 type PartTable = ReadonlyMap<string, { materialType: string; color: string; roughness?: number; transmission: number; transparent: boolean; depthWrite: boolean; alphaTest: number; hasMap: boolean; unlit: boolean; line: boolean }>;

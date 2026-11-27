@@ -10,8 +10,7 @@
  * accumulate one dead anchor per file.
  */
 
-/** The query the resource domain answers with `Content-Disposition: attachment`. */
-const DOWNLOAD_PARAM = 'download';
+import { ASSET_DOWNLOAD_PARAM } from '@breatic/shared';
 
 /**
  * Start a download of one asset: its own public URL with `download=1`.
@@ -27,7 +26,7 @@ const DOWNLOAD_PARAM = 'download';
  */
 export function downloadAsset(assetUrl: string): void {
   const url = new URL(assetUrl);
-  url.searchParams.set(DOWNLOAD_PARAM, '1');
+  url.searchParams.set(ASSET_DOWNLOAD_PARAM, '1');
   const link = document.createElement('a');
   link.href = url.toString();
   // Aimed away from this document. A navigation of the current one runs its

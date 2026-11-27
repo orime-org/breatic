@@ -28,6 +28,8 @@ import { useSignupReferral } from '@web/features/referral/use-signup-referral';
 import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
 import { keptQuery, saveGoogleStart } from '@web/pages/auth/google-return';
 import { useGoogleArrival, useGoogleReturn, useGoogleSignInShown } from '@web/pages/auth/use-google-return';
+import { DesktopGoogleSignIn } from '@web/pages/auth/DesktopGoogleSignIn';
+import { getDesktopBridge } from '@web/lib/desktop-bridge';
 
 /**
  * Whether the server refused a sign-up for its referral code.
@@ -358,14 +360,18 @@ export default function RegisterPage(): React.JSX.Element {
               <span>{t('auth.or')}</span>
               <div className='h-px flex-1 bg-border' />
             </div>
-            <GoogleSignIn
-              page='register'
-              next={next}
-              referral={referral.body()}
-              disabled={submitting || referral.field === 'loading'}
-              error={googleError}
-              onLeave={leaveForGoogle}
-            />
+            {getDesktopBridge() ? (
+              <DesktopGoogleSignIn referralCode={referral.value || null} next={next} busy={submitting} />
+            ) : (
+              <GoogleSignIn
+                page='register'
+                next={next}
+                referral={referral.body()}
+                disabled={submitting || referral.field === 'loading'}
+                error={googleError}
+                onLeave={leaveForGoogle}
+              />
+            )}
           </div>
         ) : null}
       </AuthCardShell>
