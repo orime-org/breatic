@@ -61,7 +61,7 @@ export type SentWords = { name: "shots" | "lines" | "prompt"; mentions: string; 
  * @returns How refusals and fixes name those words.
  * @throws {never} Never.
  */
-export function sentWords(node: Pick<ProposalNode, "mode" | "model" | "params" | "shots">): SentWords {
+export function sentWords(node: Pick<ProposalNode, "mode" | "model" | "params"> & { readonly shots?: unknown }): SentWords {
   if (node.shots !== undefined) return { name: "shots", mentions: "the shots @", write: "write the shots.", placed: " in a shot" };
   if (onDialogueSide(node)) return { name: "lines", mentions: "the lines @", write: "write the lines.", placed: " in a line" };
   return { name: "prompt", mentions: "the prompt @s", write: "write a prompt.", placed: "" };
