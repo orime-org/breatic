@@ -124,6 +124,20 @@ function isKindlessPlaceholder(json: unknown): json is { upload: Record<string, 
 }
 
 /**
+ * A landed clip as its kind defines it (inner#1709 design §4.3). Collab turns a placeholder into a clip in place
+ * while members may write that same record, and Yjs keeps one value per key, so a merge can leave the placeholder's
+ * `upload`, or a video's in-point on a still clip; the conversion's own result drops both.
+ * @param json - The stored clip as JSON.
+ * @returns The record to validate.
+ * @throws {never} Never.
+ */
+function landedClip(json: unknown): unknown {
+  if (json === null || typeof json !== "object" || !("kind" in json) || json.kind === "upload") return json;
+  const { upload: _upload, ...rest } = json as Record<string, unknown>;
+  return json.kind === "image" || json.kind === "text" ? { ...rest, sourceInFrame: 0 } : rest;
+}
+
+/**
  * A stored clip record as JSON in the current format: its transform in frame offsets, and a placeholder written before
  * version 3 naming the video it was then the only kind of. Reading and upgrading use this one conversion.
  * @param value - The stored clip value.
@@ -134,6 +148,7 @@ function isKindlessPlaceholder(json: unknown): json is { upload: Record<string, 
 function currentClip(value: unknown, frame: TimelineFrame | undefined): unknown {
   let json = timelineRecordJson(value);
   if (isKindlessPlaceholder(json)) json = { ...json, upload: { ...json.upload, kind: "video" } };
+  json = landedClip(json);
   if (frame === undefined || json === null || typeof json !== "object" || !("transform" in json)) return json;
   return { ...json, transform: frameOffsetTransform(json.transform, frame) };
 }

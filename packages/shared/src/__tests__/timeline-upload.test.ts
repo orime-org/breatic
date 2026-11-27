@@ -460,3 +460,87 @@ describe("any order and repetition of one upload's events lands the same documen
     ));
   });
 });
+
+/** A member's write to the placeholder record, made on another replica while collab lands the upload. */
+type PeerEdit =
+  | { kind: "trim-head"; frames: number }
+  | { kind: "trim-tail"; frames: number }
+  | { kind: "move"; trackId: string; startFrame: number }
+  | { kind: "volume"; gain: number; mute: boolean }
+  | { kind: "transform"; rotation: number }
+  | { kind: "upload-failed" };
+
+/**
+ * Apply a member's edit to the placeholder record the way the editor writes fields: one key at a time.
+ * @param doc - The member's replica.
+ * @param placeholder - The placeholder as seeded.
+ * @param edit - The edit.
+ * @throws {Error} When the record is missing.
+ */
+function editPlaceholder(doc: Y.Doc, placeholder: Placeholder, edit: PeerEdit): void {
+  const record = doc.getMap("clips").get(placeholder.id) as Y.Map<unknown>;
+  doc.transact(() => {
+    switch (edit.kind) {
+      case "trim-head":
+        record.set("startFrame", placeholder.startFrame + edit.frames);
+        if (placeholder.upload.kind !== "image") record.set("sourceInFrame", placeholder.sourceInFrame + edit.frames);
+        record.set("durationFrames", placeholder.durationFrames - edit.frames);
+        break;
+      case "trim-tail":
+        record.set("durationFrames", placeholder.durationFrames - edit.frames);
+        break;
+      case "move":
+        record.set("trackId", edit.trackId);
+        record.set("startFrame", edit.startFrame);
+        break;
+      case "volume":
+        record.set("gain", edit.gain);
+        record.set("mute", edit.mute);
+        break;
+      case "transform":
+        record.set("transform", { ...placeholder.transform, rotation: edit.rotation });
+        break;
+      case "upload-failed":
+        record.set("upload", { ...placeholder.upload, state: "failed", failure: "failed", retryable: true });
+        break;
+    }
+  }, "uploader");
+}
+
+describe("collab landing an upload while a member edits the same placeholder on another replica (TDD-MANDATE Yjs critical path)", () => {
+  it("merges in either order into one readable record that both replicas read alike", () => {
+    const edits = fc.oneof(
+      fc.integer({ min: 1, max: 30 }).map((frames): PeerEdit => ({ kind: "trim-head", frames })),
+      fc.integer({ min: 1, max: 30 }).map((frames): PeerEdit => ({ kind: "trim-tail", frames })),
+      fc.record({ trackId: fc.constantFrom("visual-1", "visual-2"), startFrame: fc.integer({ min: 0, max: 500 }) }).map((move): PeerEdit => ({ kind: "move", ...move })),
+      fc.record({ gain: fc.double({ min: 0, max: 1, noNaN: true }), mute: fc.boolean() }).map((volume): PeerEdit => ({ kind: "volume", ...volume })),
+      fc.integer({ min: -180, max: 180 }).map((rotation): PeerEdit => ({ kind: "transform", rotation })),
+      fc.constant<PeerEdit>({ kind: "upload-failed" }),
+    );
+    fc.assert(fc.property(
+      fc.constantFrom<Placeholder>(videoPlaceholder, imagePlaceholder, audioPlaceholder),
+      fc.constantFrom(VIDEO_RESULT, IMAGE_RESULT, AUDIO_RESULT),
+      edits,
+      fc.boolean(),
+      (placeholder, result, edit, memberFirst) => {
+        const seed = timeline(placeholder);
+        const member = new Y.Doc();
+        const collab = new Y.Doc();
+        docs.push(member, collab);
+        member.clientID = memberFirst ? 1 : 2;
+        collab.clientID = memberFirst ? 2 : 1;
+        Y.applyUpdate(member, Y.encodeStateAsUpdate(seed));
+        Y.applyUpdate(collab, Y.encodeStateAsUpdate(seed));
+        editPlaceholder(member, placeholder, edit);
+        applyTimelineUpload(collab, completed(result));
+        Y.applyUpdate(member, Y.encodeStateAsUpdate(collab));
+        Y.applyUpdate(collab, Y.encodeStateAsUpdate(member));
+        const content = readTimelineContent(member);
+        expect(content.damaged).toEqual({ clips: [] });
+        expect(content.document.clips[placeholder.id]).toBeDefined();
+        expect(TimelineClipSchema.safeParse(content.document.clips[placeholder.id]).success).toBe(true);
+        expect(comparable(collab)).toEqual(comparable(member));
+      },
+    ), { numRuns: 300 });
+  });
+});

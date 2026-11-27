@@ -755,7 +755,7 @@ describe("Version 3: tracks without kind, placeholders naming their kind, image,
     expect(readTimelineSource({ ...imageSource, width: null, height: null }, imageSource.id)).toEqual({ ...imageSource, width: null, height: null });
   });
 
-  it("leaves out an image clip whose in-point is not 0 and lists it as damaged", () => {
+  it("reads an image clip a merge left with an in-point at in-point 0, as its conversion writes it", () => {
     const doc = seededDoc();
     doc.transact(() => {
       doc.getMap("sources").set(imageSource.id, imageSource);
@@ -763,8 +763,19 @@ describe("Version 3: tracks without kind, placeholders naming their kind, image,
       attachTimelineRecord(doc.getMap("clips"), SECOND_CLIP, { ...imageClip, id: SECOND_CLIP, sourceInFrame: 5 });
     }, "peer");
     expect(readTimelineContent(doc)).toEqual({
-      document: expect.objectContaining({ clips: { [imageClip.id]: imageClip } }),
-      damaged: { clips: [SECOND_CLIP] },
+      document: expect.objectContaining({ clips: { [imageClip.id]: imageClip, [SECOND_CLIP]: { ...imageClip, id: SECOND_CLIP } } }),
+      damaged: { clips: [] },
     });
+  });
+
+  it("reads a landed clip a merge left with its placeholder's upload as the clip alone", () => {
+    const doc = seededDoc();
+    doc.transact(() => {
+      doc.getMap("sources").set(imageSource.id, imageSource);
+      attachTimelineRecord(doc.getMap("clips"), imageClip.id, {
+        ...imageClip, upload: { uploadId: "b0000000-0000-4000-8000-000000000001", name: "a.png", kind: "image", durationSeconds: null, state: "failed", failure: "failed", retryable: true },
+      });
+    }, "peer");
+    expect(readTimelineContent(doc)).toEqual({ document: expect.objectContaining({ clips: { [imageClip.id]: imageClip } }), damaged: { clips: [] } });
   });
 });
