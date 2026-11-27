@@ -134,7 +134,7 @@ const TWO_SHOTS = [
   { prompt: [{ text: "The pond at dusk." }], duration: 3 },
 ];
 /** A multi-shot video. */
-const STORY = gen("video", "multi_shot", SHOTS, { prompt: undefined, params: { duration: 5 }, shots: TWO_SHOTS });
+const STORY = gen("video", "t2v", SHOTS, { prompt: undefined, params: { duration: 5 }, shots: TWO_SHOTS });
 
 /** Words longer than one shot of the multi-shot model holds. */
 const LONG_SCRIPT = "x".repeat(600);
@@ -445,16 +445,17 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     fix: group([{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [SKETCH_FIRST, ...(SHEET_NODES[0]?.prompt ?? [])] }, ...SHEET_NODES.slice(1)], [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "style_images" }]),
     templates: FIXTURES,
   }, {
-    // The node the edge goes into runs multi_shot: the ref and note go in a shot.
+    // The node the edge goes into writes its shots out: the ref and note go in a shot.
     meets: group([STILL, CLIP_ANCHOR]),
     states: ['node 0 ("Still")', 'node 1 ("Clip")', '"pool"', "its ref and note in a shot"],
     fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     templates: FIXTURES,
   }, {
-    // Sent multi_shot with a prompt and no shots: the ref and note still go in a shot, keyed on the sent mode.
+    // Sent as a single shot with a prompt and no shots: the ref and note go in the prompt.
     meets: group([STILL, { ...CLIP_ANCHOR, shots: undefined, prompt: [{ text: "She walks along the shore." }] }]),
-    states: ['node 0 ("Still")', 'node 1 ("Clip")', '"pool"', "its ref and note in a shot"],
-    fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    states: ['node 0 ("Still")', 'node 1 ("Clip")', '"pool"'],
+    absent: ["in a shot"],
+    fix: group([STILL, { ...CLIP_ANCHOR, shots: undefined, prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     templates: FIXTURES,
   }],
   "template-resource-material": [{
@@ -533,7 +534,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     absent: ['into: "pool"', "goes into the pool"],
     fix: group([{ ...DRAW, template: { id: "storyboard-grid-25" } }]),
   }, {
-    // A multi_shot generate node naming a template and sending no shots.
+    // A generate node naming a template whose node writes its shots out, sending no shots.
     meets: group([STILL, { ...CLIP_ANCHOR, shots: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ['"Clip" names template "fixture-shots" and sends no shots.', 'On node 1 ("Clip"), write the shots.'],
     fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
@@ -596,15 +597,14 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([gen("image", "t2i", EDIT)]),
     states: [`"${EDIT}" does not back "t2i". Those that do:`],
   }],
-  "shots-outside-multishot": [{
-    meets: group([gen("video", "t2v", SHOTS, { prompt: undefined, shots: TWO_SHOTS })]),
-    states: ['Shots belong to the multi_shot mode, and "Gen" runs "t2v". On node 0 ("Gen"), leave shots out.'],
-    fix: group([gen("video", "t2v", SHOTS, { prompt: undefined })]),
+  "shots-not-taken": [{
+    meets: group([gen("image", "t2i", T2I, { prompt: undefined, shots: TWO_SHOTS })]),
+    states: [`"${T2I}" takes no shots in "t2i". On node 0 ("Gen"), leave shots out.`],
+    fix: group([gen("image", "t2i", T2I, { prompt: undefined })]),
   }],
-  "multishot-no-shots": [{
-    meets: group([gen("video", "multi_shot", SHOTS, { params: { duration: 5 } })]),
-    states: ["In the multi_shot mode the shots are what is generated. On node 0 (\"Gen\"), give shots"],
-    fix: group([{ ...gen("video", "multi_shot", SHOTS, { params: { duration: 5 } }), shots: TWO_SHOTS }]),
+  "shots-with-auto": [{
+    meets: group([{ ...STORY, params: { duration: 5, auto_shots: true } }]),
+    states: [`auto_shots lets "${SHOTS}" plan the shots itself, and this node writes its shots out.`],
   }],
   "lines-missing": [{
     meets: group([gen("audio", "tts", DUO, { params: { speakers: PAIR }, prompt: [{ text: "Ava: Hi.\nLeo: Hello." }] })]),
@@ -751,10 +751,10 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     fix: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }, {
     // With shots, notes go in a shot.
-    meets: group([EMPTY_PIC, gen("video", "multi_shot", OMNI_SHOTS, { prompt: undefined, params: { duration: 5 }, shots: TWO_SHOTS })], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
+    meets: group([EMPTY_PIC, gen("video", "i2v", OMNI_SHOTS, { prompt: undefined, params: { duration: 5 }, shots: TWO_SHOTS })], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
     states: ['On node 1 ("Gen"), give each one a note in the shot'],
     noCopies: "edge-repeated",
-    fix: group([EMPTY_PIC, gen("video", "multi_shot", OMNI_SHOTS, { prompt: undefined, params: { duration: 5 }, shots: [{ ...TWO_SHOTS[0] as (typeof TWO_SHOTS)[number], prompt: [{ text: "A paper boat." }, NOTE] }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] })], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
+    fix: group([EMPTY_PIC, gen("video", "i2v", OMNI_SHOTS, { prompt: undefined, params: { duration: 5 }, shots: [{ ...TWO_SHOTS[0] as (typeof TWO_SHOTS)[number], prompt: [{ text: "A paper boat." }, NOTE] }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] })], [{ fromIndex: 0, toIndex: 1, into: "image" }]),
   }],
   "shot-empty": [{
     meets: group([{ ...STORY, shots: [{ prompt: [], duration: 2 }, TWO_SHOTS[1] as (typeof TWO_SHOTS)[number]] }]),
@@ -924,9 +924,9 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     fix: group([STORY]),
   }],
   "param-storyboard-other-mode": [{
-    meets: group([gen("video", "t2v", SHOTS, { params: { multi_prompt: "x" } })]),
-    states: ['only the multi_shot mode takes. On node 0 ("Gen"), leave "multi_prompt" out of params.'],
-    fix: group([gen("video", "t2v", SHOTS)]),
+    meets: group([gen("video", "first_last", OMNI_SHOTS, { params: { shots: "x" } })]),
+    states: [`"shots" is set by shots, and "${OMNI_SHOTS}" takes no shots in "first_last". On node 0 ("Gen"), leave "shots" out of params.`],
+    fix: group([gen("video", "first_last", OMNI_SHOTS)]),
   }],
   "param-no-control": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE], params: { output_format: "png" } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),

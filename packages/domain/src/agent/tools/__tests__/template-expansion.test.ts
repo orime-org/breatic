@@ -138,7 +138,7 @@ describe("expandTemplate", () => {
     expect(reason).not.toContain("📎");
   });
 
-  it("asks a multi_shot generate node with no shots for its shots", () => {
+  it("asks a shot-list template's generate node sent with no shots for its shots", () => {
     const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "fixture-shots" } }, AT, FIXTURES);
     expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
     const reason = out.ok ? "" : out.reason;
@@ -148,12 +148,12 @@ describe("expandTemplate", () => {
     expect(reason).not.toContain("prompt @s");
   });
 
-  it("takes a multi_shot generate node's shots as its prompt", () => {
+  it("takes a shot-list template's generate node's shots as its prompt", () => {
     const shots = [{ prompt: [{ text: "She walks." }], duration: 5 }];
     const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "fixture-shots" }, shots }, AT, FIXTURES);
     expect(out).toEqual({
       ok: true,
-      node: { role: "generate", type: "video", name: "Clip", mode: "multi_shot", model: SHOT_MODEL, params: {}, shots },
+      node: { role: "generate", type: "video", name: "Clip", mode: "ref", model: SHOT_MODEL, params: {}, shots },
     });
   });
 
@@ -169,7 +169,7 @@ describe("expandTemplate", () => {
     expect(reason).not.toContain("goes into the pool");
   });
 
-  it("asks a shot-list template's node that keeps multi_shot for its shots, its pool sentence about the shots", () => {
+  it("asks a shot-list template's node that keeps its mode for its shots, its pool sentence about the shots", () => {
     const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "vertical-15s-quick-tip" } }, AT);
     expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
     const reason = out.ok ? "" : out.reason;
@@ -181,15 +181,16 @@ describe("expandTemplate", () => {
     expect(reason).not.toContain("prompt @s");
   });
 
-  it("asks a template node without shots that the agent moved to multi_shot for shots, not a prompt", () => {
-    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "game-ui-livestream" }, mode: "multi_shot" }, AT);
+  // seedance-2.5-text-to-video takes shots in t2v too, yet a node without
+  // shots is one shot from its prompt.
+  it("asks a template node without shots that the agent moved to another mode where its model takes shots for a prompt, not shots", () => {
+    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "game-ui-livestream" }, mode: "t2v" }, AT);
     expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
     const reason = out.ok ? "" : out.reason;
-    expect(reason).toContain("sends no shots");
-    expect(reason).not.toContain("sends no prompt");
-    expect(reason).toContain("write the shots.");
-    expect(reason).not.toContain("write a prompt.");
-    expect(reason).not.toContain("prompt @s");
+    expect(reason).toContain("sends no prompt");
+    expect(reason).not.toContain("sends no shots");
+    expect(reason).toContain("write a prompt.");
+    expect(reason).not.toContain("write the shots.");
   });
 
   it("asks a template node without shots that keeps its mode for a prompt, its pool sentence about the prompt", () => {

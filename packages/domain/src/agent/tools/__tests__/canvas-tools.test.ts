@@ -280,8 +280,9 @@ describe("list_generation_models with params a model does not take (breatic#1361
     const PARAMS = { duration: "5" };
     const plain = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
     if (!plain.available) throw new Error("t2v has models");
-    // Guards the case itself: no entry at its defaults says anything of duration.
-    for (const model of plain.models) expect(entryHead(renderGenerationModelsForModel(plain), model.name), model.name).not.toContain("duration");
+    // Guards the case itself: no entry at its defaults names the duration param
+    // (a model that takes shots says its shots add up to duration, unquoted).
+    for (const model of plain.models) expect(entryHead(renderGenerationModelsForModel(plain), model.name), model.name).not.toContain('"duration"');
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v", params: PARAMS });
     if (!answer.available) throw new Error("t2v has models");
     expect(answer.models.map((model) => model.name)).toEqual(plain.models.map((model) => model.name));
@@ -289,7 +290,7 @@ describe("list_generation_models with params a model does not take (breatic#1361
     for (const model of answer.models) {
       expect(model.price, model.name).toEqual(await estimateModelCredits(model.name, { params: {} }));
       const head = entryHead(rendered, model.name);
-      expect(head, model.name).toContain("duration");
+      expect(head, model.name).toContain('"duration"');
       expect(head, model.name).not.toContain("at the params given");
     }
   });
@@ -484,19 +485,21 @@ describe("what the rendered answer tells the model", () => {
     expect(t2i).toMatch(/\(nano-banana-2\)(?![^\n]*runs only when)/);
   });
 
-  // Every model in Multi-Shot writes its words in shots and leaves the prompt
-  // out, so a node it @s is @'d in a shot.
-  it("says a node wired into a multi-shot model is @'d in its shot, never in the prompt", async () => {
-    const said = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "multi_shot" }));
-    const line = said.split("\n- ").find((l) => l.includes("(kling-video-o3-4k-image-to-video)")) ?? "";
-    expect(line).toMatch(/elements: [^\n]*then a mention of it in a shot\./);
-    expect(said).not.toMatch(/the prompt @s it|a mention of it in the prompt/);
-  });
-
-  it("says a node wired into the pool is mentioned in the prompt where the model takes a prompt", async () => {
+  // A model that takes shots in the mode writes its words in the prompt on a
+  // single-shot node and in each shot on a node with shots, so a node it @s is
+  // @'d in whichever of them the node carries.
+  it("says a node wired into a model that takes shots is @'d in the prompt, or in each shot on a node with shots", async () => {
     const said = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" }));
     const line = said.split("\n- ").find((l) => l.includes("(kling-video-o3-4k-image-to-video)")) ?? "";
-    expect(line).toMatch(/elements: [^\n]*then a mention of it in the prompt\./);
+    expect(line).toMatch(/Takes shots here:/);
+    expect(line).toMatch(/elements: [^\n]*then a mention of it in the prompt, or each shot on a node with shots\./);
+  });
+
+  it("says a node wired into the pool is mentioned in the prompt where the model takes no shots", async () => {
+    const said = renderGenerationModelsForModel(await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" }));
+    const line = said.split("\n- ").find((l) => l.includes("(nano-banana-pro-edit-ultra)")) ?? "";
+    expect(line).not.toMatch(/Takes shots here|each shot/);
+    expect(line).toMatch(/images: [^\n]*then a mention of it in the prompt\./);
   });
 
   it("says a mention of an image, video or audio node puts it in as reference material where the pool takes that kind", () => {
