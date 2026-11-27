@@ -11,6 +11,8 @@ interface TimelineFrameRatioProps {
   width: number;
   height: number;
   readOnly: boolean;
+  /** Show only the ratio on the control, for a narrow play bar (inner#1709); the list always shows ratio and size. */
+  compact?: boolean;
   /** Writes the chosen preset. */
   onChoose: (preset: TimelineFramePreset) => void;
 }
@@ -35,18 +37,19 @@ function labelOf(preset: TimelineFramePreset): React.JSX.Element {
  * @param props.width - Frame width.
  * @param props.height - Frame height.
  * @param props.readOnly - Whether the user cannot edit.
+ * @param props.compact - Whether the control shows only the ratio.
  * @param props.onChoose - Writes the chosen preset.
  * @returns The control.
  * @throws {never} Never.
  */
-export const TimelineFrameRatio = React.memo(function TimelineFrameRatio({ width, height, readOnly, onChoose }: TimelineFrameRatioProps): React.JSX.Element {
+export const TimelineFrameRatio = React.memo(function TimelineFrameRatio({ width, height, readOnly, compact = false, onChoose }: TimelineFrameRatioProps): React.JSX.Element {
   const current = timelineFramePresetOf({ width, height });
   const choose = React.useCallback((value: string): void => {
     const preset = TIMELINE_FRAME_PRESET_KEYS.find((key) => key === value);
     if (preset !== undefined) onChoose(preset);
   }, [onChoose]);
   return <Select value={current ?? ''} onValueChange={choose} disabled={readOnly}>
-    <SelectTrigger data-testid='timeline-frame-ratio' className='h-[var(--btn-inline)] w-auto shrink-0 gap-2 text-xs tabular-nums data-[placeholder]:text-muted-foreground'><SelectValue placeholder={`${width}×${height}`} /></SelectTrigger>
+    <SelectTrigger data-testid='timeline-frame-ratio' className='h-[var(--btn-inline)] w-auto shrink-0 gap-2 text-xs tabular-nums data-[placeholder]:text-muted-foreground'><SelectValue placeholder={`${width}×${height}`}>{compact && current !== null ? <span className='inline-block min-w-[4ch]'>{current}</span> : undefined}</SelectValue></SelectTrigger>
     <SelectContent>{TIMELINE_FRAME_PRESET_KEYS.map((preset) => <SelectItem key={preset} value={preset}>{labelOf(preset)}</SelectItem>)}</SelectContent>
   </Select>;
 });

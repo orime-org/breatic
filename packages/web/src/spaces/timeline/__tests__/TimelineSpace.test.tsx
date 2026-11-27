@@ -1037,6 +1037,91 @@ describe('TimelineSpace toolbar that does not fit (inner#1709)', () => {
   });
 });
 
+describe('TimelineSpace transport row that does not fit (inner#1709)', () => {
+  // Each part's width in each of the four forms; the full row is 389, then 299, 253 and 173 (jsdom has no gaps).
+  const PART: Record<string, readonly number[]> = { play: [74, 74, 28, 28], time: [155, 155, 155, 75], ratio: [160, 70, 70, 70] };
+  let resize: ((width: number) => void) | null = null;
+
+  /**
+   * Give the control row `room` pixels of content width, and its parts the widths of PART in the form it shows.
+   * @param room - The row's content width.
+   * @throws {never} Never.
+   */
+  function sizeTransport(room: number): void {
+    vi.stubGlobal('ResizeObserver', class {
+      readonly #callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) { this.#callback = callback; }
+      observe(target: Element): void {
+        if (target.getAttribute('data-testid') !== 'timeline-transport') return;
+        resize = (width) => act(() => this.#callback([{ target, contentRect: { width } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver));
+        resize(room);
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    });
+    const original = Element.prototype.getBoundingClientRect;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const part = this.getAttribute('data-transport-part');
+      const form = Number(this.closest('[data-transport-form]')?.getAttribute('data-transport-form'));
+      if (part !== null) return { width: PART[part]![form]! } as DOMRect;
+      return original.call(this);
+    });
+  }
+
+  afterEach(() => { resize = null; });
+
+  it('shows the full row when it fits, the seek bar in a row of its own', async () => {
+    sizeTransport(389);
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    const row = await screen.findByTestId('timeline-transport');
+    expect(screen.getByTestId('timeline-play')).toHaveTextContent(t('timeline.play'));
+    expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(position(0, 24));
+    expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent('16:9 · 1920×1080');
+    expect(row).not.toContainElement(screen.getByRole('slider', { name: t('timeline.seek') }));
+  });
+
+  it('drops the size from the ratio, then the Play name into a tooltip, then the total from the time', async () => {
+    sizeTransport(388);
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    await waitFor(() => expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^16:9$/));
+    expect(screen.getByTestId('timeline-play')).toHaveTextContent(t('timeline.play'));
+    resize!(298);
+    await waitFor(() => expect(screen.getByTestId('timeline-play')).toHaveTextContent(/^$/));
+    expect(screen.getByTestId('timeline-play')).toHaveAccessibleName(t('timeline.play'));
+    expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(position(0, 24));
+    resize!(252);
+    await waitFor(() => expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(/^00:00:00:00$/));
+    resize!(100);
+    expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(/^00:00:00:00$/);
+  });
+
+  it('names the icon-only Play button on hover', async () => {
+    sizeTransport(253);
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    await waitFor(() => expect(screen.getByTestId('timeline-play')).toHaveTextContent(/^$/));
+    await userEvent.hover(screen.getByTestId('timeline-play'));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(t('timeline.play'));
+  });
+
+  it('brings the parts back in the reverse order as the row widens', async () => {
+    sizeTransport(100);
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    await waitFor(() => expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(/^00:00:00:00$/));
+    resize!(253);
+    await waitFor(() => expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(position(0, 24)));
+    expect(screen.getByTestId('timeline-play')).toHaveTextContent(/^$/);
+    resize!(299);
+    await waitFor(() => expect(screen.getByTestId('timeline-play')).toHaveTextContent(t('timeline.play')));
+    expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^16:9$/);
+    resize!(389);
+    await waitFor(() => expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent('16:9 · 1920×1080'));
+  });
+});
+
 describe('TimelineSpace clip actions', () => {
   it('splits the selected clip at the playhead from the toolbar', async () => {
     magnet(false);
@@ -3010,16 +3095,20 @@ describe('TimelineSpace frame ratio and play bar (breatic#1502)', () => {
     expect(within(playBar()).queryByText(t('timeline.transport.waiting'))).toBe(null);
   });
 
-  it('lays the play bar out as play button, timecode, slider and ratio control, with the timecode able to hold the buffering text above it', async () => {
+  it('lays the play bar out as the slider in a row of its own, then play button, timecode and ratio control, with the timecode able to hold the buffering text above it (inner#1709)', async () => {
     seedContent();
     showTimeline();
     await screen.findByTestId('timeline-play');
-    const row = playBar();
-    const timecodeBox = within(row).getByTestId('timeline-timecode');
+    const bar = playBar();
+    const [seekRow, controls] = [...bar.children] as HTMLElement[];
+    expect(bar.children).toHaveLength(2);
+    expect(within(seekRow!).getByRole('slider', { name: t('timeline.seek') })).toBeInTheDocument();
+    expect(controls).toBe(screen.getByTestId('timeline-transport'));
+    const timecodeBox = within(controls!).getByTestId('timeline-timecode');
     expect(timecodeBox).toHaveClass('relative');
     expect(timecodeBox).toHaveTextContent(position(0, 0));
-    expect([...row.children].map((child) => child.getAttribute('data-testid') ?? child.getAttribute('role') ?? child.querySelector('[role]')?.getAttribute('role')))
-      .toEqual(['timeline-play', 'timeline-timecode', 'slider', 'timeline-frame-ratio']);
+    const hooks = [...controls!.children].map((child) => child.querySelector('[data-testid]')?.getAttribute('data-testid') ?? child.getAttribute('data-testid'));
+    expect(hooks.filter(Boolean)).toEqual(['timeline-play', 'timeline-timecode', 'timeline-frame-ratio']);
   });
 
   it('removes the paused and playing transport strings from every locale', () => {

@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import type * as Y from 'yjs';
-import { ArrowRightToLine, Code, Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, Type, Undo2 } from 'lucide-react';
+import { ArrowRightToLine, Code, Copy, Film, Link2, Magnet, Plus, Redo2, Scissors, Trash2, Type, Undo2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   durationToFrames, getLocale, newId, TIMELINE_MAIN_TRACK_ID, timelineLayerBase, type TimelineFramePreset, timelineLayerContains, timelineLayerCorners, timelineLayerStyle,
@@ -34,7 +34,7 @@ import { stopFollowing } from '@web/stores/follow';
 import type { SpaceBodyProps } from '@web/spaces';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 import { TimelineClipProperties } from '@web/spaces/timeline/TimelineClipProperties';
-import { TimelineFrameRatio } from '@web/spaces/timeline/TimelineFrameRatio';
+import { TimelineTransport } from '@web/spaces/timeline/TimelineTransport';
 import { TimelineToolbar, toolbarButton, type TimelineToolbarEntry } from '@web/spaces/timeline/TimelineToolbar';
 import { timelinePreviewFit } from '@web/spaces/timeline/timeline-preview-fit';
 import { TimelineMaterialDialog } from '@web/spaces/timeline/TimelineMaterialDialog';
@@ -44,7 +44,6 @@ import { timelineKeyAction } from '@web/spaces/timeline/timeline-keyboard';
 import { getTimelineMediaDraft } from '@web/spaces/timeline/timeline-media-draft';
 import { getTimelineUploads } from '@web/spaces/timeline/timeline-uploads';
 import { timelineUploadText, useTimelineUploadViews } from '@web/spaces/timeline/use-timeline-upload-views';
-import { formatTimelineTimecode } from '@web/spaces/timeline/timeline-timecode';
 import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 import { useTimelineDocument } from '@web/spaces/timeline/use-timeline-document';
 import { timelineClipKind, timelineClipName } from '@web/spaces/timeline/timeline-clip-name';
@@ -930,16 +929,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
           </div>
         </div>
       </div>
-      <div data-playback-state={playback.state} className='flex shrink-0 items-center gap-3 border-t border-border px-4 py-2'>
-        <Button data-testid='timeline-play' variant='outline' size='sm' className='gap-1.5' disabled={duration === 0} onClick={togglePlay} icon={playback.intent === 'play' ? <Pause className='size-4' /> : <Play className='size-4' />}>{playback.intent === 'play' ? t('timeline.pause') : t('timeline.play')}</Button>
-        {/* The buffering text sits above the timecode, out of the flow, so nothing in the row moves when it appears. */}
-        <div data-testid='timeline-timecode' className='relative flex shrink-0'>
-          <span className='text-xs tabular-nums'>{`${formatTimelineTimecode(frame, fps)} / ${formatTimelineTimecode(duration, fps)}`}</span>
-          {playback.state === 'waiting' && <span className='pointer-events-none absolute bottom-full left-0 mb-0.5 whitespace-nowrap text-2xs leading-none text-muted-foreground'>{t('timeline.transport.waiting')}</span>}
-        </div>
-        <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={onSeek} min={0} max={Math.max(1, duration - 1)} step={1} disabled={duration === 0} className='min-w-0 flex-1' />
-        <TimelineFrameRatio width={canvas.width} height={canvas.height} readOnly={readOnly} onChoose={chooseFrame} />
-      </div>
+      <TimelineTransport state={playback.state} playing={playback.intent === 'play'} waiting={playback.state === 'waiting'} frame={frame} duration={duration} fps={fps}
+        seekValue={seekValue} onSeek={onSeek} onToggle={togglePlay} width={canvas.width} height={canvas.height} readOnly={readOnly} onChoose={chooseFrame} />
       <TimelineToolbar label={t('timeline.tracks')} moreLabel={t('timeline.edit.more')} entries={toolbarEntries} />
       <TimelineTrackArea projectId={projectId} document={document} labels={labels} failedIds={failedIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={setTrackScroller}
         pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} web={web} webClips={webClips} uploads={uploadViews} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
