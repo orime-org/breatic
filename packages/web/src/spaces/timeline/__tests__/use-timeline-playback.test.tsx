@@ -15,7 +15,9 @@ import * as React from 'react';
 import { act, renderHook, type RenderHookResult } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TimelineDocumentV1, TimelineTrack, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
+import type {
+  TimelineClip, TimelineDocumentV1, TimelineImageClip, TimelineImageSource, TimelineSource, TimelineTrack, TimelineVideoClip, TimelineVideoSource,
+} from '@breatic/shared';
 import { arrangeTimelineClips, EMPTY_TIMELINE_WEB_RESOLUTION } from '@web/data/yjs/timeline-arrangement';
 import { toast } from '@web/lib/toast';
 import { corsUrl } from '@web/lib/cors-url';
@@ -246,8 +248,8 @@ function deferredPlay(): DeferredPlay {
  * @throws {never} Never.
  */
 function timelineDocument(
-  clips: TimelineVideoClip[] = [CLIP],
-  sources: TimelineVideoSource[] = [SOURCE],
+  clips: TimelineClip[] = [CLIP],
+  sources: TimelineSource[] = [SOURCE],
   tracks: TimelineTrack[] = [{ id: 'visual-1', order: 0 }],
 ): TimelineDocumentV1 {
   return {
@@ -1939,12 +1941,12 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
   });
 
   it('pauses a playing video once a later-starting picture on its track covers it, whatever the kinds (inner#1709 design §2.4)', async () => {
-    const picture = {
-      ...CLIP, id: '30000000-0000-4000-8000-000000000021', kind: 'image', sourceId: '20000000-0000-4000-8000-000000000021', startFrame: 24, durationFrames: 48,
-    } as unknown as TimelineVideoClip;
-    const pictureSource = {
+    const picture: TimelineImageClip = {
+      ...CLIP, id: '30000000-0000-4000-8000-000000000021', kind: 'image', sourceId: '20000000-0000-4000-8000-000000000021', sourceInFrame: 0, startFrame: 24, durationFrames: 48,
+    };
+    const pictureSource: TimelineImageSource = {
       id: '20000000-0000-4000-8000-000000000021', kind: 'image', url: 'https://cdn.test/picture.png', name: 'picture.png', mimeType: 'image/png', width: 1920, height: 1080,
-    } as unknown as TimelineVideoSource;
+    };
     const media = mediaFixture();
     const hook = renderPlayback(media, { document: timelineDocument([CLIP, picture], [SOURCE, pictureSource]) });
     act(() => hook.result.current.toggle());

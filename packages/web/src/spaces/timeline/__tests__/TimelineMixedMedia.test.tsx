@@ -64,7 +64,7 @@ const PLACED = { sourceInFrame: 0, rate: { num: 1, den: 1 }, gain: 1, mute: fals
 function asset(n: number, kind: 'video' | 'image' | 'audio', displayName: string, fields: Partial<ProjectRegisteredAsset> = {}): ProjectRegisteredAsset {
   return {
     assetId: `20000000-0000-4000-8000-00000000000${n}`, projectReferenceId: `50000000-0000-4000-8000-00000000000${n}`, displayName, kind,
-    fileUrl: `https://cdn.example/${kind}-${n}`, coverUrl: kind === 'audio' ? null : `https://cdn.example/${kind}-${n}.jpg`,
+    fileUrl: `https://cdn.example/${kind}-${n}`, coverUrl: kind === 'video' ? `https://cdn.example/${kind}-${n}.jpg` : null,
     width: kind === 'audio' ? null : 1920, height: kind === 'audio' ? null : 1080, durationSeconds: kind === 'image' ? null : 14,
     mimeType: kind === 'video' ? 'video/mp4' : kind === 'image' ? 'image/png' : 'audio/mpeg', sizeBytes: 4096, ...fields,
   };
@@ -792,7 +792,8 @@ describe('the readiness barrier (design §5.4, §7.7)', () => {
     decodeOutcome = 'pending';
     fontOutcome = new Map([['noto-sans-sc-han-wght-normal', 'pending']]);
     const later = 24;
-    seed([{ ...IMAGE, startFrame: later }, { ...TEXT, trackId: MAIN, startFrame: later }]);
+    // Long enough that playback cannot reach the Timeline end while the case watches it.
+    seed([{ ...IMAGE, startFrame: later, durationFrames: 480 }, { ...TEXT, trackId: MAIN, startFrame: later, durationFrames: 480 }]);
     show();
     seekForward(later - 1);
     // Both load while the playhead is still before them: the picture's layer waits hidden and the text's slice loads.
@@ -968,11 +969,13 @@ describe('media that cannot be read (design §6.6, acceptance 7)', () => {
     fireEvent.click(clip);
     expect(within(screen.getByTestId('timeline-side-panel')).queryByTestId('timeline-media-retry')).toBe(null);
     decodeOutcome = 'resolve';
+    const reads = decode.mock.calls.length;
     const seek = screen.getAllByRole('slider')[0]!;
     seek.focus();
     for (let step = 0; step < 200; step += 1) fireEvent.keyDown(seek, { key: 'ArrowLeft' });
-    await waitFor(() => expect(layerOf(IMAGE.id)).not.toBe(null));
-    await waitFor(() => expect(screen.getByTestId('timeline-clip-' + IMAGE.id)).not.toHaveTextContent('读取失败'));
+    await waitFor(() => expect(decode.mock.calls.length).toBeGreaterThan(reads));
+    await waitFor(() => expect(layerOf(IMAGE.id)?.style.visibility).not.toBe('hidden'));
+    expect(screen.getByTestId('timeline-clip-' + IMAGE.id)).not.toHaveTextContent('读取失败');
   });
 
   it('says a sound could not be read, on the clip, in its properties and in the preview, and retries only that layer', async () => {
