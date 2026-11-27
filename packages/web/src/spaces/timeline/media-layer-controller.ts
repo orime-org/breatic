@@ -75,8 +75,6 @@ export interface MediaLayerController {
   configure: () => void;
   /** Route every lane, and each lane made later, through its own gain node into this context. */
   attachAudio: (context: AudioContext) => void;
-  /** Disconnect every lane's nodes; the lanes and their elements stay. */
-  detachAudio: () => void;
   /** Disconnect, release and remove every element. */
   dispose: () => void;
 }
@@ -289,16 +287,11 @@ export function createMediaLayerController(options: MediaLayerControllerOptions)
       for (const lane of lanes.values()) configureLane(lane);
     },
     attachAudio(next): void {
-      for (const lane of lanes.values()) disconnect(lane);
       context = next;
       for (const lane of lanes.values()) {
         connect(lane);
         configureLane(lane);
       }
-    },
-    detachAudio(): void {
-      for (const lane of lanes.values()) disconnect(lane);
-      context = null;
     },
     dispose(): void {
       for (const lane of [...lanes.values()]) remove(lane);

@@ -387,17 +387,4 @@ describe('createMediaLayerController audio graph (design §5.2, §7.4, §7.5)', 
       expect(fixture.load).toHaveBeenCalled();
     }
   });
-
-  it('disconnects every node on detach and keeps the lanes and their elements', () => {
-    const log: string[] = [];
-    const context = new FakeAudioContext(log);
-    const loud = elementFixture('audio', log);
-    const { controller } = controllerFor({ [LOUD.id]: loud });
-    controller.sync([layer(LOUD.id, 'audio')]);
-    controller.attachAudio(context as unknown as AudioContext);
-    controller.detachAudio();
-    expect(context.sourceOf(LOUD.id)?.disconnect).toHaveBeenCalled();
-    expect(context.sourceOf(LOUD.id)?.gainNode()?.disconnect).toHaveBeenCalled();
-    expect(controller.element(LOUD.id)).toBe(loud.element);
-  });
 });
