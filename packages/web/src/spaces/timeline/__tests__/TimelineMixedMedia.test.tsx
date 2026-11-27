@@ -497,6 +497,23 @@ describe('adding text (design §6.3, acceptance 1)', () => {
     await waitFor(() => expect(Object.values(storedClips()).some((record) => record.kind === 'text')).toBe(false));
   });
 
+  it('focuses the new text\'s body once: selecting it again later leaves the body unfocused, so the edit keys act on the clip', async () => {
+    seed([VIDEO], undefined, ['v2']);
+    show();
+    await screen.findByTestId('timeline-clip-' + VIDEO.id);
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith(`/projects/${PROJECT}/timeline-limits`, expect.anything()));
+    fireEvent.click(screen.getByTestId('timeline-add-text'));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('timeline-clip-text-body')));
+    const added = Object.values(storedClips()).find((record) => record.kind === 'text')!;
+    const text = screen.getByTestId('timeline-clip-' + String(added.id));
+    const video = screen.getByTestId('timeline-clip-' + VIDEO.id);
+    fireEvent.click(video);
+    await waitFor(() => expect(video).toHaveAttribute('aria-pressed', 'true'));
+    fireEvent.click(text);
+    await waitFor(() => expect(text).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.getByTestId('timeline-clip-text-body')).not.toBe(document.activeElement);
+  });
+
   it('puts the text on a new top track when the tracks above are busy at the playhead, moving and cutting nothing', async () => {
     seed([VIDEO, IMAGE], undefined, ['v2']);
     show();

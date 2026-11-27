@@ -815,6 +815,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
   // Add text (design §6.3): a default text at the playhead for the configured length and size, selected, its body
   // focused for typing.
   const [focusTextId, setFocusTextId] = React.useState<string | null>(null);
+  // The request is used once: the panel opened for that text has focused its body on mounting.
+  React.useEffect(() => {
+    if (focusTextId !== null && selected?.id === focusTextId) setFocusTextId(null);
+  }, [focusTextId, selected?.id]);
   const addText = React.useCallback(async (): Promise<void> => {
     if (readOnly) return;
     const at = frame;
