@@ -160,7 +160,7 @@ async function openPanel(nodeId: string): Promise<void> {
   if (!box) throw new Error(`node ${nodeId} has no box`);
   await node.dispatchEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: box.x + box.width / 2, clientY: box.y + 8 });
   await page.getByTestId('node-menu-generate').click();
-  // A node in multi-shot mode shows its shots in place of the prompt, and a model that reads no prompt a notice.
+  // A node on Multi-shot shows its shots in place of the prompt, and a model that reads no prompt a notice.
   await expect(
     page.getByTestId('generate-prompt-editor').or(page.getByTestId('generate-storyboard-shot-1-editor')).or(page.getByTestId('generate-prompt-not-used')),
   ).toBeVisible({ timeout: 15_000 });
@@ -242,7 +242,7 @@ async function fillBraces(values: string[], editorId = 'generate-prompt-editor')
 }
 
 /**
- * Open one shot of the open multi-shot panel through its row, the way a user does, unless it is open already:
+ * Open one shot of a panel on Multi-shot through its row, the way a user does, unless it is open already:
  * only one shot is open at a time, and a folded shot takes no typing.
  * @param n - The shot's number, from 1.
  */

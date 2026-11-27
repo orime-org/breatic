@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * One prompt per mode, and the multi-shot mode: shots typed into real
- * collaborative editors, stepped with real buttons and sent in the request
+ * One prompt per mode, and Multi-shot in the Shots pill (inner#2192): shots
+ * typed into real collaborative editors, stepped with real buttons and sent in the request
  * this client builds -- in Kling's own field, or written into the prompt for a
  * model with no field for them -- and the model names each mode's picker shows.
  *
@@ -27,6 +27,7 @@ import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helper
 test.use({ viewport: { width: 1440, height: 1200 } });
 
 const KLING = 'kling-v3.0-4k-text-to-video';
+const KLING_I2V = 'kling-video-o3-4k-image-to-video';
 const WAN = 'wan-3.0-text-to-video';
 
 let page: Page;
@@ -36,9 +37,10 @@ let spaceId = '';
 /**
  * Write an empty video node into the open Space, near the top of the pane.
  * @param p - A page with the Space open.
+ * @param extra - Further node fields, such as a picked first frame.
  * @returns The node's id.
  */
-async function seedVideoNode(p: Page): Promise<string> {
+async function seedVideoNode(p: Page, extra: Record<string, unknown> = {}): Promise<string> {
   await expect(visibleSpace(p).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   const nodeId = crypto.randomUUID();
   const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
@@ -49,7 +51,7 @@ async function seedVideoNode(p: Page): Promise<string> {
     return { tx: m.e, ty: m.f };
   }, VISIBLE_SPACE);
   await p.evaluate(
-    async ([pid, sid, id, x, y, at]: [string, string, string, number, number, string]) => {
+    async ([pid, sid, id, x, y, at, more]: [string, string, string, number, number, string, Record<string, unknown>]) => {
       const canvas = (await import(/* @vite-ignore */ at)) as {
         addNode: (p: string, s: string, n: unknown) => void;
       };
@@ -63,16 +65,18 @@ async function seedVideoNode(p: Page): Promise<string> {
           createdBy: 'storyboard-e2e',
           locked: false,
           attachments: [],
+          ...more,
         },
       });
     },
-    [projectId, spaceId, nodeId, Math.round(200 - origin.tx), Math.round(40 - origin.ty), canvasAt] as [
+    [projectId, spaceId, nodeId, Math.round(200 - origin.tx), Math.round(40 - origin.ty), canvasAt, extra] as [
       string,
       string,
       string,
       number,
       number,
       string,
+      Record<string, unknown>,
     ],
   );
   return nodeId;
@@ -96,20 +100,31 @@ async function openGenerate(p: Page, nodeId: string): Promise<void> {
  * @param p - A page with the panel open.
  * @param mode - The mode's test id suffix.
  */
-async function switchMode(p: Page, mode: 't2v' | 'i2v' | 'multi-shot'): Promise<void> {
+async function switchMode(p: Page, mode: 't2v' | 'i2v' | 'ref'): Promise<void> {
   await p.getByTestId('generate-video-mode-trigger').click();
   await p.getByTestId(`generate-video-mode-${mode}`).click();
 }
 
 /**
- * Switch to the multi-shot mode, pick a model and write its two shots.
+ * Pick one item of the Shots pill.
+ * @param p - A page with the panel open.
+ * @param choice - The item's test id suffix.
+ */
+async function pickShots(p: Page, choice: 'single' | 'multi' | 'auto'): Promise<void> {
+  await p.getByTestId('generate-video-shots-trigger').click();
+  await p.getByTestId(`generate-video-shots-${choice}`).click();
+}
+
+/**
+ * Pick a model in the mode on screen, pick Multi-shot and write its two shots.
  * @param p - A page with the panel open.
  * @param model - The model to pick.
  */
 async function writeTwoShots(p: Page, model: string): Promise<void> {
-  await switchMode(p, 'multi-shot');
   await p.getByTestId('generate-model-trigger').click();
   await p.getByTestId(`generate-model-option-${model}`).click();
+  await pickShots(p, 'multi');
+  await expect(p.getByTestId('generate-video-shots-trigger')).toHaveText('Multi-shot');
   await p.getByTestId('generate-storyboard-shot-1-editor').click();
   await p.keyboard.type('a red paper boat floats on a still pond, close-up');
   // One shot is open at a time (#1201): opening the second puts the caret in it.
@@ -185,7 +200,46 @@ test('keeps each mode\'s prompt, and sends the shots in place of it', async () =
     { prompt: 'the camera pulls back to show the whole pond at dusk', duration: 2 },
   ]);
   expect(params).not.toHaveProperty('prompt');
-  expect(params).not.toHaveProperty('auto_shots');
+  // Kling's own shot planning names the same upstream field, so it goes out off.
+  expect(params.auto_shots).toBe(false);
+});
+
+test('sends Kling\'s own shot field from image to video, beside its first frame', async () => {
+  const nodeId = await seedVideoNode(page, { mode: 'i2v', firstFrameUrl: 'https://fixtures.test/first-frame.png' });
+  await openGenerate(page, nodeId);
+  await writeTwoShots(page, KLING_I2V);
+  const body = await captureSubmit(page);
+  await page.getByTestId('generate-video-execute').click();
+  await expect.poll(body, { timeout: 20_000 }).toBeDefined();
+
+  const params = (body() as { params: Record<string, unknown> }).params;
+  expect(params.shot_type).toBe('customize');
+  expect(params.multi_prompt).toEqual([
+    { prompt: 'a red paper boat floats on a still pond, close-up', duration: 2 },
+    { prompt: 'the camera pulls back to show the whole pond at dusk', duration: 3 },
+  ]);
+  expect(params.image).toBe('https://fixtures.test/first-frame.png');
+  expect(params).not.toHaveProperty('prompt');
+});
+
+test('shows the main prompt again on Single shot, keeping the shots for next time', async () => {
+  const nodeId = await seedVideoNode(page);
+  await openGenerate(page, nodeId);
+  await writeTwoShots(page, WAN);
+  await pickShots(page, 'single');
+  await expect(page.getByTestId('generate-prompt-editor')).toBeVisible();
+  await expect(page.getByTestId('generate-storyboard-shots')).toHaveCount(0);
+  await pickShots(page, 'multi');
+  await expect(page.getByTestId('generate-storyboard-shot-1-toggle')).toContainText('a red paper boat');
+});
+
+test('shows no Shots pill where the model takes no shots in the mode', async () => {
+  const nodeId = await seedVideoNode(page);
+  await openGenerate(page, nodeId);
+  await expect(page.getByTestId('generate-video-shots-trigger')).toBeVisible();
+  await page.getByTestId('generate-video-mode-trigger').click();
+  await page.getByTestId('generate-video-mode-first-last').click();
+  await expect(page.getByTestId('generate-video-shots-trigger')).toHaveCount(0);
 });
 
 test('writes the shots into the prompt for a model with no field for them', async () => {
@@ -229,31 +283,54 @@ test('puts add-shot in the middle under the shots, and the reason there in its p
   expect(Math.abs(r.x + r.width / 2 - (l.x + l.width / 2))).toBeLessThan(2);
 });
 
-test('offers auto multi-shot on Kling in text to video only, and sends it', async () => {
+test('offers Auto multi-shot in the Shots pill on Kling only, and sends it', async () => {
   const nodeId = await seedVideoNode(page);
   await openGenerate(page, nodeId);
   await page.getByTestId('generate-model-trigger').click();
   await page.getByTestId(`generate-model-option-${KLING}`).click();
   await page.getByTestId('generate-prompt-editor').click();
   await page.keyboard.type('a boat, then the whole pond');
+  // The switch moved out of the settings pill into the Shots pill.
   await page.getByTestId('generate-video-params-trigger').click();
-  await page.getByTestId('generate-param-auto_shots-toggle').click();
+  await expect(page.getByTestId('generate-param-auto_shots-toggle')).toHaveCount(0);
   await page.keyboard.press('Escape');
+  await pickShots(page, 'auto');
+  await expect(page.getByTestId('generate-video-shots-trigger')).toHaveText('Auto multi-shot');
 
   const body = await captureSubmit(page);
   await page.getByTestId('generate-video-execute').click();
   await expect.poll(body, { timeout: 20_000 }).toBeDefined();
-  expect((body() as { params: Record<string, unknown> }).params).toMatchObject({ auto_shots: true });
+  const params = (body() as { params: Record<string, unknown> }).params;
+  expect(params).toMatchObject({ auto_shots: true, prompt: 'a boat, then the whole pond' });
+  expect(params).not.toHaveProperty('multi_prompt');
 
-  // A submit closes the panel; open it again for the other mode.
+  // Wan plans no shots of its own: its pill offers no Auto multi-shot.
   await openGenerate(page, nodeId);
-  await switchMode(page, 'multi-shot');
-  await page.getByTestId('generate-video-params-trigger').click();
-  await expect(page.getByTestId('generate-param-auto_shots-toggle')).toHaveCount(0);
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId(`generate-model-option-${WAN}`).click();
+  await page.getByTestId('generate-video-shots-trigger').click();
+  await expect(page.getByTestId('generate-video-shots-multi')).toBeVisible();
+  await expect(page.getByTestId('generate-video-shots-auto')).toHaveCount(0);
   await page.keyboard.press('Escape');
 });
 
-test('names a model by its vendor, joining a variant on only where namesakes meet', async () => {
+test('makes Seedance 2.5 a reference to video model, needing a source there', async () => {
+  const nodeId = await seedVideoNode(page);
+  await openGenerate(page, nodeId);
+  await switchMode(page, 'ref');
+  await page.getByTestId('generate-model-trigger').click();
+  await expect(page.getByTestId('generate-model-option-seedance-2.5-text-to-video')).toContainText(/^Seedance 2\.5/);
+  await page.getByTestId('generate-model-option-seedance-2.5-text-to-video').click();
+  await page.getByTestId('generate-prompt-editor').click();
+  await page.keyboard.type('a paper boat on a pond');
+  const body = await captureSubmit(page);
+  await page.getByTestId('generate-video-execute').click();
+  // Nothing @'d: the run asks for a reference and sends nothing.
+  await expect(page.getByText(/^Still missing a reference/).first()).toBeVisible({ timeout: 10_000 });
+  expect(body()).toBeUndefined();
+});
+
+test('names a model by its vendor alone in every mode', async () => {
   const nodeId = await seedVideoNode(page);
   await openGenerate(page, nodeId);
   await switchMode(page, 'i2v');
@@ -262,14 +339,13 @@ test('names a model by its vendor, joining a variant on only where namesakes mee
     /^Gemini Omni 1\.1 Flash(?! Image)/,
   );
   await page.keyboard.press('Escape');
-  await switchMode(page, 'multi-shot');
+  // No mode lists two models under one name any more (inner#2192).
+  await switchMode(page, 'ref');
   await page.getByTestId('generate-model-trigger').click();
-  await expect(page.getByTestId('generate-model-option-gemini-omni-1.1-flash-text-to-video')).toContainText(
-    'Gemini Omni 1.1 Flash Text-to-Video',
-  );
   await expect(page.getByTestId('generate-model-option-gemini-omni-1.1-flash-reference-to-video')).toContainText(
-    'Gemini Omni 1.1 Flash Reference',
+    /^Gemini Omni 1\.1 Flash(?! Reference)/,
   );
+  await expect(page.getByTestId('generate-model-option-seedance-2.5-text-to-video')).toContainText(/^Seedance 2\.5(?! Text)/);
   await page.keyboard.press('Escape');
 });
 

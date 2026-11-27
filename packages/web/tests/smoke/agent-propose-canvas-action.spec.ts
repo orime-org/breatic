@@ -246,8 +246,8 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
 });
 
 test('proposes a multi-shot video, and the panel opens on its shots @needs-model', async () => {
-  // A proposal carrying shots lands in the multi-shot mode, each shot holding
-  // the words the agent wrote.
+  // A proposal carrying shots lands on Multi-shot in text to video, each shot
+  // holding the words the agent wrote (inner#2192).
   test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
@@ -272,7 +272,8 @@ test('proposes a multi-shot video, and the panel opens on its shots @needs-model
 
   // The node that generates is selected with its panel open.
   await expect(page.getByTestId('generate-storyboard-shots')).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId('generate-video-mode-trigger')).toContainText('Multi-Shot');
+  await expect(page.getByTestId('generate-video-mode-trigger')).toContainText('Text to Video');
+  await expect(page.getByTestId('generate-video-shots-trigger')).toHaveText('Multi-shot');
   for (const shot of [1, 2]) {
     const words = await page.getByTestId(`generate-storyboard-shot-${String(shot)}-editor`).innerText();
     expect(words.trim().length, `shot ${String(shot)} is empty`).toBeGreaterThan(0);
