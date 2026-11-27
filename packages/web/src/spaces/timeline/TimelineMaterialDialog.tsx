@@ -20,9 +20,9 @@ import { timelineApi } from '@web/data/api/timeline';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
+import { timelineVideoName } from '@web/spaces/timeline/prepare-media-placement';
 import type { TimelineMediaDraft } from '@web/spaces/timeline/timeline-media-draft';
 import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
-import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 
 /** A visible view of the document-owned material workflow. */
 interface TimelineMaterialDialogProps {
@@ -54,7 +54,7 @@ function ProjectVideoChoice({ asset, selected, disabled, onSelect }: ProjectVide
   return <Button type='button' data-testid={`timeline-project-video-${asset.assetId}`} variant={null} size={null} disabled={disabled} onClick={choose} aria-pressed={selected}
     className={cn('flex w-full min-w-0 justify-start gap-3 rounded-chrome border border-border p-3 text-left hover-enabled:bg-accent', selected && 'border-active-border')}>
     {asset.coverUrl === null ? <Film className='size-10 shrink-0 text-muted-foreground' /> : <img src={asset.coverUrl} alt='' className='h-10 w-16 shrink-0 rounded-content-xs object-cover' />}
-    <span className='flex min-w-0 flex-1 flex-col gap-1'><span className='min-w-0 truncate leading-normal'>{asset.displayName || t('timeline.video')}</span><span className='text-xs text-muted-foreground'>{asset.durationSeconds === null ? t('timeline.material.durationPending') : t('timeline.material.duration', { seconds: asset.durationSeconds })}</span></span>
+    <span className='flex min-w-0 flex-1 flex-col gap-1'><span className='min-w-0 truncate leading-normal'>{timelineVideoName(asset) ?? t('timeline.video')}</span><span className='text-xs text-muted-foreground'>{asset.durationSeconds === null ? t('timeline.material.durationPending') : t('timeline.material.duration', { seconds: asset.durationSeconds })}</span></span>
   </Button>;
 }
 
@@ -97,8 +97,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
   const mainClips = React.useMemo(() => orderedTimelineClips(document.clips, TIMELINE_MAIN_TRACK_ID), [document.clips]);
   const showsHint = placement.magnet && state.trackId === TIMELINE_MAIN_TRACK_ID && Number.isSafeInteger(startFrame) && startFrame >= 0;
   const before = showsHint ? mainClips[timelineInsertionIndex(mainClips, startFrame) - 1] : undefined;
-  const beforeAssetId = before === undefined ? '' : timelineClipSource(document.sources, before)?.assetId ?? '';
-  const beforeAsset = useTimelineAsset(projectId, beforeAssetId);
+  const beforeName = before === undefined ? null : timelineClipSource(document.sources, before)?.name ?? null;
   const trackKnown = state.trackId === 'new' || document.tracks[state.trackId] !== undefined;
   return <Dialog open onOpenChange={changeOpen}>
     <DialogContent onCloseAutoFocus={returnFocus} className='flex h-[min(36rem,85vh)] flex-col gap-0 p-0'>
@@ -128,7 +127,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
               <SelectContent>{labels.visual.map((track) => <SelectItem key={track.id} value={track.id}>{track.label}</SelectItem>)}<SelectItem value='new'>{t('timeline.edit.newTrack')}</SelectItem></SelectContent>
             </Select></div>
           <div className='flex items-center gap-3'><Label htmlFor={`timeline-start-${spaceId}`} className='shrink-0'>{t('timeline.startFrame')}</Label><Input id={`timeline-start-${spaceId}`} data-testid='timeline-start-frame' type='text' inputMode='numeric' autoComplete='off' value={state.startFrame} onChange={changeFrame} disabled={state.busy} /></div>
-          {showsHint && <p data-testid='timeline-material-insert-hint' className='text-xs text-muted-foreground'>{before === undefined ? t('timeline.material.insertFirst') : t('timeline.material.insertAfter', { name: before.kind === 'upload' ? before.upload.name : beforeAsset.data?.displayName || t('timeline.video') })}</p>}
+          {showsHint && <p data-testid='timeline-material-insert-hint' className='text-xs text-muted-foreground'>{before === undefined ? t('timeline.material.insertFirst') : t('timeline.material.insertAfter', { name: before.kind === 'upload' ? before.upload.name : beforeName ?? t('timeline.video') })}</p>}
           {state.errorKey !== null && <p data-testid='timeline-material-error' className='text-sm text-status-error-foreground'>{t(`timeline.errors.${state.errorKey}`)}</p>}
           {!canWrite && <p className='text-sm text-muted-foreground'>{t('timeline.errors.readonly')}</p>}
         </div>

@@ -83,7 +83,7 @@ describe('native scene overview (inner#1724)', () => {
 
 describe('appearance in the overview (inner#1693 design 5.2)', () => {
   it('shows each object\'s look and leaves its materials alone while only its transform changes', async () => {
-    const cache = new ModelResourceCache((source, signal) => loadSceneModel(source, signal, vi.fn(), '#969696', IMPORT_LIMITS)); owners.push(() => cache.dispose());
+    const cache = new ModelResourceCache((source, signal) => loadSceneModel(source, signal, '#969696', IMPORT_LIMITS)); owners.push(() => cache.dispose());
     const main = cache.acquire(OBJECT.model); await main.ready;
     const host = document.createElement('div'); document.body.append(host);
     Object.defineProperties(host, { clientWidth: { value: 200 }, clientHeight: { value: 140 } });

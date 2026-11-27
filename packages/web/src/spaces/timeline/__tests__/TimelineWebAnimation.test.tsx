@@ -54,7 +54,7 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
     ...actual,
     timelineApi: {
       ...actual.timelineApi,
-      listVideos: vi.fn(), resolveAsset: vi.fn(), limits: vi.fn(),
+      listVideos: vi.fn(), limits: vi.fn(),
       listResults: vi.fn(), resolveWebSources: vi.fn(), previewUrl: vi.fn(),
     },
   };
@@ -82,7 +82,8 @@ const ASSET: ProjectRegisteredAsset = {
   width: 1280, height: 720, durationSeconds: 41.666, mimeType: 'video/mp4', sizeBytes: 8192,
 };
 const VIDEO_SOURCE: TimelineVideoSource = {
-  id: '10000000-0000-4000-8000-000000000001', kind: 'video', assetId: ASSET.assetId,
+  id: '10000000-0000-4000-8000-000000000001', kind: 'video', url: ASSET.fileUrl, coverUrl: ASSET.coverUrl,
+  name: 'Product launch.mp4', mimeType: 'video/mp4', width: 1280, height: 720,
   timebase: SETTINGS.fps, extentFrames: 1000, durationSeconds: '41.666', durationOrigin: 'registered',
 };
 const PREVIEW_URL = 'https://preview.example/web-animation/token/index.html';
@@ -166,7 +167,6 @@ beforeEach(() => {
   writeUserPreference(ME, { timelineMagnet: false });
   for (const fn of Object.values(toast)) if (vi.isMockFunction(fn)) fn.mockClear();
   vi.mocked(timelineApi.listVideos).mockReset().mockResolvedValue({ items: [ASSET], nextCursor: null });
-  vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue(ASSET);
   vi.mocked(timelineApi.limits).mockReset().mockResolvedValue(LIMITS as never);
   vi.mocked(timelineApi.listResults).mockReset().mockResolvedValue({ rows: [], nextCursor: null, totals: null });
   vi.mocked(timelineApi.resolveWebSources).mockReset().mockResolvedValue(RESOLUTION);
@@ -649,7 +649,7 @@ describe('Add web animation', () => {
       deadlineAt: '2026-11-15T10:00:00.000000Z', createdAt: '2026-11-15T08:00:00.000000Z', updatedAt: '2026-11-15T08:00:00.000000Z',
       kind: 'web_animation_create', engine: 'deepseek', request,
       input: { prompt: request, engine: 'deepseek', aspect: '16:9', durationSeconds: 2, fps: SETTINGS.fps },
-      resultSourceVersionId, resultAssetId: null,
+      resultSourceVersionId, resultAsset: null,
     };
   }
 

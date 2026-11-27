@@ -283,7 +283,7 @@ test('the layer Retry reloads the unchanged media URL after a native HTTP error,
   const projectId = smokeProjectId();
   const spaceId = await createSpace(page, 'timeline', `Timeline native retry ${crypto.randomUUID()}`);
   const evidence: Record<string, unknown> = {};
-  /** Inject only the exact native media request; authorization and every other request remain real. */
+  /** Inject only the exact native media request; every other request remains real. */
   const mediaFailure = async (route: Route): Promise<void> => {
     observed.requests += 1;
     if (failing) {
@@ -294,7 +294,7 @@ test('the layer Retry reloads the unchanged media URL after a native HTTP error,
       await route.continue();
     }
   };
-  /** Match the already-authorized media URL without storing a signed URL in the output evidence. */
+  /** Match the stored media URL without storing it in the output evidence. */
   const isActualMedia = (url: URL): boolean => mediaUrl !== null && url.href === mediaUrl;
   try {
     const uploaded = await uploadTimelineVideo(page, projectId);
@@ -321,15 +321,10 @@ test('the layer Retry reloads the unchanged media URL after a native HTTP error,
     evidence.requestsBeforeRetry = beforeRetry;
     await preserveEvidence(page, 'native-error-before-retry', { ...evidence, observed });
     failing = false;
-    const authorized = page.waitForResponse((response) => response.request().method() === 'GET'
-      && new URL(response.url()).pathname === `/api/v1/projects/${projectId}/assets/${uploaded.asset.assetId}`);
     await retry.click();
-    const response = await authorized;
-    expect(response.status(), 'Retry still resolves the real Project-authorized asset').toBe(200);
-    const envelope = await response.json() as { data: { assetId: string; fileUrl: string } };
-    expect(envelope.data.assetId).toBe(uploaded.asset.assetId);
-    expect(envelope.data.fileUrl).toBe(uploaded.asset.fileUrl);
-    evidence.authorizationStillSameAssetAndUrl = true;
+    // Retry reloads the address the Timeline document stores; there is no asset to resolve again (inner#2171).
+    await expect(video).toHaveAttribute('src', uploaded.asset.fileUrl);
+    evidence.retryKeepsStoredUrl = true;
     evidence.afterRetry = await observePlayback(page, 350, mediaUrl, uploaded.clipId);
     expect(observed.unexpected).toEqual([]);
     await expect.poll(() => observed.requests, { timeout: 8_000 }).toBeGreaterThan(beforeRetry);

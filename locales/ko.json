@@ -5571,7 +5571,6 @@
     },
     "preview": {
       "playBlocked": "브라우저가 소리가 있는 재생을 차단했습니다. 재생을 눌러 시작하세요.",
-      "videoLoading": "{track}: 동영상 불러오는 중…",
       "videoUnavailable": "{track}: 동영상을 사용할 수 없음"
     }
   },

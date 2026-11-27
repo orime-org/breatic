@@ -24,6 +24,16 @@ function mesh(root: Group): Mesh<BoxGeometry, MeshStandardMaterial> {
   return found as Mesh<BoxGeometry, MeshStandardMaterial>;
 }
 
+/**
+ * A registered model as the scene stores it, by address (inner#2171).
+ * @param name - Its file name, which tells models apart.
+ * @returns The model source.
+ * @throws {never} Never.
+ */
+function modelAt(name: string): { kind: 'asset'; url: string; mimeType: 'model/gltf-binary'; sizeBytes: number } {
+  return { kind: 'asset', url: `https://cdn.example/assets/${name}.glb`, mimeType: 'model/gltf-binary', sizeBytes: 2048 };
+}
+
 describe('scene model resource ownership (inner#1689)', () => {
   it('shares immutable geometry and texture, clones editable material, and releases at the last holder', async () => {
     const root = model();
@@ -34,8 +44,8 @@ describe('scene model resource ownership (inner#1689)', () => {
     const templateDispose = vi.spyOn(mesh(root).material, 'dispose');
     const load = vi.fn().mockResolvedValue(root);
     const cache = new ModelResourceCache(load);
-    const a = cache.acquire({ kind: 'asset', assetId: 'model' });
-    const b = cache.acquire({ kind: 'asset', assetId: 'model' });
+    const a = cache.acquire(modelAt('model'));
+    const b = cache.acquire(modelAt('model'));
     const [first, second] = await Promise.all([a.ready, b.ready]);
     expect(load).toHaveBeenCalledTimes(1);
     expect(mesh(first).geometry).toBe(mesh(second).geometry);
@@ -64,8 +74,8 @@ describe('scene model resource ownership (inner#1689)', () => {
     const geometryDispose = vi.spyOn(primitive.geometry, 'dispose');
     const templateDispose = vi.spyOn(primitive.material as LineBasicMaterial, 'dispose');
     const cache = new ModelResourceCache(vi.fn().mockResolvedValue(root));
-    const a = cache.acquire({ kind: 'asset', assetId: 'lines' });
-    const b = cache.acquire({ kind: 'asset', assetId: 'lines' });
+    const a = cache.acquire(modelAt('lines'));
+    const b = cache.acquire(modelAt('lines'));
     const [first, second] = await Promise.all([a.ready, b.ready]);
     const firstPrimitive = first.children[0] as LineSegments | Points;
     expect(firstPrimitive.material).not.toBe((second.children[0] as LineSegments | Points).material);
@@ -85,7 +95,7 @@ describe('scene model resource ownership (inner#1689)', () => {
     const templateDisposed = vi.fn();
     template.addEventListener('dispose', templateDisposed);
     const cache = new ModelResourceCache(vi.fn().mockResolvedValue(root));
-    const lease = cache.acquire({ kind: 'asset', assetId: 'forest' });
+    const lease = cache.acquire(modelAt('forest'));
     const copy = (await lease.ready).children[0] as InstancedMesh;
     expect(copy.instanceMatrix).not.toBe(template.instanceMatrix);
     const copyDisposed = vi.fn();
@@ -100,7 +110,7 @@ describe('scene model resource ownership (inner#1689)', () => {
     const dispose = vi.spyOn(mesh(root).geometry, 'dispose');
     let complete: (value: Group) => void = () => { throw new Error('Not started'); };
     const cache = new ModelResourceCache(() => new Promise<Group>((resolve) => { complete = resolve; }));
-    const lease = cache.acquire({ kind: 'asset', assetId: 'late' });
+    const lease = cache.acquire(modelAt('late'));
     const rejected = expect(lease.ready).rejects.toMatchObject({ name: 'AbortError' });
     lease.release();
     complete(root);
@@ -116,8 +126,8 @@ describe('scene model resource ownership (inner#1689)', () => {
     skinned.bind(new Skeleton([bone]));
     root.add(skinned);
     const cache = new ModelResourceCache(async () => root);
-    const a = cache.acquire({ kind: 'asset', assetId: 'rig' });
-    const b = cache.acquire({ kind: 'asset', assetId: 'rig' });
+    const a = cache.acquire(modelAt('rig'));
+    const b = cache.acquire(modelAt('rig'));
     const [first, second] = await Promise.all([a.ready, b.ready]);
     const firstSkin = first.children[0] as SkinnedMesh;
     const secondSkin = second.children[0] as SkinnedMesh;
@@ -133,10 +143,10 @@ describe('scene model resource ownership (inner#1689)', () => {
     const root = model();
     const load = vi.fn().mockRejectedValueOnce(failure).mockResolvedValueOnce(root);
     const cache = new ModelResourceCache(load);
-    const failed = cache.acquire({ kind: 'asset', assetId: 'retry' });
+    const failed = cache.acquire(modelAt('retry'));
     await expect(failed.ready).rejects.toBe(failure);
     failed.release();
-    const retried = cache.acquire({ kind: 'asset', assetId: 'retry' });
+    const retried = cache.acquire(modelAt('retry'));
     const instance = await retried.ready;
     expect(instance.children).toHaveLength(1);
     expect(load).toHaveBeenCalledTimes(2);
@@ -151,9 +161,9 @@ describe('scene model resource ownership (inner#1689)', () => {
     const geometryDispose = vi.spyOn(mesh(root).geometry, 'dispose');
     const load = vi.fn().mockResolvedValue(root);
     const cache = new ModelResourceCache(load);
-    const placing = acquireMeasured(cache, { kind: 'asset', assetId: 'model' });
+    const placing = acquireMeasured(cache, modelAt('model'));
     await expect(placing.bounds).resolves.toEqual({ center: [2, 0.5, -1], min: [1.5, 0, -1.5] });
-    const viewport = cache.acquire({ kind: 'asset', assetId: 'model' });
+    const viewport = cache.acquire(modelAt('model'));
     placing.release();
     await viewport.ready;
     expect(load).toHaveBeenCalledTimes(1);
@@ -166,7 +176,7 @@ describe('scene model resource ownership (inner#1689)', () => {
     const root = model();
     const geometryDispose = vi.spyOn(mesh(root).geometry, 'dispose');
     const cache = new ModelResourceCache(vi.fn().mockResolvedValue(root));
-    const placing = acquireMeasured(cache, { kind: 'asset', assetId: 'model' });
+    const placing = acquireMeasured(cache, modelAt('model'));
     await placing.bounds;
     cache.dispose();
     expect(geometryDispose).toHaveBeenCalledTimes(1);
@@ -176,7 +186,7 @@ describe('scene model resource ownership (inner#1689)', () => {
 
   it('rejects the placement of a model that cannot load', async () => {
     const cache = new ModelResourceCache(vi.fn().mockRejectedValue(new Error('unreachable')));
-    const placing = acquireMeasured(cache, { kind: 'asset', assetId: 'model' });
+    const placing = acquireMeasured(cache, modelAt('model'));
     await expect(placing.bounds).rejects.toThrow('unreachable');
     placing.release();
   });

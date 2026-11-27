@@ -1179,16 +1179,18 @@ describe("a finish this server drove — a picture uploaded for a 3D part (inner
   it("tells collab which part to put the stored picture on, and the picture it held at the start", async () => {
     const seed = await seedEditor();
     const objectId = crypto.randomUUID();
-    const startMap = crypto.randomUUID();
+    const startMap = "https://cdn.example.com/assets/before.png";
     const key = await mintTicket(seed, { purpose: "scene_look", object_id: objectId, part: "3", start_map: startMap });
 
     await report(completed(key));
 
-    const [grant] = await sql<{ asset_id: string }[]>`SELECT asset_id FROM upload_grants WHERE storage_key = ${key}`;
+    const [stored] = await sql<{ file_url: string }[]>`
+      SELECT a.file_url FROM upload_grants g JOIN studio_assets a ON a.id = g.asset_id WHERE g.storage_key = ${key}
+    `;
     const docName = `project-${seed.projectId}/3d-${seed.spaceId}`;
     expect(await sceneLookEventsFor(docName)).toEqual([{
       type: "scene-look-picture", docName, objectId, part: "3", startMap,
-      picture: grant!.asset_id, userId: seed.userId, uploadKey: key,
+      picture: stored!.file_url, userId: seed.userId, uploadKey: key,
     }]);
     // A part picture lands on no canvas node, so nothing is counted on one.
     expect(await eventsFor(`project-${seed.projectId}/canvas-${seed.spaceId}`)).toEqual([]);
@@ -2898,8 +2900,8 @@ describe("the upload status read", () => {
 
     const { items } = await statusOf(seed.userId, [key]);
 
-    const asset = await sql<{ id: string; file_url: string }[]>`
-      SELECT id, file_url FROM studio_assets WHERE storage_key = ${key}
+    const asset = await sql<{ id: string; file_url: string; mime_type: string; size_bytes: string }[]>`
+      SELECT id, file_url, mime_type, size_bytes::text FROM studio_assets WHERE storage_key = ${key}
     `;
     expect(items).toEqual([
       {
@@ -2911,6 +2913,10 @@ describe("the upload status read", () => {
           kind: "image",
           width: 800,
           height: 600,
+          coverUrl: null,
+          durationSeconds: null,
+          mimeType: asset[0]!.mime_type,
+          sizeBytes: Number(asset[0]!.size_bytes),
         },
       },
     ]);
@@ -3146,6 +3152,7 @@ describe("Project association and upload terminal arbitration", () => {
       expect(await uploadStatusService.statusOf(seed.userId, [key])).toEqual([{
         key, state: "completed", result: {
           assetId: canonical, fileUrl: expect.any(String), kind: "image", width: null, height: null,
+          coverUrl: null, durationSeconds: null, mimeType: "image/png", sizeBytes: 4096,
         },
       }]);
       expect(await eventsFor(canvasSpaceDocName(seed.projectId, seed.spaceId))).toEqual(before);
@@ -3296,7 +3303,7 @@ describe("the upload's ending, told to its uploader (#1580)", () => {
     expect(ended!.type).toBe("upload:ended");
     expect(ended!.userId).toBe(seed.userId);
     expect(ended!.status).toMatchObject({ key, state: "completed" });
-    expect(Object.keys(ended!.status.result as object).sort()).toEqual(["assetId", "fileUrl", "height", "kind", "width"]);
+    expect(Object.keys(ended!.status.result as object).sort()).toEqual(["assetId", "coverUrl", "durationSeconds", "fileUrl", "height", "kind", "mimeType", "sizeBytes", "width"]);
     const [read] = await uploadStatusService.statusOf(seed.userId, [key]);
     expect(ended!.status).toEqual(read);
   });

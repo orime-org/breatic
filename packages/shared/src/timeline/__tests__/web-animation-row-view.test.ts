@@ -35,7 +35,7 @@ const createRow = {
   input: { prompt: "A logo", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: FPS },
   request: "A logo",
   resultSourceVersionId: id(5),
-  resultAssetId: null,
+  resultAsset: null,
   export: null,
 };
 
@@ -47,7 +47,7 @@ const modifyRow = {
   request: "Slower",
   base: { executionId: id(1), request: "A logo" },
   resultSourceVersionId: id(7),
-  resultAssetId: null,
+  resultAsset: null,
   export: { executionId: id(8), status: "running" as const },
 };
 
@@ -58,7 +58,7 @@ const exportRow = {
   input: { sourceVersionId: id(7), width: 1080, height: 1920, fps: FPS, durationFrames: 144, videoKey: "generated/2026/11/15/v.mp4" },
   source: { executionId: id(6), request: "Slower", base: { executionId: id(1), request: "A logo" } },
   resultSourceVersionId: null,
-  resultAssetId: id(9),
+  resultAsset: { url: "https://cdn.example.com/assets/v.mp4", coverUrl: null, width: 1080, height: 1920, durationSeconds: 6, mimeType: "video/mp4", sizeBytes: 4096 },
 };
 
 describe("WebAnimationRowViewSchema", () => {

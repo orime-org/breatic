@@ -20,7 +20,7 @@ const COPY = '22222222-2222-4222-8222-222222222222';
 const OTHER = '33333333-3333-4333-8333-333333333333';
 const CAMERA_ID = '44444444-4444-4444-8444-444444444444';
 const LIGHT_ID = '55555555-5555-4555-8555-555555555555';
-const IMAGE = '66666666-6666-4666-8666-666666666666';
+const IMAGE = 'https://cdn.example/assets/wood.png';
 const BASE = {
   id: ID, name: 'Figure', model: { kind: 'builtin' as const, id: 'figure' as const },
   position: [0, 0, 0] as Vector, rotation: [0, 0, 0, 1] as Quaternion,
@@ -247,7 +247,7 @@ describe('look command (inner#1693 design 4.2)', () => {
     ['a letter part key other than d', 'e', { color: '#ffffff' }],
     ['an unknown field', '0', { gloss: 0.5 }],
     ['roughness above 1', '0', { roughness: 2 }],
-    ['a map that is neither a uuid nor none', '0', { map: 'img.png' }],
+    ['a map that is neither an address nor none', '0', { map: 'img.png' }],
     ['a tiling of 0', '0', { mapRepeat: [0, 1] }],
   ])('refuses %s and writes nothing, even beside a valid field', (_label, part, set) => {
     const doc = sceneDoc();

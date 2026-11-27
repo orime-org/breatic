@@ -30,11 +30,11 @@ const caps = vi.hoisted(() => [] as number[]);
 vi.mock('@web/spaces/three-d/look-picture-size', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/spaces/three-d/look-picture-size')>()),
   pageLookPictureSizes: () => {
-    const read = (assetId: string, maxBytes: number): ReturnType<SizeOf> => {
+    const read = (url: string, maxBytes: number): ReturnType<SizeOf> => {
       caps.push(maxBytes);
-      return sizes.get(assetId)?.() ?? Promise.resolve(null);
+      return sizes.get(url)?.() ?? Promise.resolve(null);
     };
-    return { read, size: (assetId: string, maxBytes: number) => read(assetId, maxBytes).catch(() => null) };
+    return { read, size: (url: string, maxBytes: number) => read(url, maxBytes).catch(() => null) };
   },
   readPictureSize: async () => ({ width: 64, height: 64, type: 'png' }),
 }));
@@ -49,8 +49,8 @@ vi.mock('@web/spaces/three-d/SceneImagePickerDialog', () => ({ SceneImagePickerD
 
 const NAME = 'project-p1/3d-s1';
 const ID = '11111111-1111-4111-8111-111111111111';
-const NEW = '77777777-7777-4777-8777-777777777777';
-const OTHER = '88888888-8888-4888-8888-888888888888';
+const NEW = 'https://cdn.example/assets/new.png';
+const OTHER = 'https://cdn.example/assets/other.png';
 const OBJECT = {
   id: ID, name: 'Figure', model: { kind: 'builtin' as const, id: 'figure' as const },
   position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number],
@@ -89,9 +89,9 @@ function panel(report: typeof REPORT = REPORT): { doc: Y.Doc; session: SceneSess
 }
 
 /** Choose a picture for a part through the picker. */
-async function pick(part: string, assetId: string, displayName: string | null = 'pattern.png'): Promise<void> {
+async function pick(part: string, url: string, displayName: string | null = 'pattern.png'): Promise<void> {
   act(() => { (captured.section!.onChoosePicture as (part: string) => void)(part); });
-  await act(async () => { (captured.picker!.onPick as (image: unknown) => void)({ assetId, displayName }); await Promise.resolve(); });
+  await act(async () => { (captured.picker!.onPick as (image: unknown) => void)({ assetId: 'picked-asset', url, displayName }); await Promise.resolve(); });
 }
 
 /** Lets every pending check step run. */
@@ -375,7 +375,10 @@ describe('picking twice for one part', () => {
 
 describe('a part row waiting for its uploaded picture', () => {
   it('shows the upload until the stored picture shows on the part, then offers the part again', async () => {
-    uploadMedia.mockResolvedValue({ assetId: NEW, url: 'https://assets.example.test/u.png' });
+    uploadMedia.mockResolvedValue({
+      assetId: 'uploaded-asset', fileUrl: NEW, kind: 'image', width: 64, height: 64,
+      coverUrl: null, durationSeconds: null, mimeType: 'image/png', sizeBytes: 1024,
+    });
     const { doc, rerender } = panel();
     act(() => { (captured.section!.onChoosePicture as (part: string) => void)('0'); });
     // jsdom's File has no stream(); the header read is mocked above.

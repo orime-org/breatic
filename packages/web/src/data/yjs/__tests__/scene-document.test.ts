@@ -366,7 +366,7 @@ describe('scene projection and command transactions', () => {
 
   it.each([
     { field: 'name', model: { kind: 'builtin' as const, id: 'box' as const }, value: 'box' },
-    { field: 'name', model: { kind: 'asset' as const, assetId: THIRD }, value: 'Model' },
+    { field: 'name', model: { kind: 'asset' as const, url: 'https://cdn.example/assets/model.glb', mimeType: 'model/gltf-binary' as const, sizeBytes: 2048 }, value: 'Model' },
     { field: 'position', model: ORIGINAL.model, value: [0, 0, 0] },
     { field: 'rotation', model: ORIGINAL.model, value: [0, 0, 0, 1] },
     { field: 'scale', model: ORIGINAL.model, value: [1, 1, 1] },

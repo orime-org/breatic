@@ -20,7 +20,7 @@ import {
   writtenOf,
 } from '@web/pages/project/chat/proposal-card';
 import { modelCatalogQuery } from '@web/data/model-catalog-query';
-import { useCanvasStore } from '@web/stores';
+import { useCanvasStore, type ProposalOutcome } from '@web/stores';
 
 interface ProposalCardProps {
   /** The group the agent proposed, as the tool answered with it. */
@@ -49,8 +49,6 @@ export const ProposalCard = React.memo(function ProposalCard({
   const t = useTranslation();
   const requestNodeCreate = useCanvasStore((s) => s.requestNodeCreate);
   const canvasListening = useCanvasStore((s) => s.canvasListening);
-  const outcome = useCanvasStore((s) => s.proposalOutcome);
-  const clearOutcome = useCanvasStore((s) => s.clearProposalOutcome);
   const [building, setBuilding] = React.useState(false);
   const { data: catalog } = useQuery(modelCatalogQuery());
 
@@ -74,22 +72,17 @@ export const ProposalCard = React.memo(function ProposalCard({
     [catalog, model, proposal],
   );
 
-  // The canvas answers once the group is placed or once placing threw. Only
-  // the card that is waiting reads it: placing runs to completion inside one
-  // synchronous effect, so no second card can have posted in between. A
-  // failure is told in a toast as it is answered (inner#1530); the button is
-  // free to press again. A Space without room for it is told the same way,
-  // as a warning (inner#1790), except while a refused document is rebuilt,
-  // which said its own sentence once.
-  const failedLine = t('chat.proposal.failed');
-  const fullLine = t('spaces.sizeCap.proposal');
-  React.useEffect(() => {
-    if (!building || outcome === null) return;
+  // The canvas answers each press on the reply it carries, once the group is
+  // placed or could not be. A failure is told in a toast as it is answered
+  // (inner#1530), whether or not the card is still on screen; the button is
+  // free to press again. A Space without room for it is told the same way, as
+  // a warning (inner#1790), except while a refused document is rebuilt, which
+  // said its own sentence once.
+  const settle = React.useCallback((outcome: ProposalOutcome): void => {
     setBuilding(false);
-    if (outcome === 'failed') toast.error(failedLine);
-    else if (typeof outcome === 'object' && outcome.reason !== 'resyncing') toast.warning(fullLine);
-    clearOutcome();
-  }, [building, outcome, clearOutcome, failedLine, fullLine]);
+    if (outcome === 'failed') toast.error(t('chat.proposal.failed'));
+    else if (typeof outcome === 'object' && outcome.reason !== 'resyncing') toast.warning(t('spaces.sizeCap.proposal'));
+  }, [t]);
 
   const onUse = React.useCallback((): void => {
     // Nobody is holding the mailbox when no canvas is open. Said out loud
@@ -101,8 +94,8 @@ export const ProposalCard = React.memo(function ProposalCard({
       return;
     }
     setBuilding(true);
-    requestNodeCreate({ proposal });
-  }, [canvasListening, proposal, requestNodeCreate, t]);
+    requestNodeCreate({ proposal, settle });
+  }, [canvasListening, proposal, requestNodeCreate, settle, t]);
 
   // Words on their own are a flow too, so the card is drawn for anything
   // carrying nodes rather than only for something that generates.

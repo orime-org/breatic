@@ -26,8 +26,8 @@ vi.mock('@web/spaces/three-d/viewport/model-resources', async (importOriginal) =
 // jsdom never decodes the format probe images.
 vi.mock('@web/spaces/three-d/model-texture-format', () => ({ detectTextureFormatSupport: vi.fn(async () => ({ webp: true, avif: true })) }));
 
-const A = '11111111-1111-4111-8111-11111111111a';
-const B = '11111111-1111-4111-8111-11111111111b';
+const A = 'https://cdn.example/assets/a.png';
+const B = 'https://cdn.example/assets/b.png';
 const BOX: SceneObject = { id: 'box', model: { kind: 'builtin', id: 'box' }, name: 'Box', position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
 const SMALL = { width: 64, height: 64, type: 'png' };
 
@@ -44,7 +44,7 @@ interface FakeCache {
  * @param acquireOf - The decode per picture.
  * @returns The cache and its spies.
  */
-function fakeCache(sizeOf: (assetId: string) => Promise<typeof SMALL | null>, acquireOf: (assetId: string) => Promise<Texture> = async () => new Texture()): FakeCache {
+function fakeCache(sizeOf: (url: string) => Promise<typeof SMALL | null>, acquireOf: (url: string) => Promise<Texture> = async () => new Texture()): FakeCache {
   const size = vi.fn(sizeOf);
   const acquire = vi.fn(acquireOf);
   const release = vi.fn();
@@ -56,7 +56,7 @@ afterEach(() => { runtimes.splice(0).forEach((runtime) => runtime.dispose()); })
 
 /** A runtime over a fake cache, with a loaded built-in box. */
 async function open(fake: FakeCache): Promise<{ runtime: SceneLookRuntime; root: Group; failures: Array<SceneLookPictures | null>; programs: ReturnType<typeof vi.fn>; changed: ReturnType<typeof vi.fn> }> {
-  const root = await loadSceneModel(BOX.model as never, new AbortController().signal, vi.fn(), '#969696', IMPORT_LIMITS);
+  const root = await loadSceneModel(BOX.model as never, new AbortController().signal, '#969696', IMPORT_LIMITS);
   const failures: Array<SceneLookPictures | null> = [];
   const programs = vi.fn();
   const changed = vi.fn();
@@ -154,7 +154,7 @@ describe('SceneLookRuntime', () => {
 
   it('shows the latest look when an older check finishes after a newer one', async () => {
     let releaseA: (size: typeof SMALL) => void = () => undefined;
-    const fake = fakeCache((assetId) => (assetId === A ? new Promise((resolve) => { releaseA = resolve; }) : Promise.resolve(SMALL)));
+    const fake = fakeCache((url) => (url === A ? new Promise((resolve) => { releaseA = resolve; }) : Promise.resolve(SMALL)));
     const { runtime, root } = await open(fake);
     runtime.sync(withLook({ 0: { map: A } }), root);
     runtime.sync(withLook({ 0: { map: B } }), root);
@@ -220,8 +220,8 @@ describe('SceneLookRuntime', () => {
   });
   it('takes a picture pushed over the budget off its part before releasing it', async () => {
     vi.mocked(httpRequest).mockImplementation(async () => new Response(Uint8Array.from(readFileSync('src/spaces/three-d/viewport/assets/figure.glb'))));
-    const C = '11111111-1111-4111-8111-11111111111c';
-    const root = await loadSceneModel({ kind: 'builtin', id: 'figure' }, new AbortController().signal, vi.fn(), '#969696', IMPORT_LIMITS);
+    const C = 'https://cdn.example/assets/c.png';
+    const root = await loadSceneModel({ kind: 'builtin', id: 'figure' }, new AbortController().signal, '#969696', IMPORT_LIMITS);
     /** The first material of a part. */
     const partMaterial = (part: string): Material & { map: Texture | null } => {
       let found: Material | undefined;
@@ -234,14 +234,14 @@ describe('SceneLookRuntime', () => {
     const held = new Map<string, Texture>();
     const shownAtRelease: boolean[] = [];
     const big = { width: 2048, height: 2048, type: 'png' };
-    const fake = fakeCache(async (assetId) => (assetId === C ? SMALL : big), (assetId) => {
+    const fake = fakeCache(async (url) => (url === C ? SMALL : big), (url) => {
       // C never finishes loading, so nothing else applies the look meanwhile.
-      if (assetId === C) return new Promise<Texture>(() => undefined);
+      if (url === C) return new Promise<Texture>(() => undefined);
       const texture = new Texture();
-      held.set(assetId, texture);
+      held.set(url, texture);
       return Promise.resolve(texture);
     });
-    fake.release.mockImplementation((assetId: string) => { if (assetId === A) shownAtRelease.push(partMaterial('1').map?.source === held.get(A)!.source); });
+    fake.release.mockImplementation((url: string) => { if (url === A) shownAtRelease.push(partMaterial('1').map?.source === held.get(A)!.source); });
     const runtime = new SceneLookRuntime({
       textures: () => fake.cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 30 * 1024 * 1024, maxPictureHeaderBytes: 12_345_678 }), themeColor: () => '#969696',
       highlightColor: () => '#3b6fd8', onProgramChanged: vi.fn(), onChanged: vi.fn(), onPictures: vi.fn(),
@@ -258,10 +258,10 @@ describe('SceneLookRuntime', () => {
   });
   it('leaves a picture that failed to load out of the total at once', async () => {
     vi.mocked(httpRequest).mockImplementation(async () => new Response(Uint8Array.from(readFileSync('src/spaces/three-d/viewport/assets/figure.glb'))));
-    const root = await loadSceneModel({ kind: 'builtin', id: 'figure' }, new AbortController().signal, vi.fn(), '#969696', IMPORT_LIMITS);
+    const root = await loadSceneModel({ kind: 'builtin', id: 'figure' }, new AbortController().signal, '#969696', IMPORT_LIMITS);
     const big = { width: 2048, height: 2048, type: 'png' };
-    const fake = fakeCache(async () => big, async (assetId) => {
-      if (assetId === A) throw new Error('download failed');
+    const fake = fakeCache(async () => big, async (url) => {
+      if (url === A) throw new Error('download failed');
       return new Texture();
     });
     const pictures: Array<SceneLookPictures | null> = [];

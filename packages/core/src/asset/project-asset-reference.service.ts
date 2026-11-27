@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import type { ProjectAssetPage, ProjectAssetReferenceEntity, ProjectRegisteredAsset, StudioAssetEntity, TimelineClientLimits } from "@breatic/shared";
+import type { ProjectAssetPage, ProjectAssetReferenceEntity, StudioAssetEntity, TimelineClientLimits } from "@breatic/shared";
 import { t } from "@breatic/shared";
 import { z } from "zod";
 import { AppError, ForbiddenError, NotFoundError } from "@core/app-errors.js";
@@ -19,9 +19,6 @@ export interface RecordProjectAssetReferencesInput {
   assetIds: readonly string[];
   displayNames?: Readonly<Record<string, string>>;
 }
-
-/** A current member reading one Project's registered media. */
-export interface ResolveProjectAssetInput { projectId: string; assetId: string; userId: string }
 
 /** A keyset read of one Project's registered videos, or of its images when `kind` says so. */
 export interface ListProjectMediaInput { projectId: string; userId: string; kind?: "image" | "video"; cursor?: string; limit?: number }
@@ -296,21 +293,6 @@ export async function getTimelineLimits(projectId: string, userId: string): Prom
       driftSteerRate: config.preview.drift_steer_rate,
     },
   };
-}
-
-/**
- * Resolve a canonical live asset through the current Project membership.
- * @param input - The current member and requested Project asset.
- * @returns The registered media projection.
- * @throws {ForbiddenError} When current Project access is absent.
- * @throws {NotFoundError} When the live scoped relationship is unavailable.
- * @throws {Error} When a database query fails.
- */
-export async function resolveProjectAsset(input: ResolveProjectAssetInput): Promise<ProjectRegisteredAsset> {
-  const studioId = await studioForMember(input.projectId, input.userId);
-  const [row] = await assetRepo.readProjectMedia({ projectId: input.projectId, studioId, assetId: input.assetId, limit: 1 });
-  if (row === undefined) throw new NotFoundError(t("server.error.not_found"));
-  return row.media;
 }
 
 /**

@@ -8,8 +8,9 @@
  */
 
 import * as Y from 'yjs';
-import type { ProjectRegisteredAsset, TimelineUploadClip } from '@breatic/shared';
+import type { TimelineUploadClip } from '@breatic/shared';
 
+import type { TimelineRegisteredVideo } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
 /** The upload every placeholder below belongs to unless a test names another. */
@@ -22,6 +23,8 @@ export const UPLOAD_SECONDS = 2.5;
 export const UPLOAD_FRAMES = 60;
 /** The asset the upload registers as. */
 export const ASSET_ID = '20000000-0000-4000-8000-0000000000a1';
+/** The address the registered upload is stored at. */
+export const VIDEO_URL = 'https://cdn.example/beach.mp4';
 
 /**
  * A placeholder clip of an upload.
@@ -69,25 +72,21 @@ export function addUpload(clip: TimelineUploadClip, placement: TimelineEditPlace
 }
 
 /**
- * What `timelineApi.resolveAsset` answers for the registered upload.
+ * The registered video an upload's own result carries once it registers.
  * @param durationSeconds - The registered duration; null when the server could not read one.
- * @param fields - Overrides such as `kind`.
- * @returns The asset.
+ * @param fields - Overrides such as `mimeType`.
+ * @returns The registered video.
  * @throws {never} Never.
  */
-export function registeredVideo(durationSeconds: number | null, fields: Partial<ProjectRegisteredAsset> = {}): ProjectRegisteredAsset {
+export function registeredVideo(durationSeconds: number | null, fields: Partial<TimelineRegisteredVideo> = {}): TimelineRegisteredVideo {
   return {
-    assetId: ASSET_ID,
-    projectReferenceId: '20000000-0000-4000-8000-0000000000b1',
-    displayName: UPLOAD_NAME,
-    kind: 'video',
-    fileUrl: 'https://cdn.example/beach.mp4',
+    url: VIDEO_URL,
     coverUrl: null,
+    name: UPLOAD_NAME,
+    mimeType: 'video/mp4',
     width: 1920,
     height: 1080,
     durationSeconds,
-    mimeType: 'video/mp4',
-    sizeBytes: 1024,
     ...fields,
   };
 }

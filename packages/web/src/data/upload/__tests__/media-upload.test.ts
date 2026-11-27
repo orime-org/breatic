@@ -79,6 +79,10 @@ const COMPLETED = {
     kind: 'image',
     width: 640,
     height: 480,
+    coverUrl: null,
+    durationSeconds: null,
+    mimeType: 'image/png',
+    sizeBytes: 4096,
   },
 };
 
@@ -221,6 +225,10 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       kind: 'image',
       width: 640,
       height: 480,
+      coverUrl: null,
+      durationSeconds: null,
+      mimeType: 'image/png',
+      sizeBytes: 4096,
     });
   });
 
@@ -288,6 +296,10 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
         kind: 'image',
         width: 3000,
         height: 4000,
+        coverUrl: null,
+        durationSeconds: null,
+        mimeType: 'image/png',
+        sizeBytes: 8192,
       }),
     });
 
@@ -300,6 +312,10 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       kind: 'image',
       width: 3000,
       height: 4000,
+      coverUrl: null,
+      durationSeconds: null,
+      mimeType: 'image/png',
+      sizeBytes: 8192,
     });
   });
 
@@ -516,6 +532,10 @@ describe('uploadMedia — the pipeline wired to the real network, as a promise',
       kind: 'image',
       width: 640,
       height: 480,
+      coverUrl: null,
+      durationSeconds: null,
+      mimeType: 'image/png',
+      sizeBytes: 4096,
     });
     expect(assetsApi.requestUploadTicket).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: 'p1', derived: true, hash: HASH }), undefined,

@@ -11,8 +11,8 @@
  * the charge and the terminal transition, as for a creation job.
  */
 
-import { coverKeyFor, getMiniToolsConfig, getTimelineConfig, logger, NotFoundError } from "@breatic/core";
-import { containerCostUsd, createUsageRecorder, ingestReportService, timelineOperationKey, webAnimationSourceRepo, timelineExecutionRepo, type TimelineExecutionEvent } from "@breatic/domain";
+import { coverKeyFor, getMiniToolsConfig, getTimelineConfig, logger, NotFoundError, projectAssetReferenceService } from "@breatic/core";
+import { containerCostUsd, createUsageRecorder, ingestReportService, timelineOperationKey, webAnimationGrantRepo, webAnimationSourceRepo, timelineExecutionRepo, type TimelineExecutionEvent } from "@breatic/domain";
 import type { TimelineExecution } from "@breatic/shared";
 import {
   WEB_ANIMATION_RENDER_CONTAINER_CLASS,
@@ -147,10 +147,28 @@ async function register(pickup: RenderPickup, report: EndedRender): Promise<Time
       cover: video.cover === null ? null : { ...video.cover },
     });
     if (outcome.status !== "registered" && outcome.status !== "already_registered") return failed;
+    await relateToHolders(row.id, outcome.assetId);
     return { type: "success", fence: row.fence, resultAssetId: outcome.assetId };
   } catch (err) {
     if (err instanceof NotFoundError) return failed;
     throw err;
+  }
+}
+
+/**
+ * Relate an export's video to every Project holding the export: its own and each copy made while it rendered
+ * (inner#2171 design §5.3). A holder Project deleted since has nowhere to show it and is passed over.
+ * @param executionId - The export.
+ * @param assetId - Its registered video.
+ * @throws {Error} When a relation cannot be written; the finish runs again.
+ */
+async function relateToHolders(executionId: string, assetId: string): Promise<void> {
+  for (const projectId of await webAnimationGrantRepo.projectsHolding(executionId)) {
+    try {
+      await projectAssetReferenceService.recordProjectAssetReferences({ projectId, assetIds: [assetId] });
+    } catch (err) {
+      if (!(err instanceof projectAssetReferenceService.ProjectMediaScopeUnavailableError)) throw err;
+    }
   }
 }
 

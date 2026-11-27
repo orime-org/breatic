@@ -115,6 +115,11 @@ export interface UploadAlreadyStored {
   /** Its pixel size, read off it when it was stored; null when there is none. */
   width: number | null;
   height: number | null;
+  /** The media facts a Space stores beside the address, as a finished upload's result carries them (inner#2171). */
+  coverUrl: string | null;
+  durationSeconds: number | null;
+  mimeType: string;
+  sizeBytes: number;
   /** A 3D model's task row, opened already holding the model (inner#1690). */
   taskId?: string;
 }

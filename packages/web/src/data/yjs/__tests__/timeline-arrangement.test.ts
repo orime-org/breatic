@@ -164,7 +164,12 @@ describe('Timeline arrangement from the complete current document', () => {
     const source = {
       id: baseClip.sourceId,
       kind: 'video' as const,
-      assetId: '20000000-0000-4000-8000-000000000001',
+      url: 'https://cdn.example/assets/clip.mp4',
+      coverUrl: null,
+      name: 'clip.mp4',
+      mimeType: 'video/mp4',
+      width: 1920,
+      height: 1080,
       timebase: fps,
       extentFrames: 48,
       durationSeconds: '2',

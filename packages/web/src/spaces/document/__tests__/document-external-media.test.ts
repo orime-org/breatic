@@ -5,7 +5,8 @@
  * Media in pasted or dropped content (inner#1351 + inner#1390 design §5.4,
  * which replaces inner#1127 A18): an outside medium becomes a pending block
  * whose upload fetches it into storage, so the outside address never reaches
- * the shared document; one of ours stays as it is; one that cannot be
+ * the shared document; one of ours waits for the paste request that
+ * registers it in this Project (inner#2171); one that cannot be
  * fetched (`http:` and the like) is left out and counted.
  */
 
@@ -211,18 +212,23 @@ describe('an outside medium in pasted HTML', () => {
   });
 });
 
-describe('media that stay as they are', () => {
-  it('a medium whose address is one of ours', async () => {
+describe('a medium whose address is one of ours', () => {
+  it('becomes a pending block whose upload registers its address', async () => {
     const s = sink();
     const editor = open(OURS, s);
 
     pasteFormats(editor, { 'text/html': `<p>x</p><img src="${OURS}image/2026-10-07/a.png">` });
     await settled();
 
-    expect(media(editor)).toEqual([{ type: 'image', url: `${OURS}image/2026-10-07/a.png`, uploadId: '', caption: '' }]);
-    expect(s.start).not.toHaveBeenCalled();
+    const [image] = media(editor);
+    expect(image).toMatchObject({ type: 'image', url: '', caption: '' });
+    expect(image!.uploadId).not.toBe('');
+    expect(s.start).toHaveBeenCalledExactlyOnceWith(image!.uploadId, { kind: 'ours', url: `${OURS}image/2026-10-07/a.png` });
+    expect(s.onLeftOut).not.toHaveBeenCalled();
   });
+});
 
+describe('media that stay as they are', () => {
   it('a pending block copied from a body keeps its upload id and starts nothing', async () => {
     const source = open(OURS);
     source.replaceBlocks(source.document, [{ type: 'image', props: { url: '', uploadId: 'u1', caption: 'Hero' } }] as never);

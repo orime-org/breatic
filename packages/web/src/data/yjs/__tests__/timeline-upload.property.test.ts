@@ -15,17 +15,17 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
-import { TimelineClipSchema, type ProjectRegisteredAsset } from '@breatic/shared';
+import { TimelineClipSchema } from '@breatic/shared';
 
 import { _resetForTests } from '@web/data/yjs/manager';
-import { convertTimelineUpload, readTimelineDocument } from '@web/data/yjs/timeline-document';
+import { convertTimelineUpload, readTimelineDocument, type TimelineRegisteredVideo } from '@web/data/yjs/timeline-document';
 import { evictTimelineEditSession, getTimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
 import { validateTimelineRange } from '@web/data/yjs/timeline-time';
 import {
   FPS, MAIN, OFF, ON, V2, V3, cid, clip, idFactory, seededDoc, timeline, track,
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
-import { ASSET_ID, UPLOAD_ID, addUpload, clipRecords, registeredVideo, uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
+import { UPLOAD_ID, VIDEO_URL, addUpload, clipRecords, registeredVideo, uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
 
 const NAME = 'project-p/timeline-upload-property';
 
@@ -84,7 +84,7 @@ afterEach(() => {
 
 describe('upload placeholders under any interleaving (fast-check)', () => {
   it('keeps every record valid, and converts in place into videos inside their source', () => {
-    const asset = fc.constantFrom<ProjectRegisteredAsset>(registeredVideo(1.5), registeredVideo(2.5), registeredVideo(5), registeredVideo(null));
+    const asset = fc.constantFrom<TimelineRegisteredVideo>(registeredVideo(1.5), registeredVideo(2.5), registeredVideo(5), registeredVideo(null));
     fc.assert(fc.property(asset, fc.array(step, { minLength: 1, maxLength: 14 }), (registered, steps) => {
       const doc = seededDoc(timeline([clip(cid(90), MAIN, 0, 48)], [track(MAIN, 0), track(V2, 1), track(V3, 2)]));
       const session = getTimelineEditSession(doc, NAME);
@@ -122,7 +122,7 @@ describe('upload placeholders under any interleaving (fast-check)', () => {
               expect(converted, `conversion moved clip ${id}`).toMatchObject({ kind: 'video', ...placed });
               if (converted.kind !== 'video') continue;
               const source = read.sources[converted.sourceId];
-              expect(source, `converted clip ${id} has no source`).toMatchObject({ assetId: ASSET_ID });
+              expect(source, `converted clip ${id} has no source`).toMatchObject({ url: VIDEO_URL });
               if (source !== undefined) expect(validateTimelineRange(converted, source, FPS), `converted clip ${id} reads past its source`).toBe(true);
             }
           }

@@ -5571,7 +5571,6 @@
     },
     "preview": {
       "playBlocked": "瀏覽器阻止了有聲播放，請按播放開始。",
-      "videoLoading": "{track}：影片載入中…",
       "videoUnavailable": "{track}：影片不可用"
     }
   },
