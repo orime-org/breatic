@@ -205,7 +205,7 @@ describe("a template with a shot list (inner#1816)", () => {
       "A template node with shots is written out shot by shot: send it shots and no prompt, their durations adding up to the node's duration: " +
         "the one you write in its params, else the template's while the node keeps the template's mode and model; " +
         "on another mode or model, write one. " +
-        "On a mode or model that takes no shots, send a prompt instead, the template's shots written as one.",
+        "On a mode or model that takes no shots, or with params letting the model plan its own shots, send a prompt instead, the template's shots written as one.",
     );
     expect(said).not.toContain("multi_shot");
     expect(said).not.toContain("the template's while the node keeps the template's mode and model, otherwise one you set in its params");

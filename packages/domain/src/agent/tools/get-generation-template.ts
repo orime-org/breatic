@@ -34,7 +34,7 @@ const HOW_TO_SEND =
   "the user writes in with their story or detail in it: fill every tweak segment with words before you send it: from what the user said, or, for one their words leave open, after asking them, making takes first, or choosing, as your working rules say. A template's tweak segment is never sent as it is. " +
   "A template node with shots is written out shot by shot: send it shots and no prompt, their durations adding up to the node's duration: the one you " +
   "write in its params, else the template's while the node keeps the template's mode and model; on another mode or model, write one. " +
-  "On a mode or model that takes no shots, send a prompt instead, the template's shots written as one. " +
+  "On a mode or model that takes no shots, or with params letting the model plan its own shots, send a prompt instead, the template's shots written as one. " +
   "A template node with lines is a dialogue: send it lines, one per turn, each { speaker, prompt } with the speaker the template gives and only the words said, " +
   "no name or colon in front, and no prompt. " +
   "A template's written text node (a script, lyrics) is sent as a written text node with { id, key }, its words as its prompt: " +
