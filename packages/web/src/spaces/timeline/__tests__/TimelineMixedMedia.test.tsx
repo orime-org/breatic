@@ -788,6 +788,32 @@ describe('the readiness barrier (design §5.4, §7.7)', () => {
     await waitFor(() => expect(transport()).toBe('playing'));
   });
 
+  it('loads a picture and a text that start within the premount lead before they show, so playing on through their start never waits (design §5.1, §5.3)', async () => {
+    decodeOutcome = 'pending';
+    fontOutcome = new Map([['noto-sans-sc-han-wght-normal', 'pending']]);
+    const later = 24;
+    seed([{ ...IMAGE, startFrame: later }, { ...TEXT, trackId: MAIN, startFrame: later }]);
+    show();
+    seekForward(later - 1);
+    // Both load while the playhead is still before them: the picture's layer waits hidden and the text's slice loads.
+    await waitFor(() => expect(pendingDecodes.length).toBeGreaterThan(0));
+    await waitFor(() => expect(pendingFonts.length).toBeGreaterThan(0));
+    expect(layerOf(IMAGE.id)?.style.visibility).toBe('hidden');
+    await act(async () => {
+      for (const resolve of pendingDecodes.splice(0)) resolve();
+      for (const { resolve } of pendingFonts.splice(0)) resolve();
+    });
+    const states: string[] = [];
+    const observer = new MutationObserver(() => { const state = transport(); if (state !== null && states.at(-1) !== state) states.push(state); });
+    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['data-playback-state'] });
+    fireEvent.click(screen.getByTestId('timeline-play'));
+    await waitFor(() => expect(layerOf(IMAGE.id)?.style.visibility).not.toBe('hidden'), { timeout: 2000 });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); });
+    observer.disconnect();
+    expect(states).not.toContain('waiting');
+    expect(transport()).toBe('playing');
+  });
+
   it('waits for a sound with no data yet, as for a video', async () => {
     seed([AUDIO]);
     show();
