@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as cacheModule from '@web/spaces/three-d/viewport/look-texture-cache';
 import * as sizeModule from '@web/spaces/three-d/look-picture-size';
 
-const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const A = 'https://assets.example.test/a.png';
 
 /** A PNG header for a picture of this size: signature, IHDR length, type, width, height. */
 function pngHeader(width: number, height: number): Uint8Array<ArrayBuffer> {
@@ -23,7 +23,6 @@ function pngHeader(width: number, height: number): Uint8Array<ArrayBuffer> {
 }
 
 interface Deps {
-  resolve: ReturnType<typeof vi.fn>;
   open: ReturnType<typeof vi.fn>;
   download: ReturnType<typeof vi.fn>;
   decode: ReturnType<typeof vi.fn>;
@@ -35,7 +34,6 @@ function deps(width = 512, height = 256): Deps {
     pull(controller) { controller.enqueue(pngHeader(width, height)); },
   });
   return {
-    resolve: vi.fn(async () => 'https://assets.example.test/a.png'),
     open: vi.fn(async () => stream()),
     download: vi.fn(async () => new Blob([pngHeader(width, height)], { type: 'image/png' })),
     decode: vi.fn(async () => ({ width, height, close: vi.fn() })),
@@ -43,8 +41,8 @@ function deps(width = 512, height = 256): Deps {
 }
 
 type Cache = {
-  acquire: (assetId: string, maxEdge?: number) => Promise<Texture>;
-  release: (assetId: string, clone: Texture) => void;
+  acquire: (url: string, maxEdge?: number) => Promise<Texture>;
+  release: (url: string, clone: Texture) => void;
 };
 
 /**
@@ -57,12 +55,12 @@ function create(d: Deps): Cache {
   const Ctor = (cacheModule as Record<string, unknown>).LookTextureCache as (new (deps: unknown) => Cache) | undefined;
   expect(Ctor, 'LookTextureCache must be exported').toBeTypeOf('function');
   // The page's header sizes come in beside the transport, as the editor hands them to the viewport.
-  const sizes = new sizeModule.LookPictureSizes({ resolve: d.resolve, open: d.open });
-  return new Ctor!({ sizes, resolve: d.resolve, download: d.download, decode: d.decode });
+  const sizes = new sizeModule.LookPictureSizes({ open: d.open });
+  return new Ctor!({ sizes, download: d.download, decode: d.decode });
 }
 
 describe('LookTextureCache', () => {
-  it('decodes with premultiplied alpha off and the file orientation, once per asset', async () => {
+  it('decodes with premultiplied alpha off and the file orientation, once per picture', async () => {
     const d = deps();
     const cache = create(d);
     const first = await cache.acquire(A);
@@ -128,5 +126,19 @@ describe('LookTextureCache', () => {
     await cache.acquire(A);
     expect(d.decode).toHaveBeenCalledTimes(2);
     expect(d.open).toHaveBeenCalledTimes(0);
+  });
+});
+
+describe('pageLookTextureCache (inner#2171 implementation round 3)', () => {
+  it('gives one access one cache, and another access its own', () => {
+    const access = (): sizeModule.LookPictureAccess => ({
+      sizes: new sizeModule.LookPictureSizes({ open: async () => new ReadableStream() }),
+      download: async () => new Blob(),
+    });
+    const page = access();
+    const other = access();
+    const cache = cacheModule.pageLookTextureCache(page);
+    expect(cacheModule.pageLookTextureCache(page)).toBe(cache);
+    expect(cacheModule.pageLookTextureCache(other)).not.toBe(cache);
   });
 });

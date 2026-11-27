@@ -14,6 +14,8 @@ import * as Y from 'yjs';
 import { deriveId, documentBodyFragment, type DocumentProposal } from '@breatic/shared';
 
 import { assetsApi, type UploadConfig } from '@web/data/api/assets';
+import { canvasApi } from '@web/data/api/canvas';
+import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
@@ -61,8 +63,8 @@ function mount(doc: Y.Doc): Client {
 }
 
 /** Builds a target surrounded by existing styled content and a legal table. */
-function open(context: Context): Client {
-  const client = mount(new Y.Doc());
+function open(context: Context, doc: Y.Doc = new Y.Doc()): Client {
+  const client = mount(doc);
   const { editor, undoManager } = client;
   act(() => {
     const table = {
@@ -169,6 +171,7 @@ afterEach(() => {
     }
     document.body.innerHTML = '';
   });
+  _resetForTests();
   vi.restoreAllMocks();
 });
 
@@ -313,7 +316,9 @@ describe.each(['insert', 'rewrite'] as const)('%s commit after asynchronous prep
 
 describe.each(['insert', 'rewrite'] as const)('%s parsed rich table payload', (kind) => {
   it('preserves surviving attributes, marks, empty blocks and nested child IDs', async () => {
-    const client = open('deep');
+    // A body open in its Project, so our media join that Project through the paste request (inner#2171 design §5.2).
+    const client = open('deep', getDoc(docName.documentSpace('p1', 'd1')));
+    const paste = vi.spyOn(canvasApi, 'paste').mockImplementation(async ({ urls }) => ({ map: Object.fromEntries(urls.map((url) => [url, url])), media: {} }));
     const p = proposal(kind);
     // Isolate Markdown parsing to supply legal parser output that Markdown
     // cannot express: multiple rich and empty blocks in one table cell.
@@ -350,6 +355,7 @@ describe.each(['insert', 'rewrite'] as const)('%s parsed rich table payload', (k
     expect(rowById(doc, outputId(p, 3))!.node.firstChild!.attrs['level']).toBe(3);
     expect(rowById(doc, outputId(p, 4))!.node.firstChild!.attrs['language']).toBe('typescript');
     expect(rowById(doc, outputId(p, 5))!.node.firstChild!.attrs['url']).toBe(`${UPLOAD_CONFIG.assetUrlPrefix}kept.png`);
+    expect(paste).toHaveBeenCalledExactlyOnceWith({ project_id: 'p1', urls: [`${UPLOAD_CONFIG.assetUrlPrefix}kept.png`], pairs: [], history: [] });
     expect(rowById(doc, 'parsed-child')!.node.textContent).toBe('CHILD');
     const committed = snapshot(client);
     act(() => {

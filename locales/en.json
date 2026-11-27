@@ -3395,6 +3395,14 @@
         "pinch": "Pinch",
         "wheel": "Wheel"
       }
+    },
+    "textFullscreen": {
+      "edit": "Edit full screen",
+      "view": "View full screen",
+      "editPrompt": "Edit prompt full screen",
+      "exit": "Exit full screen",
+      "inProgress": "Editing in full screen",
+      "readOnly": "Read-only"
     }
   },
   "auth": {
@@ -5621,7 +5629,6 @@
     },
     "preview": {
       "playBlocked": "The browser blocked playback with sound. Press play to start.",
-      "videoLoading": "{track}: video loading…",
       "videoUnavailable": "{track}: video unavailable"
     }
   },

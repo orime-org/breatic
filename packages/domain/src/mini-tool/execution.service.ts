@@ -226,7 +226,7 @@ async function requireRegistered(output: MiniToolExecutionOutput, tx: DbTx): Pro
   if (media?.status !== "registered") throw new Error("Output has no canonical registration");
   const asset = await assetRepo.findById(media.assetId, tx);
   if (asset === null || asset.deletedAt !== null) throw new Error("Canonical output is unavailable");
-  const cover = await assetRepo.findCoverOf(asset.id, tx);
+  const cover = await assetRepo.findCoverOf(asset, tx);
   const actual = {
     status: "registered", assetId: asset.id, canonicalURL: asset.fileUrl, kind: asset.kind, mimeType: asset.mimeType,
     size: asset.sizeBytes, contentHash: asset.contentHash, width: asset.width, height: asset.height, duration: asset.durationSeconds,

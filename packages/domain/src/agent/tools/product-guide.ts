@@ -687,7 +687,12 @@ export function renderProductGuide(): string {
       `in smaller text, ${quoted(t("canvas.nodePlaceholder.rightClickHint"))}: double-click it to pick a file. An ` +
       `empty text node shows its icon, ${quoted(t("canvas.nodePlaceholder.text"))} and the same smaller line; ` +
       "double-clicking it, or the text of a text node that has some, lets you type (an empty one then shows " +
-      `${quoted(t("canvas.textNode.editorPlaceholder"))}); Esc or clicking elsewhere ends typing. From the ` +
+      `${quoted(t("canvas.textNode.editorPlaceholder"))}); Esc or clicking elsewhere ends typing. Pointing at a text ` +
+      `node shows ${quoted(t("canvas.textFullscreen.edit"))} (two arrows pointing out to opposite corners) above its ` +
+      `top-right corner, ${quoted(t("canvas.textFullscreen.view"))} on a locked node or for someone who may only view: ` +
+      "it opens the text in a large window over the page, to read and to type in, with " +
+      `${quoted(t("canvas.textFullscreen.readOnly"))} after the title when the text cannot be changed; ` +
+      `${quoted(t("canvas.textFullscreen.exit"))} at the window's top right, Esc or clicking outside it closes it. From the ` +
       "keyboard, Tab moves onto a node, and Enter there only selects it, except on a text node, where it starts " +
       "typing. On an empty picture, video or sound node, press Tab once more to reach its " +
       `${quoted(t("canvas.nodePlaceholder.image"))} line, and Enter or Space there opens the file picker. To replace ` +
@@ -906,7 +911,12 @@ export function renderProductGuide(): string {
       "was clicked, Esc deselects the node and the panel closes with it. When the model list cannot be loaded, the panel " +
       `does not open and a message says why: ${quoted(t("canvas.generatePanel.catalogUnavailable"))}, or ` +
       `${quoted(t("canvas.generatePanel.catalogOffline"))}`,
-    `Left of the X is a button with a layout icon whose tip reads ${quoted(t("canvas.template.title"))}. It ` +
+    `Left of the X is ${quoted(t("canvas.textFullscreen.editPrompt"))} (two arrows pointing out to opposite corners), ` +
+      "shown while the panel has a prompt box: it opens the prompt box on show (the open shot, or the lyrics or style " +
+      "box) in a large window over the page, where it is typed in as in the panel, @ included, while the box in the " +
+      `panel reads ${quoted(t("canvas.textFullscreen.inProgress"))}; ${quoted(t("canvas.textFullscreen.exit"))} at the ` +
+      "window's top right, Esc or clicking outside it closes it.",
+    `Left of that is a button with a layout icon whose tip reads ${quoted(t("canvas.template.title"))}. It ` +
       "opens a list under that heading of creative goals; pointing at a goal opens the templates for it, each a " +
       `name with a line under it. ${templateMenuLine("image", "A picture node")} ${templateMenuLine("video", "A video node")} ` +
       `${templateMenuLine("audio", "A sound node")} A template whose model this ` +
@@ -1707,10 +1717,9 @@ export function renderProductGuide(): string {
       "Switching to another Space keeps uploading. Closing the Space while an upload runs uses the existing warning. " +
       "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
     "Several videos play together on one clock. " +
-      "A video still loading is noted at the top right of the preview with its track as loading; one still being " +
-      `prepared that the browser cannot play reads ${quoted(t("canvas.miniTool.videoUI.preparingVideo"))}, and one whose ` +
+      `A video that cannot be loaded is noted at the top right of the preview with its track as unavailable, with ${quoted(t("timeline.retry"))}; ` +
+      `one still being prepared that the browser cannot play reads ${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} there, and one whose ` +
       `preparation failed says why, with ${quoted(t("timeline.retry"))} when trying again can help; ` +
-      `and a video that cannot be loaded is noted there with its track as unavailable, with ${quoted(t("timeline.retry"))}; ` +
       "the other layers keep playing, and a retry reloads only that video, with the preview waiting for it before going on together. " +
       `While a video it needs is getting ready, small text above the position beside the play button reads ${quoted(t("timeline.transport.waiting"))}, and the slider, the menu and the buttons stay where they are. ` +
       `When the browser blocks playback with sound, playback pauses and says ${quoted(t("timeline.preview.playBlocked"))}`,

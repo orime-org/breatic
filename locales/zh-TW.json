@@ -3395,6 +3395,14 @@
         "pinch": "雙指捏合",
         "wheel": "滾輪"
       }
+    },
+    "textFullscreen": {
+      "edit": "全螢幕編輯",
+      "view": "全螢幕檢視",
+      "editPrompt": "全螢幕編輯提示詞",
+      "exit": "結束全螢幕",
+      "inProgress": "正在全螢幕編輯",
+      "readOnly": "唯讀"
     }
   },
   "auth": {
@@ -5621,7 +5629,6 @@
     },
     "preview": {
       "playBlocked": "瀏覽器阻止了有聲播放，請按播放開始。",
-      "videoLoading": "{track}：影片載入中…",
       "videoUnavailable": "{track}：影片不可用"
     }
   },

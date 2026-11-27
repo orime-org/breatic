@@ -155,12 +155,12 @@ async function seedAsset(fixture: Fixture, kind: "video" | "image" = "video", co
 }
 
 /**
- * Address the three approved Project read endpoints.
+ * Address the two Project read endpoints: its media list and its Timeline limits.
  * @returns Their relative request URLs.
  */
-function readPaths(projectId: string, assetId: string): string[] {
+function readPaths(projectId: string): string[] {
   const base = `/api/v1/projects/${projectId}`;
-  return [`${base}/assets`, `${base}/assets/${assetId}`, `${base}/timeline-limits`];
+  return [`${base}/assets`, `${base}/timeline-limits`];
 }
 
 /**
@@ -176,10 +176,9 @@ async function readData<T>(path: string, cookie: string): Promise<T> {
 }
 
 describe("Project registered media HTTP reads", () => {
-  it.each(["assets", "asset", "timeline-limits"] as const)("requires a session for %s", async (endpoint) => {
+  it.each(["assets", "timeline-limits"] as const)("requires a session for %s", async (endpoint) => {
     const projectId = randomUUID();
-    const suffix = endpoint === "asset" ? `assets/${randomUUID()}` : endpoint;
-    const response = await app.request(`/api/v1/projects/${projectId}/${suffix}`);
+    const response = await app.request(`/api/v1/projects/${projectId}/${endpoint}`);
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ error: { code: 401 } });
   });
@@ -210,8 +209,7 @@ describe("Project registered media HTTP reads", () => {
       coverUrl: cover.fileUrl, width: 1280, height: 720, durationSeconds: 7.375,
       mimeType: "video/mp4", sizeBytes: 8192,
     };
-    const [listPath, assetPath, limitsPath] = readPaths(fixture.projectId, video.id);
-    expect(await readData<ProjectRegisteredAsset>(assetPath!, cookie)).toEqual(expected);
+    const [listPath, limitsPath] = readPaths(fixture.projectId);
     expect(await readData<ProjectAssetPage>(listPath!, cookie)).toEqual({ items: [expected], nextCursor: null });
     expect(await readData<ProjectAssetPage>(`${listPath}?kind=video`, cookie)).toEqual({ items: [expected], nextCursor: null });
     const config = getTimelineConfig();
@@ -239,7 +237,7 @@ describe("Project registered media HTTP reads", () => {
 
   it("gives web the multi-video preview sync thresholds from config/timeline.yaml (#1410 design §6.4)", async () => {
     const fixture = await seedFixture();
-    const [, , limitsPath] = readPaths(fixture.projectId, randomUUID());
+    const [, limitsPath] = readPaths(fixture.projectId);
     const limits = await readData<Record<string, unknown>>(limitsPath!, fixture.cookie);
     // toEqual against config alone would accept a key missing on both sides; the approved values pin each one.
     expect(limits["preview"]).toMatchObject({
@@ -249,7 +247,7 @@ describe("Project registered media HTTP reads", () => {
 
   it("gives web the web animation dialog bounds, preview timings and preview pool limits from config/timeline.yaml (inner#1711 design §7.4, §8, §10)", async () => {
     const fixture = await seedFixture();
-    const [, , limitsPath] = readPaths(fixture.projectId, randomUUID());
+    const [, limitsPath] = readPaths(fixture.projectId);
     const config = getTimelineConfig();
     const limits = await readData<Record<string, unknown>>(limitsPath!, fixture.cookie);
     expect(limits["webAnimation"]).toEqual({
@@ -270,12 +268,12 @@ describe("Project registered media HTTP reads", () => {
     expect(limits["webAnimation"]).toMatchObject({ durationSeconds: { default: 4 } });
   });
 
-  it("returns 403 consistently to an authenticated nonmember across all three endpoints", async () => {
+  it("returns 403 consistently to an authenticated nonmember across both endpoints", async () => {
     const fixture = await seedFixture();
     const asset = await seedAsset(fixture);
     await projectAssetReferenceService.recordProjectAssetReferences({ projectId: fixture.projectId, assetIds: [asset.id] });
     const outsider = await loginCookie(await seedUser());
-    for (const path of readPaths(fixture.projectId, asset.id)) {
+    for (const path of readPaths(fixture.projectId)) {
       const response = await app.request(path, { headers: { Cookie: outsider } });
       expect(response.status, path).toBe(403);
       expect(await response.json()).toMatchObject({ error: { code: 403 } });
@@ -290,7 +288,7 @@ describe("Project registered media HTTP reads", () => {
     const cookie = await loginCookie(viewerId);
     const asset = await seedAsset(fixture);
     await projectAssetReferenceService.recordProjectAssetReferences({ projectId: fixture.projectId, assetIds: [asset.id] });
-    const paths = readPaths(fixture.projectId, asset.id);
+    const paths = readPaths(fixture.projectId);
     for (const path of paths) await readData<unknown>(path, cookie);
     await sql`UPDATE project_members SET deleted_at = now() WHERE project_id = ${fixture.projectId} AND user_id = ${viewerId}`;
     for (const path of paths) {
@@ -305,25 +303,9 @@ describe("Project registered media HTTP reads", () => {
     await projectAssetReferenceService.recordProjectAssetReferences({ projectId: fixture.projectId, assetIds: [asset.id] });
     if (scope === "Project") await sql`UPDATE projects SET deleted_at = now() WHERE id = ${fixture.projectId}`;
     else await sql`UPDATE studios SET deleted_at = now() WHERE id = ${fixture.studioId}`;
-    for (const path of readPaths(fixture.projectId, asset.id)) {
+    for (const path of readPaths(fixture.projectId)) {
       const response = await app.request(path, { headers: { Cookie: fixture.cookie } });
       expect(response.status, path).toBe(403);
-    }
-  });
-
-  it.each(["unassociated", "deleted", "foreign"] as const)("returns 404 for a %s asset to an authorized Project user", async (state) => {
-    const fixture = await seedFixture();
-    const asset = await seedAsset(state === "foreign" ? await seedFixture() : fixture);
-    if (state === "deleted") {
-      await projectAssetReferenceService.recordProjectAssetReferences({ projectId: fixture.projectId, assetIds: [asset.id] });
-      await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${asset.id}`;
-    }
-    const response = await app.request(readPaths(fixture.projectId, asset.id)[1]!, { headers: { Cookie: fixture.cookie } });
-    expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: 404 } });
-    if (state === "unassociated") {
-      const missing = await app.request(readPaths(fixture.projectId, randomUUID())[1]!, { headers: { Cookie: fixture.cookie } });
-      expect(missing.status).toBe(404);
     }
   });
 
@@ -380,7 +362,7 @@ describe("Project registered media HTTP reads", () => {
       coverUrl: null, width: 1280, height: 720, durationSeconds: null,
       mimeType: "image/png", sizeBytes: 8192,
     };
-    const [listPath] = readPaths(fixture.projectId, image.id);
+    const [listPath] = readPaths(fixture.projectId);
     expect(await readData<ProjectAssetPage>(`${listPath}?kind=image`, fixture.cookie)).toEqual({ items: [expected], nextCursor: null });
     expect((await readData<ProjectAssetPage>(`${listPath}?kind=video`, fixture.cookie)).items.map((item) => item.assetId)).toEqual([video.id]);
   });
@@ -407,12 +389,9 @@ describe("Project registered media HTTP reads", () => {
     expect(await response.json()).toMatchObject({ error: { code: 400 } });
   });
 
-  it("rejects malformed Project and asset UUID parameters with 422", async () => {
+  it("rejects a malformed Project UUID parameter with 422", async () => {
     const fixture = await seedFixture();
-    const paths = [
-      ...readPaths("not-a-uuid", randomUUID()),
-      `/api/v1/projects/${fixture.projectId}/assets/not-a-uuid`,
-    ];
+    const paths = readPaths("not-a-uuid");
     for (const path of paths) {
       const response = await app.request(path, { headers: { Cookie: fixture.cookie } });
       expect(response.status, path).toBe(422);
@@ -435,5 +414,32 @@ describe("Project registered media HTTP reads", () => {
     expect(maximumPage.nextCursor).toEqual(expect.any(String));
     expect(new Set(maximumPage.items.map((item) => item.assetId)).size).toBe(pageMax);
     for (const item of maximumPage.items) expect(assetIds).toContain(item.assetId);
+  });
+});
+
+describe("the id-to-address routes are gone (inner#2171 design §5.6)", () => {
+  it.each(["assets", "three-d/assets"] as const)("answers 404 with no asset facts to a member asking %s/:assetId", async (path) => {
+    const fixture = await seedFixture();
+    const video = await seedAsset(fixture);
+    await sql`INSERT INTO project_asset_refs (id, project_id, asset_id) VALUES (${randomUUID()}, ${fixture.projectId}, ${video.id})`;
+    const response = await app.request(`/api/v1/projects/${fixture.projectId}/${path}/${video.id}`, { headers: { Cookie: fixture.cookie } });
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain(video.fileUrl);
+  });
+
+  it("answers 404 to a Studio member outside the Project asking for a 3D asset", async () => {
+    const fixture = await seedFixture();
+    const video = await seedAsset(fixture);
+    const outsiderId = await seedUser();
+    await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${fixture.studioId}, ${outsiderId}, 'member')`;
+    const response = await app.request(`/api/v1/projects/${fixture.projectId}/three-d/assets/${video.id}`, { headers: { Cookie: await loginCookie(outsiderId) } });
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain(video.fileUrl);
+  });
+
+  it("keeps the media list", async () => {
+    const fixture = await seedFixture();
+    const response = await app.request(`/api/v1/projects/${fixture.projectId}/assets`, { headers: { Cookie: fixture.cookie } });
+    expect(response.status).toBe(200);
   });
 });

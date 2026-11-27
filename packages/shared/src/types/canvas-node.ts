@@ -758,7 +758,7 @@ export interface SceneLookPictureEvent {
   part: string;
   /** The part's `map` when the upload started, or null for none. */
   startMap: string | null;
-  /** The stored picture's asset id. */
+  /** The stored picture's registered address, as the part stores it (inner#2171). */
   picture: string;
   /** Who uploaded it. */
   userId: string;

@@ -90,7 +90,7 @@ function props(objects: readonly SceneObject[], extra: Partial<SceneViewportProp
     scaleSensitivity: 0.006, importLimits: IMPORT_LIMITS,
     jointMode: false, selectedJoint: null, onJointSelect: vi.fn(), onSkeletonState: vi.fn(),
     onSelect: vi.fn(), onGestureStart: vi.fn(() => true), onGestureChange: vi.fn(), onGestureEnd: vi.fn(), onViewChange: vi.fn(), onError: vi.fn(),
-    onModelStateChange: vi.fn(), resolveAsset: vi.fn(),
+    onModelStateChange: vi.fn(),
     director: DIRECTOR, environment: { ambientColor: '#ffffff', ambientIntensity: 2.7 },
     onPilotPreview: vi.fn(), onPilotEnd: vi.fn(), onPilotLocked: vi.fn(),
     ...extra,

@@ -3,7 +3,7 @@
 
 import * as Y from 'yjs';
 import {
-  durationToFrames, newId as createId, TimelineVideoClipSchema, type ProjectRegisteredAsset, type TimelineDocumentV1, type TimelineVideoSource, type TimelineWebResolution,
+  durationToFrames, newId as createId, TimelineVideoClipSchema, type TimelineDocumentV1, type TimelineVideoSource, type TimelineWebResolution,
 } from '@breatic/shared';
 import {
   attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, readTimelineSource, timelineDocumentNeedsUpgrade,
@@ -304,6 +304,11 @@ export const TIMELINE_UPLOAD_ORIGIN = Symbol('timeline-upload');
 // The fields a video clip keeps when a placeholder becomes one; anything else on the record is dropped.
 const VIDEO_CLIP_FIELDS: ReadonlySet<string> = new Set(Object.keys(TimelineVideoClipSchema.shape));
 
+/** A registered video as a Timeline source stores it: its address and media facts (inner#2171 design §3.1). */
+export type TimelineRegisteredVideo = Pick<TimelineVideoSource, 'url' | 'coverUrl' | 'name' | 'mimeType' | 'width' | 'height'> & {
+  durationSeconds: number | null;
+};
+
 /**
  * Turn every placeholder of one registered upload into a video clip of its asset, in one untracked transaction
  * (#1434 design §3.1): one source is written for the asset, measured by the registered duration or, when the server
@@ -314,19 +319,20 @@ const VIDEO_CLIP_FIELDS: ReadonlySet<string> = new Set(Object.keys(TimelineVideo
  * being rebuilt nothing is written and the placeholder stays; the caller shows the wait itself.
  * @param doc - The content document.
  * @param uploadId - The registered upload.
- * @param asset - The registered video asset.
+ * @param video - The registered video: its address and media facts, from the upload's own result.
  * @throws {RangeError} When the duration it measures by (the registered one, or the browser's when the server has none) cannot be counted in frames.
  */
-export function convertTimelineUpload(doc: Y.Doc, uploadId: string, asset: ProjectRegisteredAsset): void {
+export function convertTimelineUpload(doc: Y.Doc, uploadId: string, video: TimelineRegisteredVideo): void {
   const current = readTimelineDocument(doc);
   const placeholders = Object.values(current.clips).flatMap((clip) => (clip.kind === 'upload' && clip.upload.uploadId === uploadId ? [clip] : []));
   const first = placeholders[0];
   if (first === undefined) return;
   const fps = current.settings.fps;
-  const duration = asset.durationSeconds ?? first.upload.durationSeconds;
+  const duration = video.durationSeconds ?? first.upload.durationSeconds;
   const source: TimelineVideoSource = {
-    id: createId(), kind: 'video', assetId: asset.assetId, timebase: fps, extentFrames: durationToFrames(duration, fps),
-    durationSeconds: String(duration), durationOrigin: asset.durationSeconds === null ? 'decoded' : 'registered',
+    id: createId(), kind: 'video', url: video.url, coverUrl: video.coverUrl, name: video.name, mimeType: video.mimeType,
+    width: video.width, height: video.height, timebase: fps, extentFrames: durationToFrames(duration, fps),
+    durationSeconds: String(duration), durationOrigin: video.durationSeconds === null ? 'decoded' : 'registered',
   };
   const clips = doc.getMap<unknown>('clips');
   writeSpaceDoc(timelineSizeName(doc), { kind: 'add', notify: false }, () => doc.transact(() => {

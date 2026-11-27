@@ -19,7 +19,6 @@ import { initializeTimelineDocument } from '@breatic/shared/space-content';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applyTimelineEdit } from '@web/data/yjs/timeline-document';
-import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
@@ -35,7 +34,7 @@ import type * as RequestModule from '@web/data/api/request';
 import type * as RendererModule from '@web/spaces/canvas/video-presentation/create-video-renderer';
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
-  return { ...actual, timelineApi: { ...actual.timelineApi, listVideos: vi.fn(), resolveAsset: vi.fn(), limits: vi.fn() } };
+  return { ...actual, timelineApi: { ...actual.timelineApi, listVideos: vi.fn(), limits: vi.fn() } };
 });
 vi.mock('@web/data/api/request', async (importOriginal) => ({
   ...(await importOriginal<typeof RequestModule>()),
@@ -65,7 +64,9 @@ const ASSET: ProjectRegisteredAsset = {
   displayName: 'Launch.mov', kind: 'video', fileUrl: 'https://cdn.example/timeline-original.mov', coverUrl: 'https://cdn.example/timeline-cover.jpg',
   width: 1280, height: 720, durationSeconds: 2, mimeType: 'video/quicktime', sizeBytes: 8192,
 };
-const SOURCE: TimelineVideoSource = { id: '10000000-0000-4000-8000-000000000011', kind: 'video', assetId: ASSET.assetId, timebase: SETTINGS.fps, extentFrames: 48, durationSeconds: '2', durationOrigin: 'registered' };
+const SOURCE: TimelineVideoSource = {
+  id: '10000000-0000-4000-8000-000000000011', kind: 'video', url: ASSET.fileUrl, coverUrl: ASSET.coverUrl, name: 'Launch.mov', mimeType: ASSET.mimeType,
+  width: ASSET.width, height: ASSET.height, timebase: SETTINGS.fps, extentFrames: 48, durationSeconds: '2', durationOrigin: 'registered' };
 const CLIP: TimelineVideoClip = {
   id: '30000000-0000-4000-8000-000000000011', kind: 'video', trackId: 'visual-1', sourceId: SOURCE.id, startFrame: 0, sourceInFrame: 0, durationFrames: 48,
   rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
@@ -97,7 +98,6 @@ async function mount(response: VideoPresentationResponse): Promise<HTMLElement> 
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   vi.mocked(createVideoRenderer).mockClear();
-  vi.mocked(timelineApi.resolveAsset).mockResolvedValue(ASSET);
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);

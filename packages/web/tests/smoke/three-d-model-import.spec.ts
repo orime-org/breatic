@@ -308,17 +308,14 @@ test('a textured GLB is registered once, independently edited, undone and reopen
     await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(1);
     const original = (await sceneObjects(page, id))[0];
     if (original.model.kind !== 'asset') throw new Error('Expected a registered model reference');
-    const assetId = original.model.assetId;
-    const asset = await dataOf<{ mimeType: string; sizeBytes: number }>(
-      await page.request.get(`/api/v1/projects/${smokeProjectId()}/three-d/assets/${assetId}`), 'resolve the registered model',
-    );
-    expect(asset).toMatchObject({ mimeType: 'model/gltf-binary', sizeBytes: file.buffer.byteLength });
+    const model = original.model;
+    expect(model).toMatchObject({ mimeType: 'model/gltf-binary', sizeBytes: file.buffer.byteLength });
     const repeated = await importModel(page, file, 'Second imported character');
-    expect(repeated).toMatchObject({ alreadyExists: true, assetId });
+    expect(repeated).toMatchObject({ alreadyExists: true });
     expect(repeated.taskId).not.toBe(first.taskId);
     await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(2);
     const objects = await sceneObjects(page, id);
-    expect(objects.map((object) => object.model)).toEqual([{ kind: 'asset', assetId }, { kind: 'asset', assetId }]);
+    expect(objects.map((object) => object.model)).toEqual([model, model]);
     expect(objects.map((object) => object.id)[0]).not.toBe(objects.map((object) => object.id)[1]);
     await setX(page, 4);
     const secondId = (await sceneObjects(page, id)).find((object) => object.name === 'Second imported character')!.id;
@@ -337,7 +334,7 @@ test('a textured GLB is registered once, independently edited, undone and reopen
     await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(2);
     await page.reload();
     await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(2);
-    expect((await sceneObjects(page, id)).map((object) => object.model)).toEqual([{ kind: 'asset', assetId }, { kind: 'asset', assetId }]);
+    expect((await sceneObjects(page, id)).map((object) => object.model)).toEqual([model, model]);
     await closeSceneTab(page, id);
     await reopenScene(page, id);
     await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(2);
@@ -384,9 +381,7 @@ test('a selected ZIP entry preserves original resources through registration and
     const object = (await sceneObjects(page, id))[0];
     object.position.forEach((value, axis) => expect(value).toBeCloseTo([-1, 0, 0][axis], 12));
     if (object.model.kind !== 'asset') throw new Error('Expected a registered ZIP model');
-    const asset = await dataOf<{ url: string; mimeType: string; sizeBytes: number }>(
-      await page.request.get(`/api/v1/projects/${smokeProjectId()}/three-d/assets/${object.model.assetId}`), 'resolve the registered model package',
-    );
+    const asset = object.model;
     expect(asset.mimeType).toBe('application/zip');
     const response = await httpRequest(asset.url, { method: 'GET' }, { replaySafe: true });
     expect(response.status).toBe(200);
@@ -420,7 +415,7 @@ for (const role of ['editor', 'viewer'] as const) {
       await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(1);
       const original = (await sceneObjects(page, id))[0];
       if (original.model.kind !== 'asset') throw new Error('Expected the shared registered model');
-      const assetId = original.model.assetId;
+      const asset = original.model;
       const owner = await dataOf<{ id: string }>(await page.request.get('/api/v1/auth/me'), 'read owner identity');
       const other = await dataOf<{ id: string }>(await peerContext.request.get('/api/v1/auth/me'), 'read collaborator identity');
       peerId = other.id;
@@ -430,12 +425,7 @@ for (const role of ['editor', 'viewer'] as const) {
       await reopenScene(peer, id);
       await expect.poll(async () => (await renderedObjects(peer)).length, { timeout: test.info().timeout }).toBe(1);
       expect(await sceneObjects(peer, id)).toEqual(await sceneObjects(page, id));
-      const asset = await dataOf<{ url: string; mimeType: string; sizeBytes: number }>(
-        await peerContext.request.get(`/api/v1/projects/${projectId}/three-d/assets/${assetId}`), 'read the shared Studio asset',
-      );
       expect(asset.mimeType).toBe('application/zip');
-      const foreign = await peerContext.request.get(`/api/v1/projects/${smokeProjectId('B')}/three-d/assets/${assetId}`);
-      expect(foreign.status()).toBe(404);
       const peerView = await sceneView(peer);
       const ownerName = page.getByTestId('scene-properties-panel').getByLabel('Name', { exact: true });
       if (role === 'editor') {
@@ -618,18 +608,18 @@ test('a failed transfer and a failed load keep existing objects; the task list r
   await openSmokeProject(page);
   const id = await createSpace(page, '3d', `Retried model ${crypto.randomUUID()}`);
   const partsPattern = '**/uploads/**/parts/*';
-  const assetsPattern = '**/api/v1/projects/**/three-d/assets/**';
   let failTransfer = true;
-  let failResolve = true;
+  let failLoad = true;
+  // The stored model's address, known once the retried upload registers; its download fails until `failLoad` clears.
+  let modelUrl: string | null = null;
+  const modelPattern = (url: URL): boolean => url.href === modelUrl;
   await page.route(partsPattern, async (route) => {
     if (failTransfer && route.request().method() === 'PUT') await route.abort('failed');
     else await route.continue();
   });
-  await page.route(assetsPattern, async (route) => {
-    if (failResolve) {
-      await route.fetch();
-      await route.abort('failed');
-    } else await route.continue();
+  await page.route(modelPattern, async (route) => {
+    if (failLoad) await route.abort('failed');
+    else await route.continue();
   });
   try {
     const editor = visibleSpace(page);
@@ -659,19 +649,26 @@ test('a failed transfer and a failed load keep existing objects; the task list r
     expect(retried.taskId).not.toBe(failed.taskId);
     await expect(failedRow.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
     await expect(failedRow.getByRole('button', { name: 'Remove', exact: true })).toBeVisible();
+    await expect.poll(async () => {
+      const list = await dataOf<{ tasks: Array<{ id: string; modelFile: { url: string } | null }> }>(
+        await page.request.get(`/api/v1/projects/${smokeProjectId()}/three-d/${id}/tasks`), 'read the retried model task',
+      );
+      modelUrl = list.tasks.find((task) => task.id === retried.taskId)?.modelFile?.url ?? null;
+      return modelUrl;
+    }, { timeout: test.info().timeout }).not.toBeNull();
     await placeFromTasks(page, retried.taskId);
     await expect(page.getByText('The model couldn’t be placed in the scene.', { exact: true })).toBeVisible({ timeout: test.info().timeout });
     expect(await sceneObjects(page, id)).toEqual([original]);
-    failResolve = false;
+    failLoad = false;
     await placeFromTasks(page, retried.taskId);
     await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(2);
     expect((await sceneObjects(page, id)).filter((object) => object.name === 'Retried character')).toHaveLength(1);
     expect((await sceneObjects(page, id)).find((object) => object.id === original.id)).toEqual(original);
   } finally {
     failTransfer = false;
-    failResolve = false;
+    failLoad = false;
     await page.unroute(partsPattern);
-    await page.unroute(assetsPattern);
+    await page.unroute(modelPattern);
     await deleteSpace(page, id);
   }
 });

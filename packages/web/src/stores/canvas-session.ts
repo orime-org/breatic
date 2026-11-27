@@ -469,6 +469,16 @@ export interface CanvasSessionState {
   startTextEdit: (nodeId: string) => void;
   /** Stop writing in a text node, if it is still the one being written in. */
   endTextEdit: (nodeId: string) => void;
+  /**
+   * The text node open full screen, or null (inner#2115). Here rather than on
+   * the node: the layer is the canvas's, and a node culled out of view keeps
+   * its full screen.
+   */
+  fullscreenTextNode: string | null;
+  /** Open a text node full screen. */
+  openTextFullscreen: (nodeId: string) => void;
+  /** Close a text node's full screen, if it is still the one open. */
+  closeTextFullscreen: (nodeId: string) => void;
   /** Enter a REFERENCE pick (wires i2i source edges) for a generative node. */
   startReferencePick: (nodeId: string) => void;
   /** Enter the first-frame pick for a video node (#1896). */
@@ -650,6 +660,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
       focusCrop: null,
       historyFocus: null,
       editingTextNode: null,
+      fullscreenTextNode: null,
       taskPanelStatus: null,
       pickSession: null,
       pendingFocusUploads: [],
@@ -892,6 +903,14 @@ export function createCanvasSessionStore(): CanvasSessionStore {
       endTextEdit: (nodeId) =>
         set((s) => {
           if (s.editingTextNode === nodeId) s.editingTextNode = null;
+        }),
+      openTextFullscreen: (nodeId) =>
+        set((s) => {
+          s.fullscreenTextNode = nodeId;
+        }),
+      closeTextFullscreen: (nodeId) =>
+        set((s) => {
+          if (s.fullscreenTextNode === nodeId) s.fullscreenTextNode = null;
         }),
       closePanelOn: (nodeId, kind) =>
         set((s) => {

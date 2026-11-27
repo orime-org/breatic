@@ -10,10 +10,11 @@ import { vi } from 'vitest';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent, landDocumentUpload, UPLOAD_HOME_ATTR } from '@breatic/shared';
 
 import { buildDocumentEditor, type DocumentEditorOptions } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 import { tableBlock } from './table-fixtures';
 
 /** The editor these cases open. */
@@ -44,6 +45,37 @@ export function unmountAll(): void {
   document.body.innerHTML = '';
 }
 
+/** The origin of the harness's collab write; the body's undo manager tracks only the sync plugin's. */
+const COLLAB = Symbol('collab');
+
+/**
+ * Ends an upload of one of our media the way production does for a medium of
+ * the same Project: the paste request's answer maps the address to itself and
+ * collab writes it onto the waiting block, outside the user's undo history.
+ * Other sources stay pending.
+ * @param doc - The body's document.
+ * @param uploadId - The block's upload id.
+ * @param source - Where the upload reads from.
+ */
+function landOurs(doc: Y.Doc, uploadId: string, source: UploadSource): void {
+  if (source.kind !== 'ours') return;
+  const blocks: Y.XmlElement[] = [];
+  const walk = (parent: Y.XmlFragment | Y.XmlElement): void => {
+    for (const child of parent.toArray()) {
+      if (!(child instanceof Y.XmlElement)) continue;
+      if (child.getAttribute('uploadId') === uploadId && !child.getAttribute('url')) blocks.push(child);
+      walk(child);
+    }
+  };
+  walk(documentBodyFragment(doc));
+  doc.transact(() => {
+    blocks.forEach((block) => {
+      landDocumentUpload(block, { url: source.url });
+      block.setAttribute(UPLOAD_HOME_ATTR, '');
+    });
+  }, COLLAB);
+}
+
 /**
  * Opens a body holding these blocks, with an undo manager.
  * @param blocks - The document.
@@ -57,7 +89,7 @@ export function open(
   const doc = new Y.Doc();
   Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const { manager, extension } = createDocumentUndo(doc);
-  const sink: Sink = { onLeftOut: vi.fn(), start: vi.fn() };
+  const sink: Sink = { onLeftOut: vi.fn(), start: vi.fn((uploadId: string, source: UploadSource) => landOurs(doc, uploadId, source)) };
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
     extensions: [extension],

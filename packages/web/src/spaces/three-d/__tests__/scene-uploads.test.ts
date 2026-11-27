@@ -90,7 +90,10 @@ describe('starting a scene upload', () => {
   it('ends a dedup hit at once: no entry, nothing held', async () => {
     const h = harness();
     const run = await opened(h, 't1');
-    run.sinks.onSuccess({ fileUrl: 'u', assetId: 'a', kind: 'file', width: null, height: null });
+    run.sinks.onSuccess({
+      fileUrl: 'u', assetId: 'a', kind: 'file', width: null, height: null,
+      coverUrl: null, durationSeconds: null, mimeType: 'model/gltf-binary', sizeBytes: 2048,
+    });
     expect(h.store.get('t1')).toBeUndefined();
     expect(h.busy(S)).toBe(0);
   });

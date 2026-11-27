@@ -22,8 +22,8 @@ import type * as coreModule from '@breatic/core';
 import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation } from '../video-presentation.service.js';
 import { videoEncoderRates } from '../video-encoder-rates.js';
 
-const { loadProjectRole, findLiveByStorageKey, findById, findCoverOf, keyFromUrl, publicUrl } = vi.hoisted(() => ({
-  loadProjectRole: vi.fn(), findLiveByStorageKey: vi.fn(), findById: vi.fn(), findCoverOf: vi.fn(), keyFromUrl: vi.fn(), publicUrl: vi.fn(),
+const { loadProjectRole, findLiveByStorageKey, findById, findCoverUrlOf, keyFromUrl, publicUrl } = vi.hoisted(() => ({
+  loadProjectRole: vi.fn(), findLiveByStorageKey: vi.fn(), findById: vi.fn(), findCoverUrlOf: vi.fn(), keyFromUrl: vi.fn(), publicUrl: vi.fn(),
 }));
 const { videoPresentationAtIngest, queueAdd, fillMediaNumbers, createUsageRecorder, recordServiceCall, settle, selectPin } = vi.hoisted(() => ({
   videoPresentationAtIngest: vi.fn(), queueAdd: vi.fn(), fillMediaNumbers: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(), selectPin: vi.fn(),
@@ -41,7 +41,7 @@ vi.mock('@breatic/core', async (original) => {
   };
 });
 vi.mock('@breatic/shared', async (original) => ({ ...await original<Record<string, unknown>>(), videoPresentationAtIngest }));
-vi.mock('@domain/asset/asset.repo.js', async (original) => ({ ...await original<Record<string, unknown>>(), findLiveByStorageKey, findById, findCoverOf, fillMediaNumbers }));
+vi.mock('@domain/asset/asset.repo.js', async (original) => ({ ...await original<Record<string, unknown>>(), findLiveByStorageKey, findById, findCoverUrlOf, fillMediaNumbers }));
 vi.mock('@domain/presentation/presentation-pin.service.js', async (original) => ({ ...await original<Record<string, unknown>>(), select: selectPin }));
 vi.mock('@domain/credit/usage-recorder.js', async (original) => ({ ...await original<Record<string, unknown>>(), createUsageRecorder }));
 
@@ -126,7 +126,7 @@ beforeEach(() => {
   publicUrl.mockImplementation((key: string) => `https://assets.example.test/${key}`);
   findLiveByStorageKey.mockResolvedValue(asset);
   findById.mockResolvedValue(asset);
-  findCoverOf.mockResolvedValue(null);
+  findCoverUrlOf.mockResolvedValue(null);
   ingest(snapshot());
   queueAdd.mockResolvedValue(undefined);
   createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
@@ -309,9 +309,9 @@ describe('read: admit once, otherwise answer the snapshot as it is (inner#1306 Â
   });
 
   it('R06 carries the registered video\'s cover, for a surface that holds none of its own', async () => {
-    findCoverOf.mockResolvedValue({ fileUrl: 'https://assets.example.test/cover/source.webp' });
+    findCoverUrlOf.mockResolvedValue('https://assets.example.test/cover/source.webp');
     const got = await resolveVideoPresentation(input);
-    expect(findCoverOf).toHaveBeenCalledWith(asset.id);
+    expect(findCoverUrlOf).toHaveBeenCalledWith(expect.objectContaining({ id: asset.id }));
     expect(got.coverURL).toBe('https://assets.example.test/cover/source.webp');
   });
 

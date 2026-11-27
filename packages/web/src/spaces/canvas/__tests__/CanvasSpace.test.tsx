@@ -2497,7 +2497,9 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // intent without one leaves it disabled for as long as the conversation
     // is open, and the next proposal it draws starts out waiting too.
     mockUseCanvasSpace.mockReturnValue(mockSpace());
+    const settle = vi.fn();
     useCanvasStore.getState().requestNodeCreate({
+      settle,
       proposal: {
         nodes: [
           {
@@ -2520,7 +2522,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     await waitFor(() =>
       expect(useCanvasStore.getState().pendingNodeCreate).toBeNull(),
     );
-    expect(useCanvasStore.getState().proposalOutcome).toBe('failed');
+    expect(settle.mock.calls).toEqual([['failed']]);
   });
 
   it('editor canvas fulfils a library create intent (writes via addNode)', async () => {
@@ -4902,7 +4904,7 @@ describe('how the camera follows a landed proposal', () => {
   const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
   const follow = src.slice(
     src.indexOf('const placed = placeProposalAt'),
-    src.indexOf('reportProposalOutcome(\'placed\')'),
+    src.indexOf('settle(\'placed\')'),
   );
 
   it('slides in a straight line over the proposal framing time', () => {

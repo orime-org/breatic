@@ -3395,6 +3395,14 @@
         "pinch": "핀치",
         "wheel": "휠"
       }
+    },
+    "textFullscreen": {
+      "edit": "전체 화면으로 편집",
+      "view": "전체 화면으로 보기",
+      "editPrompt": "프롬프트를 전체 화면으로 편집",
+      "exit": "전체 화면 종료",
+      "inProgress": "전체 화면에서 편집 중",
+      "readOnly": "읽기 전용"
     }
   },
   "auth": {
@@ -5621,7 +5629,6 @@
     },
     "preview": {
       "playBlocked": "브라우저가 소리가 있는 재생을 차단했습니다. 재생을 눌러 시작하세요.",
-      "videoLoading": "{track}: 동영상 불러오는 중…",
       "videoUnavailable": "{track}: 동영상을 사용할 수 없음"
     }
   },

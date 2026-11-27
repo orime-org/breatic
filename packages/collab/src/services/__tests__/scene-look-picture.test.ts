@@ -17,9 +17,10 @@ const logs = vi.hoisted(() => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() })
 vi.mock("@breatic/core", () => ({ createLogger: () => logs }));
 
 const OBJECT = "0b8c7f1a-3e2d-4a5b-8c9d-0e1f2a3b4c5d";
-const START = "4b7f3c1e-2d0a-4c6b-9f1e-8a5b2c3d4e5f";
-const PICTURE = "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d";
-const OTHER = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f";
+// Part pictures are stored as their addresses (inner#2171 design §3.2).
+const START = "https://cdn.example.com/assets/start.png";
+const PICTURE = "https://cdn.example.com/assets/picture.png";
+const OTHER = "https://cdn.example.com/assets/other.png";
 const EVENT: SceneLookPictureEvent = {
   type: "scene-look-picture", docName: "project-p/3d-s", objectId: OBJECT, part: "3", startMap: START,
   picture: PICTURE, userId: "u", uploadKey: "k",

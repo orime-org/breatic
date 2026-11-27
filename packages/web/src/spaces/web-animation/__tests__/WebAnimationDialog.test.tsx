@@ -34,7 +34,7 @@ const baseRow = {
   failureReason: null, ownProject: true, usageCredits: 0.3, deadlineAt: '2026-11-15T09:00:00.000000Z', createdAt: '2026-11-15T09:00:00.000000Z',
   updatedAt: '2026-11-15T09:00:00.000000Z', kind: 'web_animation_create', engine: 'deepseek', request: 'Gold dot along an arc', export: null,
   input: { prompt: 'Gold dot along an arc', engine: 'deepseek', aspect: '16:9', durationSeconds: 4, fps: { num: 24, den: 1 } },
-  resultSourceVersionId: BASE_SOURCE, resultAssetId: null,
+  resultSourceVersionId: BASE_SOURCE, resultAsset: null,
 } as unknown as WebAnimationRowView;
 
 /**

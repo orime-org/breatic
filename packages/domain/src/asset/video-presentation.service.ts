@@ -7,7 +7,7 @@ import { t, videoPresentationAtIngest, videoPresentationResponseSchema,
   videoPresentationSourceBindingSchema,
   type StudioAssetEntity, type VideoPresentationOriginal, type VideoPresentationIngestPreparation, type VideoPresentationIngestRequest, type VideoPresentationPricing,
   type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding } from '@breatic/shared';
-import { findById, findCoverOf, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
+import { findById, findCoverUrlOf, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
 import { videoEncoderRates } from '@domain/asset/video-encoder-rates.js';
 import { select as selectPresentationPin, versionObjectKeys } from '@domain/presentation/presentation-pin.service.js';
 
@@ -195,10 +195,10 @@ function presentationJobId(requestId: string | undefined): string {
  */
 async function response(row: StudioAssetEntity, binding: VideoPresentationSourceBinding, snapshot: VideoPresentationIngestSnapshot): Promise<VideoPresentationResponse> {
   // The cover is read as material facts read it (`material-facts.ts`): the registered cover's own URL.
-  const cover = await findCoverOf(row.id);
+  const coverURL = await findCoverUrlOf(row);
   return videoPresentationResponseSchema.parse({
     sourceBinding: binding, presentation: snapshot.presentation, preparation: snapshot.preparation,
-    coverURL: cover?.fileUrl ?? null,
+    coverURL,
   });
 }
 

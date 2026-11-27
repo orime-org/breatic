@@ -6,16 +6,14 @@ import type { QueryClient } from '@tanstack/react-query';
 import { durationToFrames, newId, TIMELINE_MAIN_TRACK_ID, type ProjectRegisteredAsset, type TimelineUploadClip } from '@breatic/shared';
 import { TIMELINE_DEFAULT_PLACEMENT, type TimelineEditCommand, type TimelineEditPlacement, type TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 
-import { timelineApi } from '@web/data/api/timeline';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { docName } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
 import { readTimelineDocument } from '@web/data/yjs/timeline-document';
 import type { TimelineEditOptions } from '@web/data/yjs/timeline-edit-session';
 import { parseTimelineFrame } from '@web/data/yjs/timeline-time';
-import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-media-placement';
+import { prepareTimelineMediaPlacement, timelineSourceName } from '@web/spaces/timeline/prepare-media-placement';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
-import { timelineAssetKey } from '@web/spaces/timeline/use-timeline-asset';
 import { gridDuration } from '@web/spaces/canvas/video-presentation/frame-grid-time';
 import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 
@@ -36,6 +34,7 @@ export interface TimelineMediaDraftSnapshot {
 interface TimelineMediaDraftInputs {
   projectId: string;
   spaceId: string;
+  /** The account query client, for the presentation read that gives a selected version's length. */
   queryClient: QueryClient;
   edit: (command: TimelineEditCommand, options?: TimelineEditOptions) => TimelineEditPlan;
   /** Hands a placed local video to the document's background uploads. */
@@ -267,10 +266,9 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
             URL.revokeObjectURL(url);
           }
         } else {
-          const assetId = captured.selected?.assetId;
-          if (assetId === undefined) { publish({ errorKey: 'source_unavailable' }); return; }
-          const asset = await inputs.queryClient.fetchQuery({ queryKey: timelineAssetKey(inputs.projectId, assetId), queryFn: ({ signal }) => timelineApi.resolveAsset(inputs.projectId, assetId, signal), staleTime: 0 });
-          if (active !== attempt) return;
+          // The picked list item already carries the address and media facts the source stores (inner#2171 design §4).
+          const asset = captured.selected;
+          if (asset === null) { publish({ errorKey: 'source_unavailable' }); return; }
           failure = 'metadata_unavailable';
           // The selected version's grid length first; the registered duration, then decoding, only while nothing is selected.
           const presentedDurationSeconds = await selectedGridDuration(inputs.queryClient, inputs.projectId, asset.fileUrl, controller.signal);
@@ -289,7 +287,7 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
           const { file, durationSeconds } = material;
           upload = { uploadId: newId(), file };
           const clip: TimelineUploadClip = {
-            id: clipId, kind: 'upload', trackId: target.trackId, upload: { uploadId: upload.uploadId, name: file.name.slice(0, 255) || 'video', durationSeconds },
+            id: clipId, kind: 'upload', trackId: target.trackId, upload: { uploadId: upload.uploadId, name: timelineSourceName(file.name), durationSeconds },
             startFrame, sourceInFrame: 0, durationFrames: durationToFrames(durationSeconds, readTimelineDocument(doc).settings.fps),
             ...TIMELINE_DEFAULT_PLACEMENT,
           };

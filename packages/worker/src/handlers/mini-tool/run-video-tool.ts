@@ -47,7 +47,7 @@ const miniToolExecutionResultSchema = miniToolExecutionOutputSchema.shape.result
  * @throws {Error} When the cover read fails.
  */
 export async function registered(asset: StudioAssetEntity): Promise<NonNullable<VideoToolResult>> {
-  const cover = await assetRepo.findCoverOf(asset.id);
+  const cover = await assetRepo.findCoverOf(asset);
   return miniToolExecutionResultSchema.parse({ status: "registered", assetId: asset.id, canonicalURL: asset.fileUrl, kind: asset.kind, contentHash: asset.contentHash,
     mimeType: asset.mimeType, size: asset.sizeBytes, width: asset.width, height: asset.height, duration: asset.durationSeconds,
     cover: cover === null ? null : { assetId: cover.id, canonicalURL: cover.fileUrl, kind: cover.kind, contentHash: cover.contentHash,

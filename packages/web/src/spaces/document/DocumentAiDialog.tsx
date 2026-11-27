@@ -61,6 +61,7 @@ import { langFor } from '@web/features/preferences/supported-langs';
 import { useTranslation } from '@web/i18n/use-translation';
 import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
 import { toast } from '@web/lib/toast';
+import { canvasApi } from '@web/data/api/canvas';
 import { cn } from '@web/lib/utils';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { ourSentence } from '@web/data/api/server-message';
@@ -90,7 +91,7 @@ import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
 import { blockById, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
 import { useTableFullscreen } from '@web/spaces/document/use-table-fullscreen';
-import { ourMediaPrefix, ourMediaPrefixReady } from '@web/spaces/document/document-external-media';
+import { mediaUrlsOf, ourMediaPrefix, ourMediaPrefixReady, withMediaUrls } from '@web/spaces/document/document-external-media';
 import { inPlaceOf } from '@web/spaces/document/document-preview-styles';
 import { withShotListWidths } from '@web/spaces/document/document-ai-shot-list';
 import { frameStaticTable } from '@web/spaces/document/document-table-nodes';
@@ -229,6 +230,8 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
   const failure = React.useRef<string | null>(null);
   const configRequest = React.useRef<Promise<TextToolsConfig> | null>(null);
   const endsWithEditor = React.useRef<(() => void) | null>(null);
+  // This Project's addresses for the answer's media of ours, filled once the answer has finished (inner#2171 design §5.2).
+  const mediaMap = React.useRef<Readonly<Record<string, string | null>>>({});
 
   // The effects carried out for the reducer, held in a ref so `dispatch` keeps
   // one identity while they read the current state.
@@ -314,7 +317,8 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         // Written at the press: the original range is cleared as the session
         // closes, right after this. The panel fetched the media prefix as it opened.
         try {
-          const read = aiAnswer(editor, editor.prosemirrorState, effect.result, ourMediaPrefix(), at.insertBlockId);
+          const parsed = aiAnswer(editor, editor.prosemirrorState, effect.result, ourMediaPrefix(), at.insertBlockId);
+          const read = { ...parsed, preview: withMediaUrls(parsed.preview, mediaMap.current) };
           const answer = command === 'storyboard' ? withShotListWidths(read) : read;
           told(effect.how === 'insert'
             ? insertAiAnswer({ editor }, at.insertBlockId, answer, admission)
@@ -402,6 +406,8 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
           session={session}
           insertBlockPresent={insertBlockPresent}
           writable={writeAccess === 'granted'}
+          projectId={projectId}
+          mediaMap={mediaMap}
           dispatch={dispatch}
           previewScroll={previewScroll}
         />
@@ -411,6 +417,10 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
 }
 
 interface AiPanelProps {
+  /** The Project the body belongs to, which our media join before they are written. */
+  projectId: string | null;
+  /** Where the panel keeps this Project's addresses for the answer's media of ours. */
+  mediaMap: React.MutableRefObject<Readonly<Record<string, string | null>>>;
   editor: ViewedEditor;
   viewport: HTMLElement;
   opened: Opened;
@@ -460,6 +470,8 @@ function anchorBox(editor: ViewedEditor, opened: Opened): DOMRect | null {
  * @param props.writable - Whether the connection may write.
  * @param props.dispatch - Sends the session an event.
  * @param props.previewScroll - Where the preview was scrolled to, kept while its Space tab is hidden.
+ * @param props.projectId - The Project the body belongs to.
+ * @param props.mediaMap - Where the answer's media get this Project's addresses.
  * @returns The panel.
  */
 function AiPanel({
@@ -471,6 +483,8 @@ function AiPanel({
   writable,
   dispatch,
   previewScroll,
+  projectId,
+  mediaMap,
 }: AiPanelProps): React.JSX.Element {
   const t = useTranslation();
   // The model sends its text in bursts; the user sees it at a reading pace
@@ -497,6 +511,7 @@ function AiPanel({
   );
   // Replace and its button decide by the same function (§5.3).
   const replaceable = useEditorSnapshot(editor, readReplaceable);
+  const media = useAnswerMedia({ editor, insertBlockId: opened.insertBlockId, result: session.result, finished, ourPrefix, projectId, mediaMap });
   const buttons = React.useMemo(
     () => aiDialogButtons({ state: session.state, resultEmpty, revealed: isComplete, replaceable, insertBlockPresent }),
     [session.state, resultEmpty, isComplete, replaceable, insertBlockPresent],
@@ -704,6 +719,7 @@ function AiPanel({
                   label={t('spaces.document.ai.insert')}
                   variant='outline'
                   button={buttons.insert}
+                  media={media}
                   onPress={press}
                 />
               )}
@@ -714,6 +730,7 @@ function AiPanel({
                   label={t('spaces.document.ai.replace')}
                   variant='default'
                   button={buttons.replace}
+                  media={media}
                   onPress={press}
                 />
               )}
@@ -752,6 +769,7 @@ const WriteButton = React.memo(function WriteButton({
   label,
   variant,
   button,
+  media,
   onPress,
 }: {
   how: 'insert' | 'replace';
@@ -759,9 +777,15 @@ const WriteButton = React.memo(function WriteButton({
   label: string;
   variant: 'outline' | 'default';
   button: AiWriteButton;
+  /** Whether the answer's media of ours are joining this Project, did not join, or are ready. */
+  media: AnswerMedia;
   onPress: (how: 'insert' | 'replace', button: AiWriteButton) => void;
 }): React.JSX.Element {
   const t = useTranslation();
+  // Nothing is written until the media have this Project's addresses (inner#2171 design §10).
+  if (media !== 'ready') {
+    return <Button variant={variant} size='sm' data-testid={testId} disabled loading={media === 'pending'}>{label}</Button>;
+  }
   const control = (
     <Button
       variant={variant}
@@ -1053,4 +1077,59 @@ function Preview({
       <div ref={host} data-testid='doc-ai-preview' />
     </ScrollArea>
   );
+}
+
+/** Where the answer's media of ours stand: joining this Project, failed to join, or ready to be written. */
+type AnswerMedia = 'pending' | 'failed' | 'ready';
+
+/**
+ * Register the answer's media of ours for this Project once the answer has finished, the way a paste registers them
+ * (inner#2171 design §5.2, §10), and keep this Project's addresses for the write. An answer with none is ready at once.
+ * @param inputs - The answer and where it is written.
+ * @param inputs.editor - The body's editor.
+ * @param inputs.insertBlockId - The block the answer lands by.
+ * @param inputs.result - The answer.
+ * @param inputs.finished - Whether all of it is on screen and it ended.
+ * @param inputs.ourPrefix - Where our media live, once known.
+ * @param inputs.projectId - The Project the body belongs to.
+ * @param inputs.mediaMap - Where this Project's addresses are kept.
+ * @returns Where the media stand.
+ */
+function useAnswerMedia({ editor, insertBlockId, result, finished, ourPrefix, projectId, mediaMap }: {
+  editor: ViewedEditor;
+  insertBlockId: string;
+  result: string;
+  finished: boolean;
+  ourPrefix: string | null;
+  projectId: string | null;
+  mediaMap: React.MutableRefObject<Readonly<Record<string, string | null>>>;
+}): AnswerMedia {
+  const t = useTranslation();
+  const [settled, setSettled] = React.useState<{ result: string; media: AnswerMedia } | null>(null);
+  const urls = React.useMemo(() => (finished
+    ? [...new Set(mediaUrlsOf(aiAnswer(editor, editor.prosemirrorState, result, ourPrefix, insertBlockId).preview))]
+    : []), [editor, finished, insertBlockId, ourPrefix, result]);
+  React.useEffect(() => {
+    if (!finished || urls.length === 0) {
+      mediaMap.current = {};
+      return undefined;
+    }
+    let live = true;
+    setSettled({ result, media: 'pending' });
+    const registered = projectId === null
+      ? Promise.reject(new Error('The body has no Project'))
+      : canvasApi.paste({ project_id: projectId, urls, pairs: [], history: [] });
+    registered.then(({ map }) => {
+      if (!live) return;
+      mediaMap.current = map;
+      setSettled({ result, media: 'ready' });
+    }, () => {
+      if (!live) return;
+      toast.error(t('canvas.paste.failed'));
+      setSettled({ result, media: 'failed' });
+    });
+    return () => { live = false; };
+  }, [finished, urls, result, projectId, mediaMap, t]);
+  if (urls.length === 0) return 'ready';
+  return settled?.result === result ? settled.media : 'pending';
 }

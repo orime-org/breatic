@@ -11,7 +11,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
 import { createPgClient, db, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import { timelineExecutionRepo } from "@breatic/domain";
-import * as grantRepo from "@server/modules/web-animation/web-animation-grants.repo.js";
+import { webAnimationGrantRepo as grantRepo } from "@breatic/domain";
 import type { TimelineExecution } from "@breatic/shared";
 
 let sql: ReturnType<typeof createPgClient>;

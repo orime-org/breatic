@@ -40,7 +40,6 @@ vi.mock('@web/data/api/scene', async (importOriginal) => ({
   getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1, import: IMPORT_LIMITS, progressPublishMs: 1000,
     capture: { longEdgePx: 2048, minFramePx: 120, canvasSyncTimeoutMs: 10000 },
     director: { monitorRefreshMs: 200, maxLights: 16, wheelCommitMs: 400, shadowMapPx: 2048, pointShadowMapPx: 512, shadowGroundReach: 3, shadowBias: -0.0005, shadowNormalBias: 0.02, pointShadowBias: -0.002, pointShadowNormalBias: 0.02 } })),
-  resolveSceneAsset: vi.fn(),
 }));
 vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: function MockViewport(props: SceneViewportProps): React.JSX.Element {

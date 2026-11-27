@@ -3,7 +3,7 @@
 
 import type * as Y from 'yjs';
 import type { ProjectRegisteredAsset } from '@breatic/shared';
-import { durationToFrames } from '@breatic/shared';
+import { assetNameFromUrl, durationToFrames } from '@breatic/shared';
 import { readTimelineDocument } from '@web/data/yjs/timeline-document';
 import { TIMELINE_DEFAULT_PLACEMENT, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
@@ -50,9 +50,12 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
   const command: TimelineEditCommand = {
     operation: 'add_video',
     parameters: {
+      // The picked list item's address and media facts, as a canvas node stores them (inner#2171 design §4).
       source: {
-        id: input.sourceId, kind: 'video', assetId: asset.assetId, timebase: current.settings.fps,
-        extentFrames, durationSeconds: String(duration), durationOrigin: registered ? 'registered' : 'decoded',
+        id: input.sourceId, kind: 'video', url: asset.fileUrl, coverUrl: asset.coverUrl,
+        name: timelineSourceName(timelineVideoName(asset)), mimeType: asset.mimeType, width: asset.width, height: asset.height,
+        timebase: current.settings.fps, extentFrames, durationSeconds: String(duration),
+        durationOrigin: registered ? 'registered' : 'decoded',
       },
       clip: {
         id: input.clipId, kind: 'video', trackId: input.trackId, sourceId: input.sourceId,
@@ -64,4 +67,27 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
     placement: input.placement,
   };
   return { ok: true, command };
+}
+
+/**
+ * What a Project video is called in the Timeline, in its list and on its clip alike: its display name, else the file
+ * name its address ends in.
+ * @param asset - The listed video.
+ * @param asset.displayName - Its display name, which may be missing or empty.
+ * @param asset.fileUrl - Its address.
+ * @returns The name, or null when neither gives one.
+ * @throws {never} Never.
+ */
+export function timelineVideoName(asset: { displayName: string | null; fileUrl: string }): string | null {
+  return asset.displayName || assetNameFromUrl(asset.fileUrl);
+}
+
+/**
+ * The name a Timeline video source or upload carries: within the schema's 255 characters, `video` when there is none.
+ * @param name - The display name, file name or name read off the address.
+ * @returns The name to store.
+ * @throws {never} Never.
+ */
+export function timelineSourceName(name: string | null): string {
+  return (name ?? '').slice(0, 255) || 'video';
 }

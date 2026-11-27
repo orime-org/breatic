@@ -49,10 +49,10 @@ interface SceneTaskListProps {
   onFocused?: () => void;
   /** Opens the generation dialog filled from a generation row (inner#1691 design 4.6). */
   onRetryGeneration?: (task: SpaceTask) => void;
-  /** The models the scene holds objects of, by asset. */
-  placedAssetIds?: ReadonlySet<string>;
-  /** Selects the scene's objects of one model. */
-  onLocate?: (assetId: string) => void;
+  /** The models the scene holds objects of, by address (inner#2171). */
+  placedModelUrls?: ReadonlySet<string>;
+  /** Selects the scene's objects of one model, by its address. */
+  onLocate?: (url: string) => void;
   /** Where the filter menu is drawn, such as the panel's title bar; inline above the rows when absent. */
   filterHost?: HTMLElement | null;
 }
@@ -104,7 +104,7 @@ function passes(task: SpaceTask, filters: TaskFilters, userId: string): boolean 
  * @returns The list.
  */
 export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spaceId, userId, canEdit, canGenerate, uploads, remoteUploads, onPlace, focusTaskId, onFocused,
-  onRetryGeneration, placedAssetIds, onLocate, filterHost }: SceneTaskListProps): React.JSX.Element {
+  onRetryGeneration, placedModelUrls, onLocate, filterHost }: SceneTaskListProps): React.JSX.Element {
   const t = useTranslation();
   const keys = useKeyFailureWords();
   const queryClient = useQueryClient();
@@ -329,8 +329,10 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
           : hasResult && task.notice === 'rig_failed' ? 'rigFailed'
             : task.params.rig_skeleton !== true ? null
               : task.status === 'running' ? 'willRig' : hasResult ? 'rigged' : null;
-        const placeable = canEdit && hasResult;
-        const locatable = hasResult && task.assetId !== null && onLocate !== undefined && (placedAssetIds?.has(task.assetId) ?? false);
+        // A row whose model is gone has nothing to place (inner#2171 design §10).
+        const modelUrl = task.modelFile?.url ?? null;
+        const placeable = canEdit && hasResult && modelUrl !== null;
+        const locatable = hasResult && modelUrl !== null && onLocate !== undefined && (placedModelUrls?.has(modelUrl) ?? false);
         const cancellable = waiting && (generation ? canGenerate : canEdit);
         const removable = (generation ? canGenerate : canEdit) && (task.status === 'failed' || (task.status === 'expired' && task.assetId === null));
         const retryable = generation
@@ -372,7 +374,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
           {placeable || locatable || removable || retryable || cancellable ? <div className='mt-2 flex flex-wrap gap-1.5'>
             {cancellable ? <Button size='compact' variant='outline' loading={cancelling.has(task.id)} onClick={() => cancel(task)}>{t('common.cancel')}</Button> : null}
             {placeable ? <Button size='compact' loading={placing.has(task.id)} onClick={() => place(task)}>{t('spaces.threeD.taskList.place')}</Button> : null}
-            {locatable ? <Button size='compact' variant='outline' icon={<Crosshair className='mr-1.5 size-3.5' />} onClick={() => onLocate(task.assetId!)}>{t('spaces.threeD.taskList.locate')}</Button> : null}
+            {locatable ? <Button size='compact' variant='outline' icon={<Crosshair className='mr-1.5 size-3.5' />} onClick={() => onLocate(modelUrl!)}>{t('spaces.threeD.taskList.locate')}</Button> : null}
             {retryable ? <Button size='compact' variant='outline' loading={generation ? checking.has(task.id) : own?.phase === 'retrying'}
               onClick={() => (generation ? retryGeneration(task) : retry(task))}>{t('spaces.threeD.taskList.retry')}</Button> : null}
             {removable ? <Button size='compact' variant='outline' loading={removing.has(task.id)} onClick={() => remove(task)}>{t('spaces.threeD.taskList.remove')}</Button> : null}

@@ -14,19 +14,20 @@ import type { TimelineDocumentV1, TimelineRate, TimelineVideoClip, TimelineVideo
 import { createVideoRenderer } from '@web/spaces/canvas/video-presentation/create-video-renderer';
 import { runtimeSourceKeyOf, type VideoPresentationSource, type VideoRendererResource } from '@web/spaces/canvas/video-presentation/types';
 
-/** One visible or premounted video clip as the Space hands it over, with its asset state. */
+/** One visible or premounted video clip as the Space hands it over, read from the source the document holds. */
 export interface TimelineVideoLayer {
   clipId: string;
-  /** The registered original once the asset is ready, played for display only while no version is selected. */
+  /** The source's stored address, played for display only while no version is selected; null while a selected version waits. */
   fileUrl: string | null;
   /** The selected version, played through the renderer the canvas uses (frames-split §7.14); null plays `fileUrl`. */
   presentation?: VideoPresentationSource | null;
   coverUrl: string | null;
-  state: 'loading' | 'ready' | 'failed';
+  /** A selected version that cannot be read (its manifest failed): the layer fails, never falling back to the original. */
+  failed?: boolean;
 }
 
 /** What a video layer's preview note shows. */
-export type TimelineVideoLayerState = TimelineVideoLayer['state'];
+export type TimelineVideoLayerState = 'ready' | 'failed';
 
 /** One video lane: an element and what the playback asked of it. */
 export interface VideoLane {
@@ -134,7 +135,7 @@ export function videoLaneMapping(clip: TimelineVideoClip): string {
 }
 
 /**
- * Whether a lane failed: only its asset or its element's error count (#1410 design §6.2); `networkState` 3 right after
+ * Whether a lane failed: its selected version's manifest or renderer, or its element's error (#1410 design §6.2); `networkState` 3 right after
  * a new src is not a failure (`media.js:157-159` uses it only to skip one play()).
  * @param lane - The lane.
  * @returns Whether it failed.
@@ -142,7 +143,7 @@ export function videoLaneMapping(clip: TimelineVideoClip): string {
  */
 export function videoLaneFailed(lane: VideoLane): boolean {
   // jsdom reports a missing error as undefined, the platform as null.
-  return lane.layer.state === 'failed' || lane.rendererFailed || Boolean(lane.element.error);
+  return lane.layer.failed === true || lane.rendererFailed || Boolean(lane.element.error);
 }
 
 /**
@@ -311,7 +312,7 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
     lanes: () => [...lanes.values()],
     states(): ReadonlyMap<string, TimelineVideoLayerState> {
       const states = new Map<string, TimelineVideoLayerState>();
-      for (const lane of lanes.values()) states.set(lane.clipId, videoLaneFailed(lane) ? 'failed' : lane.layer.state);
+      for (const lane of lanes.values()) states.set(lane.clipId, videoLaneFailed(lane) ? 'failed' : 'ready');
       return states;
     },
     configure(): void {

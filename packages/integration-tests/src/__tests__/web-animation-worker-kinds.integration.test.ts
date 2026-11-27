@@ -306,3 +306,76 @@ describe("an export", () => {
     expect(ingest.calls.filter((call) => call.route === "cancel").map((call) => call.containerClass)).toEqual([WEB_ANIMATION_RENDER_CONTAINER_CLASS]);
   });
 });
+
+describe("an export's video joins every Project that holds the export (inner#2171 design §5.3)", () => {
+  /** A Project in the export's Studio, as a duplicate of its Project would be. */
+  async function siblingProject(fx: ExecutionFixture): Promise<string> {
+    const projectId = randomUUID();
+    await sql`INSERT INTO projects (id, studio_id, created_by_user_id, name, slug) VALUES (${projectId}, ${fx.studioId}, ${fx.userId}, 'Copy', ${`tw-copy-${projectId}`})`;
+    return projectId;
+  }
+
+  /** Grant the export to a Project, live or already withdrawn. */
+  async function grantTo(fx: ExecutionFixture, projectId: string, withdrawn = false): Promise<void> {
+    // The execution's own creation time and origin, read in SQL so the microseconds stay.
+    await sql`INSERT INTO timeline_execution_grants (execution_id, project_id, execution_created_at, execution_origin, deleted_at)
+      SELECT id, ${projectId}, created_at, origin, ${withdrawn ? sql`now()` : null} FROM timeline_executions WHERE id = ${fx.execution.id}`;
+  }
+
+  /**
+   * An export whose video is granted in its own Project, as acceptance issues it.
+   * @returns The export and the video's key.
+   */
+  async function ownExport(): Promise<{ fx: ExecutionFixture; videoKey: string }> {
+    const { fx } = await seedExport("running");
+    const grant = await uploadGrantService.issueUploadGrant({
+      projectId: fx.projectId, actingUserId: fx.userId, declaredSize: 1, taskType: "web_animation_export", ext: ".mp4",
+      expiresAt: new Date(Date.now() + 7_200_000), context: { assetSource: "ai", derived: true, generationTaskId: null },
+    });
+    await sql`UPDATE timeline_executions SET input = jsonb_set(input, '{videoKey}', ${sql.json(grant.key)}) WHERE id = ${fx.execution.id}`;
+    return { fx, videoKey: grant.key };
+  }
+
+  /** The Projects related to an asset. */
+  async function relatedProjects(assetId: string): Promise<string[]> {
+    const rows = await sql<{ project_id: string }[]>`SELECT project_id FROM project_asset_refs WHERE asset_id = ${assetId} AND deleted_at IS NULL ORDER BY project_id`;
+    return rows.map((row) => row.project_id);
+  }
+
+  /** Let the render finish with a filed video. */
+  function doneRender(fx: ExecutionFixture, videoKey: string): void {
+    const ingest = installFakeIngest(fx);
+    ingest.read = () => json(renderReport("done", {
+      video: {
+        storageKey: videoKey, sha256: SHA, sizeBytes: 4_000_000, contentType: "video/mp4", width: 1080, height: 1920, durationSeconds: 6,
+        cover: { storageKey: coverKeyFor(videoKey), sha256: COVER_SHA, sizeBytes: 90_000, contentType: "image/png", width: 1080, height: 1920 },
+      },
+    }));
+  }
+
+  it("relates the video to the exporting Project and to a copy that holds a live grant, and not to others", async () => {
+    const { fx, videoKey } = await ownExport();
+    const copy = await siblingProject(fx);
+    const withdrawn = await siblingProject(fx);
+    const unrelated = await siblingProject(fx);
+    await grantTo(fx, fx.projectId);
+    await grantTo(fx, copy);
+    await grantTo(fx, withdrawn, true);
+    doneRender(fx, videoKey);
+    await pickUp(fx);
+    const row = await read(fx.execution.id);
+    expect(row.status).toBe("succeeded");
+    expect(await relatedProjects(row.resultAssetId!)).toEqual([fx.projectId, copy].sort());
+    expect(await relatedProjects(row.resultAssetId!)).not.toContain(unrelated);
+  });
+
+  it("relates nothing when the render fails", async () => {
+    const { fx } = await seedExport("running");
+    await grantTo(fx, fx.projectId);
+    const before = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM project_asset_refs WHERE project_id = ${fx.projectId}`;
+    const ingest = installFakeIngest(fx);
+    ingest.read = () => json(renderReport("failed", { failureReason: "render_failed" }));
+    await pickUp(fx);
+    expect(await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM project_asset_refs WHERE project_id = ${fx.projectId}`).toEqual(before);
+  });
+});

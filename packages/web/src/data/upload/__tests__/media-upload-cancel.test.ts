@@ -22,7 +22,8 @@ const TICKET = {
 const QUEUED = { storageKey: TICKET.storageKey };
 const COMPLETED: Extract<UploadEnding, { state: 'completed' }> = {
   key: TICKET.storageKey, state: 'completed',
-  result: { assetId: 'asset-1', fileUrl: 'https://assets.example.test/model.glb', kind: 'file', width: null, height: null },
+  result: { assetId: 'asset-1', fileUrl: 'https://assets.example.test/model.glb', kind: 'file', width: null, height: null,
+    coverUrl: null, durationSeconds: null, mimeType: 'model/gltf-binary', sizeBytes: 2048 },
 };
 
 interface UploadTestDeps {
@@ -176,7 +177,8 @@ describe('runMediaUpload cancellation ownership', () => {
     deps.requestTicket.mockImplementationOnce(async () => {
       controller.abort();
       return { alreadyExists: true, assetId: 'existing-asset', fileUrl: 'https://assets.example.test/existing.glb',
-        kind: 'file', width: null, height: null };
+        kind: 'file', width: null, height: null,
+        coverUrl: null, durationSeconds: null, mimeType: 'model/gltf-binary', sizeBytes: 2048 };
     });
 
     await expect(runMediaUpload(FILE, CONTEXT, deps, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });

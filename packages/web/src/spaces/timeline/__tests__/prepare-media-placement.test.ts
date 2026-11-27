@@ -101,7 +101,8 @@ function expectedCommand(overrides: Partial<TimelineVideoClip> = {}, placement: 
     operation: 'add_video',
     parameters: {
       source: {
-        id: SOURCE_ID, kind: 'video', assetId: ASSET.assetId, timebase: SETTINGS.fps,
+        id: SOURCE_ID, kind: 'video', url: ASSET.fileUrl, coverUrl: ASSET.coverUrl, name: ASSET.displayName ?? '',
+        mimeType: ASSET.mimeType, width: ASSET.width, height: ASSET.height, timebase: SETTINGS.fps,
         extentFrames: 48, durationSeconds: '2', durationOrigin: 'registered',
       },
       clip: {
@@ -239,6 +240,12 @@ describe('prepareTimelineMediaPlacement', () => {
       });
     },
   );
+
+  it.each([null, ''])('names a video whose display name is %j after its address\'s file (inner#2171 visual round 1)', (displayName) => {
+    const result = prepareUnchanged(seededDoc(), placementInput({ asset: { ...ASSET, displayName } }));
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.command.operation === 'add_video' && result.command.parameters.source?.name).toBe('registered-demo.mp4');
+  });
 
   it('refuses a read-only connection without changing the collaborative document', () => {
     expect(prepareUnchanged(seededDoc(), placementInput({ canWrite: false }))).toEqual({ ok: false, reason: 'readonly' });

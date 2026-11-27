@@ -29,7 +29,7 @@ vi.mock('@web/components/ui/input', async (importOriginal) => {
 });
 
 const ID = '11111111-1111-4111-8111-111111111111';
-const IMAGE = '66666666-6666-4666-8666-666666666666';
+const IMAGE = 'https://cdn.example/assets/wood.png';
 const PARTS = [
   { key: '0', name: 'Jacket', color: '#ffffff', hasMap: true, unlit: false, line: false, mapRepeat: [3, 4] as [number, number], mapOffset: [0.5, 0] as [number, number], mapRotation: 30 },
   { key: '1', name: null, color: '#5f5f5f', hasMap: false, unlit: false, line: false },
@@ -47,7 +47,6 @@ type Props = {
   onChoosePicture: (part: string) => void;
   showingPictures?: ReadonlySet<string>;
   uploadPercentOf?: (part: string) => number | null;
-  pictureUrl?: (assetId: string) => string | undefined;
   fieldDrafts?: ReadonlyMap<string, SceneFieldDraft>;
   onFieldDraftChange?: (key: string, draft: SceneFieldDraft | undefined) => void;
   gesture?: { begin: () => number; preview: () => boolean; commit: () => void; cancel: () => void; stepKey: () => void };
@@ -330,12 +329,12 @@ describe('SceneLookSection', () => {
   it('shows a stored user picture on the part row only while the scene shows it, and the part\'s own picture otherwise', () => {
     const own = [{ ...PARTS[0]!, thumbnail: 'data:image/png;base64,own' }, ...PARTS.slice(1)] as typeof PARTS;
     const swatch = (): HTMLElement => screen.getByTestId('scene-look-part-0').querySelector('span') as HTMLElement;
-    const pictureUrl = (): string => 'https://assets.example.test/user.png';
-    renderSection({ parts: own, look: { 0: { map: IMAGE } }, pictureUrl, showingPictures: new Set() });
+    renderSection({ parts: own, look: { 0: { map: IMAGE } }, showingPictures: new Set() });
     expect(swatch().style.backgroundImage).toContain('data:image/png;base64,own');
     cleanup();
-    renderSection({ parts: own, look: { 0: { map: IMAGE } }, pictureUrl, showingPictures: new Set([IMAGE]) });
-    expect(swatch().style.backgroundImage).toContain('https://assets.example.test/user.png');
+    renderSection({ parts: own, look: { 0: { map: IMAGE } }, showingPictures: new Set([IMAGE]) });
+    // A part stores its picture's address and shows it as it is (inner#2171).
+    expect(swatch().style.backgroundImage).toContain(IMAGE);
   });
 
   it('starts a user picture\'s tiling at one', () => {

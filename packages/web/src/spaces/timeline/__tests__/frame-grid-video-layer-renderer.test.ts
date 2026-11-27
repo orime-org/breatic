@@ -25,7 +25,7 @@ vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (im
   }),
 }));
 
-const SOURCE: TimelineVideoSource = { id: '10000000-0000-4000-8000-000000000031', kind: 'video', assetId: '20000000-0000-4000-8000-000000000031', timebase: { num: 24, den: 1 }, extentFrames: 48, durationSeconds: '2', durationOrigin: 'registered' };
+const SOURCE: TimelineVideoSource = { id: '10000000-0000-4000-8000-000000000031', kind: 'video', url: 'https://cdn.test/original.mov', coverUrl: null, name: 'original.mov', mimeType: 'video/quicktime', width: 1280, height: 720, timebase: { num: 24, den: 1 }, extentFrames: 48, durationSeconds: '2', durationOrigin: 'registered' };
 const CLIP: TimelineVideoClip = { id: '30000000-0000-4000-8000-000000000031', trackId: 'visual-1', kind: 'video', sourceId: SOURCE.id, startFrame: 0, sourceInFrame: 0, durationFrames: 48,
   rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 } };
 const DOCUMENT: TimelineDocumentV1 = { schemaVersion: 2, settings: { width: 1920, height: 1080, fps: { num: 24, den: 1 } }, tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
@@ -48,7 +48,7 @@ function version(versionId: string): VideoPresentationSource {
  * @returns The layer.
  */
 function layer(presentation: VideoPresentationSource | null): TimelineVideoLayer {
-  return { clipId: CLIP.id, fileUrl: ORIGINAL, presentation, coverUrl: null, state: 'ready' };
+  return { clipId: CLIP.id, fileUrl: ORIGINAL, presentation, coverUrl: null };
 }
 
 /**

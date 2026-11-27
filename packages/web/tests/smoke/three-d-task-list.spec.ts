@@ -51,6 +51,8 @@ function generationRow(id: string, status: 'failed' | 'done' | 'running', starte
     id, label: `Chest ${id.slice(0, 4)}`, status, startedByUserId: startedBy,
     startedAt: new Date(now - 60_000).toISOString(), deadlineAt: new Date(now + 3_600_000).toISOString(),
     assetId: status === 'done' ? crypto.randomUUID() : null, kind: 'generation',
+    // A done row carries the model file "Place in scene" stores by address (inner#2171).
+    modelFile: status === 'done' ? { url: `https://example.com/scene-models/${id}.glb`, mimeType: 'model/gltf-binary', sizeBytes: 1024 } : null,
     errorCode: status === 'failed' ? 'internal' : null, origin: 'space',
     model: { name: 'tripo-h3.1-t23d', displayName: 'Tripo H3.1' }, mode: 't23d',
     prompt: 'A small wooden treasure chest', negativePrompt: null, params: { texture: false, pbr: false }, inputs: [],

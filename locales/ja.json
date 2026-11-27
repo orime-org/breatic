@@ -3395,6 +3395,14 @@
         "pinch": "ピンチ",
         "wheel": "ホイール"
       }
+    },
+    "textFullscreen": {
+      "edit": "全画面で編集",
+      "view": "全画面で表示",
+      "editPrompt": "プロンプトを全画面で編集",
+      "exit": "全画面を終了",
+      "inProgress": "全画面で編集中",
+      "readOnly": "読み取り専用"
     }
   },
   "auth": {
@@ -5621,7 +5629,6 @@
     },
     "preview": {
       "playBlocked": "ブラウザが音声付きの再生をブロックしました。再生を押して開始してください。",
-      "videoLoading": "{track}：動画を読み込み中…",
       "videoUnavailable": "{track}：動画を利用できません"
     }
   },

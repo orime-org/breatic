@@ -17,9 +17,9 @@ import { planSceneCommand, readSceneDocument } from '@web/data/yjs/scene-documen
 
 const NAME = 'project-p1/3d-s1';
 const ID = '11111111-1111-4111-8111-111111111111';
-const PICTURE = '77777777-7777-4777-8777-777777777777';
-const START = '88888888-8888-4888-8888-888888888888';
-const OTHER = '99999999-9999-4999-8999-999999999999';
+const PICTURE = 'https://cdn.example/assets/picture.png';
+const START = 'https://cdn.example/assets/start.png';
+const OTHER = 'https://cdn.example/assets/other.png';
 
 /**
  * A scene holding one object built from the drawn values.
@@ -39,7 +39,7 @@ function scene(input: { kind: 'builtin' | 'asset' | 'camera'; locked: boolean; o
     record.set('model', { kind: 'camera' });
     record.set('number', 1);
   } else {
-    record.set('model', input.kind === 'builtin' ? { kind: 'builtin', id: 'figure' } : { kind: 'asset', assetId: OTHER });
+    record.set('model', input.kind === 'builtin' ? { kind: 'builtin', id: 'figure' } : { kind: 'asset', url: 'https://cdn.example/assets/model.glb', mimeType: 'model/gltf-binary', sizeBytes: 2048 });
     for (let at = 0; at < input.others; at += 1) record.set(`look.${at + 10}.color`, '#ff0000');
     if (input.now !== undefined) record.set('look.3.map', input.now);
   }

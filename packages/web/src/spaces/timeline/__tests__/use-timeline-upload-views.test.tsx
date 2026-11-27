@@ -78,12 +78,12 @@ describe('timelineUploadText', () => {
 });
 
 describe('timelineUploadView (design §4.1 display table)', () => {
-  const asset = { assetId: 'asset-1' } as never;
+  const video = { url: 'https://cdn.example/assets/clip.mp4' } as never;
   it.each([
     ['the uploader while it runs', { phase: 'uploading', progress: 0.42 }, 'granted', null, { state: 'uploading', progress: 0.42, reason: null, retryable: false }],
     ['the uploader after a failure', { phase: 'failed', reason: 'transfer', retryable: true }, 'granted', 'uploading', { state: 'failed', progress: null, reason: 'transfer', retryable: true }],
-    ['the uploader once uploaded without edit access', { phase: 'done', asset }, 'denied', null, { state: 'waiting', progress: null, reason: null, retryable: false }],
-    ['the uploader once uploaded with edit access, until it is written', { phase: 'done', asset }, 'granted', null, { state: 'uploading', progress: null, reason: null, retryable: false }],
+    ['the uploader once uploaded without edit access', { phase: 'done', video }, 'denied', null, { state: 'waiting', progress: null, reason: null, retryable: false }],
+    ['the uploader once uploaded with edit access, until it is written', { phase: 'done', video }, 'granted', null, { state: 'uploading', progress: null, reason: null, retryable: false }],
     ['a collaborator while another page uploads', undefined, 'granted', 'uploading', { state: 'uploading', progress: null, reason: null, retryable: false }],
     ['a collaborator after the uploader failed', undefined, 'granted', 'failed', { state: 'failed', progress: null, reason: null, retryable: false }],
     ['anyone once nobody claims it', undefined, 'granted', null, { state: 'unfinished', progress: null, reason: null, retryable: false }],
