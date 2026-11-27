@@ -2,6 +2,7 @@
   "server": {
     "error": {
       "not_found": "Resource not found",
+      "forbidden": "Access denied",
       "conflict": "Resource conflict",
       "validation": "Invalid input",
       "upload_too_large": "File exceeds the upload size limit.",

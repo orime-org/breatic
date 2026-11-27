@@ -2,6 +2,7 @@
   "server": {
     "error": {
       "not_found": "リソースが見つかりません",
+      "forbidden": "アクセス権限がありません",
       "conflict": "リソースの競合",
       "validation": "入力データが無効です",
       "upload_too_large": "ファイルがアップロードサイズの上限を超えています。",

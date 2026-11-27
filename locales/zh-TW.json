@@ -2,6 +2,7 @@
   "server": {
     "error": {
       "not_found": "資源未找到",
+      "forbidden": "沒有存取權限",
       "conflict": "資源衝突",
       "validation": "輸入資料無效",
       "upload_too_large": "檔案超過上傳大小限制。",

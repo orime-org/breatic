@@ -2,6 +2,7 @@
   "server": {
     "error": {
       "not_found": "资源未找到",
+      "forbidden": "没有访问权限",
       "conflict": "资源冲突",
       "validation": "输入数据无效",
       "upload_too_large": "文件超过上传大小限制。",
