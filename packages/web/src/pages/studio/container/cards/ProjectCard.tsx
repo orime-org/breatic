@@ -64,7 +64,7 @@ export function ProjectCard({ project, timeKind }: ProjectCardProps): React.JSX.
         {body}
       </ProjectOpenTarget>
       {project.copying ? (
-        <div className='pointer-events-none absolute inset-x-0 top-0 z-[1] flex aspect-video flex-col items-center justify-center gap-2 bg-card/70 text-sm text-foreground'>
+        <div className='pointer-events-none absolute inset-x-0 top-0 z-[1] flex aspect-video flex-col items-center justify-center gap-2 bg-muted text-sm text-foreground'>
           <Loader2 className='size-6 animate-spin text-muted-foreground' aria-hidden />
           {t('studio.container.card.copying')}
         </div>

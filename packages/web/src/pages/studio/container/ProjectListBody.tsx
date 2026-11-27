@@ -250,8 +250,9 @@ function ProjectRow({ project, columns }: { project: ContainerProject; columns: 
         <ProjectOpenTarget project={project} className={STRETCH}>
           {project.copying ? (
             <>
-              <span className='block truncate'>{project.name}</span>
-              <span className='block truncate text-xs font-normal text-muted-foreground'>{t('studio.container.card.copying')}</span>
+              {/* Two tight lines keep the row at the height of its one-line neighbours, so nothing moves when it is done. */}
+              <span className='block truncate leading-4'>{project.name}</span>
+              <span className='block truncate text-xs font-normal leading-3 text-muted-foreground'>{t('studio.container.card.copying')}</span>
             </>
           ) : project.name}
         </ProjectOpenTarget>
