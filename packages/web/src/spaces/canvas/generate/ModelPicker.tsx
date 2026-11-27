@@ -60,7 +60,7 @@ export const ModelPicker = React.memo(function ModelPicker({
           variant={null}
           size={null}
           data-testid='generate-model-trigger'
-          className='flex h-8 min-w-0 max-w-[8rem] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          className='flex h-8 max-w-[8rem] shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <ModelIcon name={current?.icon} className='h-4 w-4 shrink-0' />
           <span className='truncate'>{current ? modelLabel(current, models) : value}</span>
@@ -99,7 +99,7 @@ export const ModelPicker = React.memo(function ModelPicker({
                 aria-pressed={m.name === value}
                 data-testid={`generate-model-option-${m.name}`}
                 className={cn(
-                  'justify-start',
+                  'group/row justify-start',
                   m.name === value &&
                     'bg-accent-strong hover-enabled:bg-accent-strong',
                 )}
@@ -123,7 +123,8 @@ export const ModelPicker = React.memo(function ModelPicker({
                     {modelLabel(m, models)}
                   </span>
                   {m.description !== '' && (
-                    <span className='w-full truncate text-left text-xs text-muted-foreground'>
+                    // Muted text falls under 4.5:1 on the chosen and hovered fills; the row token is set for them.
+                    <span className={cn('w-full truncate text-left text-xs', m.name === value ? 'text-row-foreground-muted' : 'text-muted-foreground group-hover/row:text-row-foreground-muted')}>
                       {m.description}
                     </span>
                   )}

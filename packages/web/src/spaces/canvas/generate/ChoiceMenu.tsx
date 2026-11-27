@@ -94,7 +94,7 @@ export function ChoiceMenu({ value, options, onSelect, triggerTestId, triggerCla
           {options.map((option) => (
             <Button key={String(option.value)} variant='ghost' size='menu-item' aria-pressed={option.value === value} data-testid={option.testId}
               disabled={option.disabled}
-              className={cn('justify-start', option.value === value && 'bg-accent-strong hover-enabled:bg-accent-strong')}
+              className={cn('group/row justify-start', option.value === value && 'bg-accent-strong hover-enabled:bg-accent-strong')}
               onClick={() => {
                 if (option.value !== value) onSelect(option.value);
                 change(false);
@@ -102,7 +102,8 @@ export function ChoiceMenu({ value, options, onSelect, triggerTestId, triggerCla
               {option.hint === undefined ? option.label : (
                 <span className='flex flex-col items-start'>
                   <span>{option.label}</span>
-                  <span className='text-xs text-muted-foreground'>{option.hint}</span>
+                  {/* Muted text falls under 4.5:1 on the held and hovered fills; the row token is set for them. */}
+                  <span className={cn('text-xs', option.value === value ? 'text-row-foreground-muted' : 'text-muted-foreground group-hover/row:text-row-foreground-muted')}>{option.hint}</span>
                 </span>
               )}
             </Button>
