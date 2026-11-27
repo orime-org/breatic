@@ -39,11 +39,12 @@ const NODE_TESTS = "{src,container,scripts}/**/__tests__/**/*.node.test.ts";
 
 /**
  * The tests that run real FFmpeg and read how it decodes or encodes. `INGEST_MEDIA_TESTS=image` leaves them out of
- * this run, as CI's package job does: they run in the production image with its FFmpeg build instead
- * (`scripts/test-container-in-image.sh`, the same paths).
+ * this run, as CI's package job does; `INGEST_MEDIA_TESTS=only` runs them alone, as `scripts/test-container-in-image.sh`
+ * does inside the production image with its FFmpeg build. The web-animation runner's tests stay with the package job:
+ * that runner calls no FFmpeg and runs as a non-root user in its own image, and the media image runs its tests as root.
  */
-const MEDIA_TESTS = ["container/__tests__/**/*.node.test.ts", "src/__tests__/seek-landing-read.node.test.ts"];
-const mediaTestsElsewhere = process.env.INGEST_MEDIA_TESTS === "image";
+const MEDIA_TESTS = ["container/__tests__/!(web-animation-*).node.test.ts", "src/__tests__/seek-landing-read.node.test.ts"];
+const mediaTests = process.env.INGEST_MEDIA_TESTS;
 
 const workers = defineWorkersProject({
   test: {
@@ -120,8 +121,8 @@ const workers = defineWorkersProject({
 const node = defineConfig({
   test: {
     name: "node",
-    include: [NODE_TESTS],
-    exclude: [...configDefaults.exclude, ...(mediaTestsElsewhere ? MEDIA_TESTS : [])],
+    include: mediaTests === "only" ? MEDIA_TESTS : [NODE_TESTS],
+    exclude: [...configDefaults.exclude, ...(mediaTests === "image" ? MEDIA_TESTS : [])],
     // The media container's tests run real ffmpeg jobs of several seconds, and CI runs these beside the other
     // packages' suites, as it does the workers project above.
     testTimeout: 30_000,
