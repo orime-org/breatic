@@ -1111,7 +1111,6 @@ describe("Document upload events (breatic#1574)", () => {
 /** The Timeline upload clip each Timeline case seeds, and the upload it waits for. */
 const TIMELINE_CLIP = "5f0c1c55-2c55-4a55-8a55-0c55c55c55c5";
 const TIMELINE_UPLOAD = "6a1d2d66-3d66-4b66-9b66-1d66d66d66d6";
-const TIMELINE_ASSET = "7b2e3e77-4e77-4c77-8c77-2e77e77e77e7";
 
 /**
  * A fresh stream and key prefix, and a Timeline whose main track holds one upload clip waiting for a video.
@@ -1168,7 +1167,9 @@ async function readTimeline(docName: string): Promise<{ clips: Record<string, Re
 describe("Timeline upload events (inner#1709 design §4.3)", () => {
   const COMPLETED = {
     uploadId: TIMELINE_UPLOAD, state: "completed" as const,
-    result: { assetId: TIMELINE_ASSET, kind: "video" as const, durationSeconds: 2, width: 1280, height: 720 },
+    result: {
+      kind: "video" as const, url: "https://cdn.example/assets/upload.mp4", coverUrl: null, mimeType: "video/mp4", durationSeconds: 2, width: 1280, height: 720,
+    },
   };
 
   it("writes processing into the clip waiting for the upload", async () => {
@@ -1191,7 +1192,7 @@ describe("Timeline upload events (inner#1709 design §4.3)", () => {
     expect(clip).toMatchObject({ id: TIMELINE_CLIP, kind: "video", trackId: "visual-1", startFrame: 0 });
     expect(clip).not.toHaveProperty("upload");
     expect(Object.values(sources)).toEqual([expect.objectContaining({
-      id: clip.sourceId, kind: "video", assetId: TIMELINE_ASSET, durationOrigin: "registered",
+      id: clip.sourceId, kind: "video", url: "https://cdn.example/assets/upload.mp4", durationOrigin: "registered",
     })]);
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
