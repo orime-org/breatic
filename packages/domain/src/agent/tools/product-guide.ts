@@ -1583,11 +1583,11 @@ export function renderProductGuide(): string {
     "The central preview sits above the play bar, the toolbar and the tracks. Directly below the preview a slider across the whole width selects its integer frame. " +
       `Below that slider, ${quoted(t("timeline.play"))} and ${quoted(t("timeline.pause"))} at the left control playback, followed by the current time and the total length. ` +
       "At the right end of that row a menu shows the frame's aspect ratio and size, such as 16:9 · 1920×1080, and offers 16:9, 9:16, 1:1, 4:3, 4:5, 2:3 and 21:9; " +
-      "when the editor is narrow the row narrows in steps: the menu shows only the ratio, such as 16:9, then the play button shows only its icon with its name on hover, then only the current time shows, " +
-      `then no time shows, then the menu shows only a ratio icon named ${quoted(t("timeline.frameRatio"))} on hover. ` +
       "a new Timeline starts at 16:9. Choosing one changes the frame for everyone in the Space and is one undo step: the black preview frame takes that shape within the preview area, " +
       "and each layer keeps its place relative to the frame, its scale and its rotation. A Timeline whose frame is not one of these sizes shows its size in the menu with no ratio checked. " +
       "A Viewer sees the menu disabled. " +
+      "When the editor is narrow the row narrows in steps: the menu shows only the ratio, such as 16:9, then the play button shows only its icon with its name on hover, then only the current time shows, " +
+      `then no time shows, then the menu shows only a ratio icon named ${quoted(t("timeline.frameRatio"))} on hover. ` +
       `The bottom track is ${quoted(t("timeline.mainTrack"))}; tracks above it are named like ` +
       `${quoted(t("timeline.track", { index: 2 }))}. Any track holds any kind of clip: a video, a picture, a sound, a text or a web animation copy. ` +
       "The preview draws every clip at the playhead that has a picture (every kind but sound), stacked from the bottom track up, each placed by its own position, size and angle. " +
