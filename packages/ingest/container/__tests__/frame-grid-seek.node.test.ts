@@ -182,7 +182,9 @@ describe("R04 keyframes closer than 3/23 s, and a single keyframe (§7.16)", () 
     await readFrames(name, slotsOf(name));
   }, 600_000);
 
+  // slides.mp4's chunks took 413 s on a CI runner, and the same suite ran 1.6 times slower on others (its single-slot
+  // case 38 s against 60 s), past 600 s.
   it.each(["x50g5.avi", "x60g6.avi", "avi_h264_bf.avi", "ts_h264.m2t", "slides.mp4"])("R04 %s: every 7-slot chunk is the whole-file decode's", async (name) => {
     await readChunks(name, chunkStartsOf(name));
-  }, 600_000);
+  }, 1_200_000);
 });
