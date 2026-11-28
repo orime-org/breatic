@@ -5,8 +5,8 @@
  * Programmatic database migration using Drizzle ORM.
  *
  * Runs all pending SQL migrations from the `migrations/` directory.
- * Called at startup by both the API server and Worker to ensure
- * the schema is always up-to-date before serving requests.
+ * Run by the migration command (`pnpm db:migrate`, the Docker `migrate`
+ * service); no service runs it at startup.
  *
  * Safe to call concurrently - Drizzle uses a lock table to prevent
  * duplicate migration runs.
