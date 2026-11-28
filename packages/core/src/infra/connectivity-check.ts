@@ -57,6 +57,21 @@ async function withBootTimeout<T>(probe: Promise<T>, label: string): Promise<T> 
 }
 
 /**
+ * A connection URL fit for a log line: its password, when it has one, reads `***`.
+ * @param raw - The connection URL.
+ * @returns The URL without its password; a value that does not parse as a URL is withheld whole.
+ */
+function withoutPassword(raw: string): string {
+  try {
+    const url = new URL(raw);
+    if (url.password !== "") url.password = "***";
+    return url.toString();
+  } catch {
+    return "(unparsable URL)";
+  }
+}
+
+/**
  * Verify PostgreSQL and every Redis dependency this service uses are
  * reachable, failing fast at boot.
  * @param redisClients - The Redis singletons this service depends on,
@@ -81,7 +96,7 @@ export async function checkInfraReady(
   } catch (err) {
     throw new InfraNotReadyError(
       "PostgreSQL",
-      `Check DATABASE_URL=${env.DATABASE_URL} or run: docker compose up -d postgres`,
+      `Check DATABASE_URL=${withoutPassword(env.DATABASE_URL)} or run: docker compose up -d postgres`,
       err,
     );
   }
@@ -97,7 +112,7 @@ export async function checkInfraReady(
   } catch (err) {
     throw new InfraNotReadyError(
       "yjs PostgreSQL",
-      `Check YJS_DATABASE_URL=${env.YJS_DATABASE_URL} or run: docker compose up -d postgres`,
+      `Check YJS_DATABASE_URL=${withoutPassword(env.YJS_DATABASE_URL)} or run: docker compose up -d postgres`,
       err,
     );
   }
