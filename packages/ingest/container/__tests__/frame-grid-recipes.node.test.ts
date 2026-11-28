@@ -256,7 +256,9 @@ describe.concurrent("chunk_encode and stitch: the playback file (§5.4, §7.17)"
       // decoder said and where each packet sits is the evidence of why.
       const decoded = await run("ffmpeg", ["-v", "error", "-i", out, "-map", "0:v:0", "-f", "null", "-"]);
       const packets = await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts,dts,flags,size", "-of", "csv=p=0", out]);
-      expect.fail(`${name} playback decoded ${frames.length} of ${facts.grid.frameCount} frames. FFmpeg: ${decoded.stderr || "(nothing)"}\nPackets (pts,dts,size,flags):\n${packets.stdout}`);
+      const counted = await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", out]);
+      const again = (await rawFrames(out, "rgb24")).length;
+      expect.fail(`${name} playback decoded ${frames.length} of ${facts.grid.frameCount} frames; ffprobe counts ${counted.stdout.trim()} decoded frames and a second read gave ${again}. FFmpeg: ${decoded.stderr || "(nothing)"}\nPackets (pts,dts,size,flags):\n${packets.stdout}`);
     }
     frames.forEach((frame, at) => expectSlot(frame, oracle, at, `${name} playback slot ${at}`));
     const fps = facts.grid.fps.numerator / facts.grid.fps.denominator;
