@@ -476,7 +476,8 @@ export interface CanvasSessionState {
    */
   fullscreenTextNode: string | null;
   /**
-   * The one node selected once notes are left out, or null (inner#2216). The
+   * The one node selected once notes are left out and any marquee is
+   * released, or null (inner#2216). The
    * canvas works it out once per selection; each node compares its own id,
    * so a selection change re-renders only the node it concerns.
    */

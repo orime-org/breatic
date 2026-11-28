@@ -4730,10 +4730,10 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     expect(css).not.toMatch(/^\.canvas-pick-selectable\s*\{/m);
   });
 
-  it('stands the magnetic handle ::before zone down while connecting, except the plus zone (round-4, inner#2216)', () => {
+  it('stands the magnetic handle ::before zone down while connecting, except the plus zone a drag can end on (round-4, inner#2216)', () => {
     // The synchronous .canvas-connecting class disables the 36px handle hit
     // zone during a drag so it cannot hijack xyflow's elementFromPoint target
-    // resolution for a nearby node. The lone selected node's plus zone
+    // resolution for a nearby node. The one plus zone a drag can end on
     // (`handle-plus-zone`, MagneticHandle) is left out: its plus sits outside
     // the anchor's radius, so a wire released on it must still land there.
     // Block-scoped so a decoy elsewhere can't satisfy the substring (R4
