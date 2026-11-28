@@ -171,7 +171,11 @@ jobs:
         # vitest across every workspace package but web, which runs in the
         # shards below. vitest configs exclude integration tests
         # (`*.integration.test.ts`), which need live Postgres / Redis.
-        run: pnpm turbo test --filter=!@breatic/web
+        # Keep Ingest's workerd startup apart from sibling package suites.
+        # Both commands retain their complete test sets and original timeouts.
+        run: |
+          pnpm turbo test --filter=!@breatic/web --filter=!@breatic/ingest
+          pnpm turbo test --filter=@breatic/ingest
         env:
           # The ingest tests that run real FFmpeg run in the job below, inside the production image.
           INGEST_MEDIA_TESTS: image

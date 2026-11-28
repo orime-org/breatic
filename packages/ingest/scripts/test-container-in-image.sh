@@ -27,7 +27,8 @@ filters=("$@")
 # BUILD=0 reuses an image already built from this Dockerfile (the OpenCV stage takes long under emulation).
 [[ "${BUILD:-1}" == 0 ]] || docker build --platform "$platform" -f "$dockerfile" -t "$image" "$root"
 
-docker run --rm --platform "$platform" -v "$root:/repo:ro" -e PNPM_VERSION="$pnpm_version" \
+# Reap orphaned Chromium helpers after process-group shutdown so exited children do not remain zombies.
+docker run --rm --init --platform "$platform" -v "$root:/repo:ro" -e PNPM_VERSION="$pnpm_version" \
   --entrypoint /bin/sh "$image" -c '
   set -eu
   ffmpeg -hide_banner -version | head -1
