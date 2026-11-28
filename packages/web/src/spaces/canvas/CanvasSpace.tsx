@@ -5154,7 +5154,8 @@ function CanvasSpaceInner({
               isVisible={
                 groupOffer.kind !== 'none' &&
               !readOnly &&
-              pickForNodeId == null
+              pickForNodeId == null &&
+              !marqueeDragging
               }
               position={Position.Top}
             >
