@@ -390,15 +390,15 @@ describe('the model a flow runs on, by name', () => {
   }
   const catalog = {
     image: [],
-    video: [entry('g-t2v', ['t2v', 'multi_shot'], 'Text-to-Video'), entry('g-ref', ['ref', 'multi_shot'], 'Reference')],
+    video: [entry('g-t2v', ['t2v', 'ref'], 'Text-to-Video'), entry('g-ref', ['ref'], 'Reference')],
     audio: [],
     tts: [],
     three_d: [],
   } as unknown as ModelCatalog;
 
   it('is named as the mode\'s picker names it', () => {
-    expect(nameOf(catalog, 'g-ref', 'multi_shot')).toBe('Gemini Omni 1.1 Flash Reference');
-    expect(nameOf(catalog, 'g-ref', 'ref')).toBe('Gemini Omni 1.1 Flash');
+    expect(nameOf(catalog, 'g-ref', 'ref')).toBe('Gemini Omni 1.1 Flash Reference');
+    expect(nameOf(catalog, 'g-t2v', 't2v')).toBe('Gemini Omni 1.1 Flash');
   });
 
   it('falls back to the id for a model the catalog does not carry', () => {

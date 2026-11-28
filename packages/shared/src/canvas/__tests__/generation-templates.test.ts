@@ -21,7 +21,7 @@ import {
   type TemplateTextNode,
 } from '@shared/canvas/generation-templates.js';
 import { templateMarkTargets, templateSkeleton } from '@shared/canvas/template-expansion.js';
-import { storyboardSpec, MULTI_SHOT_MODE } from '@shared/storyboard.js';
+import { storyboardSpec } from '@shared/storyboard.js';
 import type { ParamDescriptor } from '@shared/types/model-catalog.js';
 import { PANEL_EDITOR_PARAM } from '@shared/types/generate-panel.js';
 import { TEMPLATE_GUIDE_KEY } from '@shared/types/canvas-proposal.js';
@@ -482,6 +482,15 @@ describe('generation templates', () => {
     const t2v = (duration: number, aspect = '9:16'): Record<string, Pick<TemplateGenerateNode, 'type' | 'mode' | 'model' | 'params' | 'shots'>> => ({
       result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: aspect, duration, generate_audio: true } },
     });
+    /**
+     * A one-node Seedance 2.5 reference-to-video template's anchor, fed the pictures the user gives (inner#2192).
+     * @param duration - Its seconds.
+     * @param aspect - Its ratio.
+     * @returns The anchor's settings.
+     */
+    const ref = (duration: number, aspect = '9:16'): Record<string, Pick<TemplateGenerateNode, 'type' | 'mode' | 'model' | 'params' | 'shots'>> => ({
+      result: { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: aspect, duration, generate_audio: true } },
+    });
     const expected: Record<string, Record<string, Pick<TemplateGenerateNode, 'type' | 'mode' | 'model' | 'params' | 'shots'>>> = {
       'storyboard-grid-25': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '1:1', resolution: '4k' } } },
       'costume-sheet': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9', resolution: '4k' } } },
@@ -497,22 +506,22 @@ describe('generation templates', () => {
         back: { type: 'image', mode: 'i2i', model: QWEN, params: { horizontal_angle: 180 } },
         result: {
           type: 'video',
-          mode: 't2v',
+          mode: 'ref',
           model: 'seedance-2.5-text-to-video',
           params: { aspect_ratio: '16:9', duration: 10, generate_audio: true },
         },
       },
       'identity-locked-sequence': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 8 } } },
       'character-showcase-orbit': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 6 } } },
-      'food-money-shot': t2v(8),
-      'recipe-process-montage': t2v(15),
+      'food-money-shot': ref(8),
+      'recipe-process-montage': ref(15),
       'dish-hero-still': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '4:5' } } },
-      'app-launch-promo': t2v(15),
+      'app-launch-promo': ref(15),
       'brand-origin-film': {
-        result: { type: 'video', mode: 'multi_shot', model: T2V, params: { aspect_ratio: '16:9', duration: 20, generate_audio: true }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
+        result: { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: '16:9', duration: 20, generate_audio: true }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
       },
       'launch-story-3-beat': {
-        result: { type: 'video', mode: 'multi_shot', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 12 }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
+        result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 12 }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
         score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
       },
       'promo-film-assembled': {
@@ -522,7 +531,7 @@ describe('generation templates', () => {
         'part-4': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
         score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
       },
-      'space-tour-single-take': t2v(15, '16:9'),
+      'space-tour-single-take': ref(15, '16:9'),
       'room-staging-still': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: 'auto' } } },
       'renovation-before-after': {
         result: { type: 'video', mode: 'first_last', model: I2V, params: { duration: 8, generate_audio: true } },
@@ -536,7 +545,7 @@ describe('generation templates', () => {
       },
       'before-after-reveal': { result: { type: 'video', mode: 'first_last', model: I2V, params: { duration: 6, generate_audio: true } } },
       'listing-walkthrough-15s': {
-        result: { type: 'video', mode: 'multi_shot', model: T2V, params: { aspect_ratio: '16:9', duration: 15, generate_audio: true }, shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }] },
+        result: { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: '16:9', duration: 15, generate_audio: true }, shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }] },
       },
       'property-full-tour': {
         result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 10 } },
@@ -545,20 +554,20 @@ describe('generation templates', () => {
         'room-4': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 10 } },
         score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
       },
-      'fashion-lookbook': t2v(15),
+      'fashion-lookbook': ref(15),
       'try-on-still': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '3:4' } } },
       'lookbook-multi-look': {
-        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        result: { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
         'look-1': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
         'look-2': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
         'look-3': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
       },
-      'pet-selfie-vlog': t2v(10),
-      'phone-vlog-realism': t2v(15),
+      'pet-selfie-vlog': ref(10),
+      'phone-vlog-realism': ref(15),
       'retro-found-footage': t2v(10, '4:3'),
-      'time-freeze-rewind': t2v(20),
+      'time-freeze-rewind': ref(20),
       'bullet-time-mishap': t2v(8),
-      'beat-sync-outfit-change': t2v(12),
+      'beat-sync-outfit-change': ref(12),
       'pov-continuous-shot': t2v(12),
       'carried-object-transition': {
         'scene-a': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
@@ -567,28 +576,28 @@ describe('generation templates', () => {
       },
       'fisheye-clone-pov': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '4:5' } } },
       'flash-photo-dump-grid': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '3:4' } } },
-      'game-ui-livestream': t2v(12, '9:16'),
-      'travel-city-walk': t2v(24),
-      'twist-comedy-skit': t2v(15),
+      'game-ui-livestream': ref(12, '9:16'),
+      'travel-city-walk': ref(24),
+      'twist-comedy-skit': ref(15),
       'name-as-world-typography': { result: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '3:4' } } },
       'destination-festival-poster': { result: { type: 'image', mode: 't2i', model: 'seedream-v5.5-text-to-image', params: { aspect_ratio: '3:4' } } },
       'photo-paper-diorama': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '3:4' } } },
       'product-ad-15s': {
         still: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
-        ...t2v(15),
+        ...ref(15),
       },
-      'ugc-creator-review': t2v(15),
-      'livestream-pitch': t2v(12),
-      'hype-then-twist-ad': t2v(12),
-      'product-commercial-shotlist': t2v(12, '16:9'),
-      'unboxing-ad': t2v(25),
-      'variant-carousel-ad': t2v(20),
-      'cartoon-gag': t2v(5),
+      'ugc-creator-review': ref(15),
+      'livestream-pitch': ref(12),
+      'hype-then-twist-ad': ref(12),
+      'product-commercial-shotlist': ref(12, '16:9'),
+      'unboxing-ad': ref(25),
+      'variant-carousel-ad': ref(20),
+      'cartoon-gag': ref(5),
       '3d-cartoon-short': {
-        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 10, generate_audio: true } },
+        result: { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: '16:9', duration: 10, generate_audio: true } },
         design: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '1:1' } },
       },
-      'stop-motion-short': t2v(8, '1:1'),
+      'stop-motion-short': ref(8, '1:1'),
       'anime-scene': {
         result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 6, generate_audio: true } },
         scene: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '16:9' } },
@@ -597,14 +606,14 @@ describe('generation templates', () => {
       'comic-page': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '2:3', resolution: '4k' } } },
       'comic-4koma': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16', resolution: '4k' } } },
       'storyboard-to-video': {
-        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 15, generate_audio: true } },
+        result: { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: '16:9', duration: 15, generate_audio: true } },
         sheet: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
       },
-      'comic-page-to-motion': t2v(10, '16:9'),
+      'comic-page-to-motion': ref(10, '16:9'),
       'comic-panels-to-shots': {
         result: {
           type: 'video',
-          mode: 'multi_shot',
+          mode: 'ref',
           model: T2V,
           params: { aspect_ratio: '16:9', duration: 12, generate_audio: true },
           shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
@@ -616,18 +625,18 @@ describe('generation templates', () => {
         still: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
       },
       'era-walkthrough-montage': {
-        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 12, generate_audio: true } },
+        result: { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: '16:9', duration: 12, generate_audio: true } },
         silent: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
         widescreen: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
         nineties: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
         today: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
       },
       'style-sound-bed': { result: { type: 'audio', mode: 't2m', model: 'lyria-3-pro-music', params: {} } },
-      'anime-action-climax': t2v(10, '16:9'),
+      'anime-action-climax': ref(10, '16:9'),
       'anime-opening-15s': {
         result: {
           type: 'video',
-          mode: 'multi_shot',
+          mode: 'ref',
           model: T2V,
           params: { aspect_ratio: '16:9', duration: 15, generate_audio: true },
           shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
@@ -638,7 +647,7 @@ describe('generation templates', () => {
         portrait: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
         voice: { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
       },
-      'talking-head-pitch': t2v(10),
+      'talking-head-pitch': ref(10),
       'two-speaker-talk': {
         result: { type: 'video', mode: 'talking_head', model: 'infinitetalk-multi', params: { order: 'left_right' } },
         scene: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
@@ -651,7 +660,7 @@ describe('generation templates', () => {
         result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 5, generate_audio: false } },
         still: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '1:1' } },
       },
-      'product-turntable-360': t2v(10, '1:1'),
+      'product-turntable-360': ref(10, '1:1'),
       'product-particle-reveal': {
         result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 6, generate_audio: true } },
         render: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
@@ -662,10 +671,10 @@ describe('generation templates', () => {
         before: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '1:1' } },
         after: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '1:1' } },
       },
-      'fight-duel-one-take': t2v(15, '16:9'),
+      'fight-duel-one-take': ref(15, '16:9'),
       'fight-exchange-short': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 8 } } },
       'fight-duel-locked': {
-        ...t2v(15, '16:9'),
+        ...ref(15, '16:9'),
         'sheet-a': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '4:3' } },
         'sheet-b': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '4:3' } },
       },
@@ -674,14 +683,14 @@ describe('generation templates', () => {
         keyframe: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9', resolution: '4k' } },
       },
       'bullet-time-moment': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 6 } } },
-      'impact-frame-hit': t2v(10, '16:9'),
+      'impact-frame-hit': ref(10, '16:9'),
       'reference-video-remix': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '9:16', duration: 10 } } },
-      'seamless-bridge': t2v(5, '16:9'),
+      'seamless-bridge': ref(5, '16:9'),
       'comic-drama-cast-sheet': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } } },
       'comic-drama-episode': {
-        ...t2v(15),
-        'scene-2': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
-        'scene-3': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        ...ref(15),
+        'scene-2': { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        'scene-3': { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
       },
       'narrated-motion-comic': {
         result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '9:16', duration: 15 } },
@@ -693,21 +702,21 @@ describe('generation templates', () => {
         line: { type: 'audio', mode: 'voice_clone', model: 'minimax-voice-clone', params: {} },
         sample: { type: 'audio', mode: 'tts', model: 'qwen3-tts-voice-design', params: { voice_description: COMIC_VOICE } },
       },
-      'cinematic-15s-arc': t2v(15, '16:9'),
+      'cinematic-15s-arc': ref(15, '16:9'),
       'landscape-3-shot': {
         result: {
           type: 'video',
-          mode: 'multi_shot',
+          mode: 't2v',
           model: 'gemini-omni-1.1-flash-text-to-video',
           params: { aspect_ratio: '16:9', duration: 9 },
           shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
         },
       },
-      'epic-fantasy-scifi': t2v(15, '16:9'),
+      'epic-fantasy-scifi': ref(15, '16:9'),
       'trailer-beat-3-shot': {
         result: {
           type: 'video',
-          mode: 'multi_shot',
+          mode: 'ref',
           model: T2V,
           params: { aspect_ratio: '21:9', duration: 12, generate_audio: true },
           shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }],
@@ -716,7 +725,7 @@ describe('generation templates', () => {
       'transformation-6-shot': {
         result: {
           type: 'video',
-          mode: 'multi_shot',
+          mode: 'ref',
           model: T2V,
           params: { aspect_ratio: '16:9', duration: 15, generate_audio: true },
           shots: [{ seconds: 3 }, { seconds: 2 }, { seconds: 2 }, { seconds: 3 }, { seconds: 3 }, { seconds: 2 }],
@@ -727,13 +736,13 @@ describe('generation templates', () => {
         'act-2': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 30, generate_audio: true } },
         'act-3': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 30, generate_audio: true } },
       },
-      'vehicle-speed-cutlist': t2v(12, '16:9'),
-      'sports-live-coverage': t2v(12, '16:9'),
-      'extreme-sports-run': t2v(10),
+      'vehicle-speed-cutlist': ref(12, '16:9'),
+      'sports-live-coverage': ref(12, '16:9'),
+      'extreme-sports-run': ref(10),
       'vertical-15s-quick-tip': {
         result: {
           type: 'video',
-          mode: 'multi_shot',
+          mode: 'ref',
           model: T2V,
           params: { aspect_ratio: '9:16', duration: 15, generate_audio: true },
           shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
@@ -741,15 +750,15 @@ describe('generation templates', () => {
       },
       'scene-plate': { result: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '16:9' } } },
       'drama-single-scene': {
-        ...t2v(15, '16:9'),
+        ...ref(15, '16:9'),
         scene: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '16:9' } },
       },
-      'short-drama-reversal': t2v(15),
+      'short-drama-reversal': ref(15),
       'emotional-dialogue-timeline': {
         result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '9:16', duration: 10 } },
         line: { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: {} },
       },
-      'horror-suspense': t2v(15, '16:9'),
+      'horror-suspense': ref(15, '16:9'),
       'mv-style-sheet': { result: { type: 'image', mode: 't2i', model: GPT_T2I, params: { aspect_ratio: '16:9' } } },
       'mv-performer-sheet': {
         result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
@@ -771,9 +780,9 @@ describe('generation templates', () => {
         'section-4': H3_15,
       },
       'short-drama-episode': {
-        ...t2v(15),
-        'scene-2': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
-        'scene-3': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        ...ref(15),
+        'scene-2': { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        'scene-3': { type: 'video', mode: 'ref', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
         cast: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
       },
     };
@@ -1278,7 +1287,7 @@ describe('social hook templates (inner#1816)', () => {
     // (web `video-slots.ts`). `image` is the First frame button only in the
     // modes that draw it (web `video-mode-options.ts`); image animation and
     // talking head draw a character image slot there instead.
-    const FIRST_FRAME_MODES = ['i2v', 'first_last', 'multi_shot'];
+    const FIRST_FRAME_MODES = ['i2v', 'first_last'];
     const labelKeyOf = (node: TemplateGenerateNode, into: string | undefined): string | undefined => {
       if (node.type !== 'video') return undefined;
       if (into === 'end_image') return 'canvas.generatePanel.endFrame';
@@ -1335,10 +1344,12 @@ describe('social hook templates (inner#1816)', () => {
 });
 
 describe('template shot lists (inner#1816, CAP-2)', () => {
-  it('gives a generate node shots exactly when it runs in the multi_shot mode', () => {
+  it('gives a generate node shots only where its model takes shots in its mode', () => {
     for (const template of GENERATION_TEMPLATES) {
       for (const node of generateNodes(template)) {
-        expect(node.shots !== undefined, `${template.id} ${node.key}`).toBe(node.mode === MULTI_SHOT_MODE);
+        if (node.shots === undefined) continue;
+        const params = CATALOG.get(node.model);
+        expect(params && storyboardSpec(params, node.mode), `${template.id} ${node.key}: ${node.model} takes shots in ${node.mode}`).toBeDefined();
       }
     }
   });

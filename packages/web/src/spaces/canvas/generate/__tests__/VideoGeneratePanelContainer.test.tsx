@@ -5,7 +5,7 @@
 const LAST_WRITE_LOCAL = (): boolean => true;
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
@@ -158,7 +158,7 @@ const I2V: ModelEntry = {
   display_name: 'Kling I2V',
   // Both modes, as config/models/video/kling.yaml declares them since #1904:
   // the same model runs image-to-video and first-last frame.
-  mode: ['i2v', 'first_last', 'multi_shot'],
+  mode: ['i2v', 'first_last'],
   params: {
     ...T2V.params,
     image: PICTURE,
@@ -2203,7 +2203,6 @@ describe('视频面板的聚焦按钮（#1978）', () => {
     first_last: 'kling-o3-pro-first-last',
     animate: 'wan-2.2-animate',
     ref: 'kling-o3-pro-ref',
-    multi_shot: 'kling-i2v',
     talking_head: 'omnihuman-1.5',
   };
 
@@ -2310,13 +2309,13 @@ describe('a model that states how much text it takes', () => {
   });
 });
 
-describe('the multi-shot mode', () => {
+describe('multi-shot inside a mode (inner#2192)', () => {
   /** A Kling model that takes its shots in a field of its own, the way the catalog declares it. */
   const KLING: ModelEntry = {
     ...T2V,
     name: 'kling-v3',
     display_name: 'Kling v3',
-    mode: ['t2v', 'multi_shot'],
+    mode: ['t2v'],
     params: {
       duration: { description: '', values: [3, 5, 10], default: 5, fill: 'panel' },
       multi_prompt: {
@@ -2324,18 +2323,18 @@ describe('the multi-shot mode', () => {
         default: null,
         type: 'items',
         max_items: 6,
-        modes: ['multi_shot'],
+        modes: ['t2v'],
         fill: 'storyboard',
         fields: { prompt: { type: 'text', max_chars: 512 }, duration: { values: [1, 2, 3, 4, 5] } },
       },
-      shot_type: { description: '', default: null, values: ['customize'], modes: ['multi_shot'], fill: 'storyboard' },
+      shot_type: { description: '', default: null, values: ['customize'], modes: ['t2v'], fill: 'storyboard' },
       auto_shots: {
         description: '',
-        label: 'Auto multi-shot',
         default: false,
         values: [true, false],
         modes: ['t2v'],
         fill: 'panel',
+        shots_auto: true,
       },
     },
   };
@@ -2344,14 +2343,14 @@ describe('the multi-shot mode', () => {
     ...T2V,
     name: 'wan-3',
     display_name: 'Wan 3',
-    mode: ['t2v', 'multi_shot'],
+    mode: ['t2v'],
     params: {
       duration: { description: '', values: [5, 10], default: 10, fill: 'panel' },
       shots: {
         description: '',
         default: null,
         type: 'items',
-        modes: ['multi_shot'],
+        modes: ['t2v'],
         into_prompt: 'Shot {n} [{start}-{end}s]: {prompt}',
         fill: 'storyboard',
         fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] } },
@@ -2360,8 +2359,8 @@ describe('the multi-shot mode', () => {
   };
 
   /**
-   * Opens the panel on a node standing on one of the two models.
-   * @param mode - The mode the node stores.
+   * Opens the panel on a text-to-video node standing on one of the two models.
+   * @param shots - Whether the node writes its shots out (`multi`) or not.
    * @param before - Writes to make on the node before the panel opens.
    * @param model - The model the node stores.
    * @param params - What the node holds for that model.
@@ -2369,14 +2368,20 @@ describe('the multi-shot mode', () => {
    * @returns The render result, for a case that switches mode by rerendering.
    */
   async function openOn(
-    mode: string,
+    shots: 'single' | 'multi',
     before: () => void = () => undefined,
     model = 'kling-v3',
     params: Record<string, unknown> = {},
     kling: ModelEntry = KLING,
   ): Promise<ReturnType<typeof render>> {
     vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [kling, WAN, ...catalog().video] });
-    const stored = { mode, model, modelByMode: { [mode]: model }, paramsByModel: { [model]: params } };
+    const stored = {
+      mode: 't2v',
+      model,
+      modelByMode: { t2v: model },
+      paramsByModel: { [model]: params },
+      ...(shots === 'multi' ? { multiShot: true } : {}),
+    };
     seedVideoNode(stored);
     before();
     const view = mountContainer('video', stored);
@@ -2409,24 +2414,132 @@ describe('the multi-shot mode', () => {
     vi.restoreAllMocks();
   });
 
-  it('lays out two shots splitting the total in the same step as the switch into the mode', async () => {
-    await openOn('t2v');
+  /**
+   * The node's data as Yjs holds it now.
+   * @returns The target node's data.
+   */
+  const stored = (): { multiShot?: boolean; mode?: string; paramsByModel?: Record<string, Record<string, unknown>> } =>
+    readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')?.data as never;
+
+  /**
+   * Picks one item of the Shots control.
+   * @param choice - The item.
+   */
+  async function pickShots(choice: 'single' | 'multi' | 'auto'): Promise<void> {
+    fireEvent.click(screen.getByTestId('generate-video-shots-trigger'));
+    await userEvent.click(await screen.findByTestId(`generate-video-shots-${choice}`));
+  }
+
+  it('offers the Shots control on a model that takes shots in the mode, on Single shot', async () => {
+    await openOn('single');
+    expect(screen.getByTestId('generate-video-shots-trigger')).toHaveTextContent('Single shot');
+  });
+
+  it('offers no Shots control on a model that takes no shots in the mode', async () => {
+    await openOn('single', () => undefined, 'veo-3.1');
+    expect(screen.queryByTestId('generate-video-shots-trigger')).toBeNull();
+  });
+
+  it('offers Auto multi-shot only on a model with its own switch for it', async () => {
+    await openOn('single');
+    fireEvent.click(screen.getByTestId('generate-video-shots-trigger'));
+    expect(await screen.findByTestId('generate-video-shots-auto')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-video-shots-multi')).toBeInTheDocument();
+    cleanup();
+    _resetForTests();
+    await openOn('single', () => undefined, 'wan-3');
+    fireEvent.click(screen.getByTestId('generate-video-shots-trigger'));
+    expect(await screen.findByTestId('generate-video-shots-multi')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-video-shots-auto')).toBeNull();
+  });
+
+  it('draws no Auto multi-shot switch in the params popover; the Shots control holds it', async () => {
+    await openOn('single');
+    fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
+    await screen.findByTestId('generate-video-duration-option-10');
+    expect(screen.queryByText('Auto multi-shot')).toBeNull();
+  });
+
+  it('turns Multi-shot on and lays out two shots splitting the total, in one undo', async () => {
+    await openOn('single', () => undefined, 'kling-v3', { auto_shots: true });
     const name = docName.canvasSpace('p', 's');
     const undo = getCanvasUndoManager(getDoc(name), name);
     undo.clear();
-    fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
-    await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
+    await pickShots('multi');
     await waitFor(() => expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([2, 3]));
+    expect(stored().multiShot).toBe(true);
+    expect(stored().paramsByModel?.['kling-v3']?.auto_shots).toBe(false);
     act(() => {
       undo.undo();
     });
     expect(readShots('p', 's', 'target')).toEqual([]);
-    const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')?.data as { mode?: string };
-    expect(data.mode).toBe('t2v');
+    expect(stored().multiShot).toBeUndefined();
+    expect(stored().paramsByModel?.['kling-v3']?.auto_shots).toBe(true);
+    expect(stored().mode).toBe('t2v');
   });
 
-  it('leaves a shot closed when the shots come back after a mode without them, and opens it on a new editor (inner#2115)', async () => {
-    const view = await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+  it('keeps the shots a node holds when Multi-shot is turned on again, re-split to the total', async () => {
+    await openOn('single', () => {
+      enterStoryboardShots('p', 's', 'target', 5);
+      addStoryboardShot('p', 's', 'target', 5, 6);
+    });
+    const before = readShots('p', 's', 'target')?.map((s) => s.id);
+    await pickShots('multi');
+    await waitFor(() => expect(stored().multiShot).toBe(true));
+    expect(readShots('p', 's', 'target')?.map((s) => s.id)).toEqual(before);
+  });
+
+  it('writes only the Shots choice on a model with no shot planning of its own', async () => {
+    await openOn('single', () => undefined, 'wan-3');
+    const data = getDoc(docName.canvasSpace('p', 's')).getMap<Y.Map<unknown>>('nodesMap').get('target')?.get('data') as Y.Map<unknown>;
+    const written: string[] = [];
+    data.observe((event) => written.push(...event.keysChanged));
+    await pickShots('multi');
+    await waitFor(() => expect(stored().multiShot).toBe(true));
+    expect(written).not.toContain('paramsByModel');
+  });
+
+  it('turns Auto multi-shot on and Multi-shot off, in one undo', async () => {
+    await openOn('multi', () => enterStoryboardShots('p', 's', 'target', 5));
+    const name = docName.canvasSpace('p', 's');
+    const undo = getCanvasUndoManager(getDoc(name), name);
+    undo.clear();
+    await pickShots('auto');
+    await waitFor(() => expect(stored().paramsByModel?.['kling-v3']?.auto_shots).toBe(true));
+    expect(stored().multiShot).toBe(false);
+    // The shots stay on the node for the next time Multi-shot is picked.
+    expect(readShots('p', 's', 'target')?.length).toBe(2);
+    act(() => {
+      undo.undo();
+    });
+    expect(stored().multiShot).toBe(true);
+    expect(stored().paramsByModel?.['kling-v3']?.auto_shots).toBeUndefined();
+  });
+
+  it('turns both off on Single shot', async () => {
+    await openOn('single', () => undefined, 'kling-v3', { auto_shots: true });
+    expect(screen.getByTestId('generate-video-shots-trigger')).toHaveTextContent('Auto multi-shot');
+    await pickShots('single');
+    await waitFor(() => expect(stored().paramsByModel?.['kling-v3']?.auto_shots).toBe(false));
+    expect(stored().multiShot).toBe(false);
+  });
+
+  it('shows Multi-shot on the control once the node has it on', async () => {
+    await openOn('multi', () => enterStoryboardShots('p', 's', 'target', 5));
+    expect(screen.getByTestId('generate-video-shots-trigger')).toHaveTextContent('Multi-shot');
+  });
+
+  it('keeps Multi-shot and the shots across a switch to a mode where the model takes none', async () => {
+    await openOn('multi', () => enterStoryboardShots('p', 's', 'target', 5));
+    fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
+    await userEvent.click(await screen.findByTestId('generate-video-mode-i2v'));
+    await waitFor(() => expect(stored().mode).toBe('i2v'));
+    expect(stored().multiShot).toBe(true);
+    expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([2, 3]);
+  });
+
+  it('leaves a shot closed when the shots come back after Single shot, and opens it on a new editor (inner#2115)', async () => {
+    const view = await openOn('multi', () => enterStoryboardShots('p', 's', 'target', 5));
     await screen.findByTestId('generate-storyboard-shot-1-editor');
     /**
      * Opens full screen and returns its editor's element.
@@ -2441,10 +2554,10 @@ describe('the multi-shot mode', () => {
       });
     };
     const first = await openFullscreen();
-    const stored = (mode: string): Record<string, unknown> => ({ mode, model: 'kling-v3', modelByMode: { [mode]: 'kling-v3' } });
-    view.rerender(panelTree('video', stored('t2v')));
+    const stored = (multiShot: boolean): Record<string, unknown> => ({ mode: 't2v', model: 'kling-v3', modelByMode: { t2v: 'kling-v3' }, multiShot });
+    view.rerender(panelTree('video', stored(false)));
     await waitFor(() => expect(screen.queryByTestId('prompt-fullscreen')).toBeNull());
-    view.rerender(panelTree('video', stored('multi_shot')));
+    view.rerender(panelTree('video', stored(true)));
     await screen.findByTestId('generate-storyboard-shot-1-editor');
     expect(screen.queryByTestId('prompt-fullscreen')).toBeNull();
     // Opened again, the shot gets a new editor: the one the panel closed ended.
@@ -2452,7 +2565,7 @@ describe('the multi-shot mode', () => {
   });
 
   it('draws the shots in place of the prompt box, with the add-shot row under them', async () => {
-    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    await openOn('multi', () => enterStoryboardShots('p', 's', 'target', 5));
     await screen.findByTestId('generate-storyboard-shot-2-editor');
     expect(screen.getByTestId('generate-storyboard-shot-1-seconds').textContent).toBe('2s');
     expect(screen.getByTestId('generate-storyboard-shot-2-seconds').textContent).toBe('3s');
@@ -2475,14 +2588,14 @@ describe('the multi-shot mode', () => {
   };
 
   it('opens on the first shot, the others as one row each (#1201)', async () => {
-    await openOn('multi_shot', threeShots);
+    await openOn('multi', threeShots);
     expect(await screen.findByTestId('generate-storyboard-shot-1-editor')).toBeVisible();
     expect(screen.getByTestId('generate-storyboard-shot-2-editor')).not.toBeVisible();
     expect(screen.getByTestId('generate-storyboard-shot-3-editor')).not.toBeVisible();
   });
 
   it('opens a shot whose row is clicked and puts the caret in it (#1201)', async () => {
-    await openOn('multi_shot', threeShots);
+    await openOn('multi', threeShots);
     fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
     expect(screen.getByTestId('generate-storyboard-shot-2-editor')).toBeVisible();
     expect(screen.getByTestId('generate-storyboard-shot-1-editor')).not.toBeVisible();
@@ -2490,7 +2603,7 @@ describe('the multi-shot mode', () => {
   });
 
   it('opens the shot the user adds and puts the caret in it (#1201)', async () => {
-    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    await openOn('multi', () => enterStoryboardShots('p', 's', 'target', 5));
     fireEvent.click(await screen.findByTestId('generate-storyboard-add'));
     await waitFor(() => expect(screen.getByTestId('generate-storyboard-shot-3-editor')).toBeVisible());
     expect(screen.getByTestId('generate-storyboard-shot-1-editor')).not.toBeVisible();
@@ -2498,7 +2611,7 @@ describe('the multi-shot mode', () => {
   });
 
   it('keeps the open shot and the caret where they are when a collaborator adds a shot (#1201)', async () => {
-    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    await openOn('multi', () => enterStoryboardShots('p', 's', 'target', 5));
     fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
     await waitFor(() => expect(caretIn(2)).toBe(true));
     act(() => {
@@ -2511,7 +2624,7 @@ describe('the multi-shot mode', () => {
   });
 
   it('opens the shot after the open one the user removes, or the one before when it was the last (#1201)', async () => {
-    await openOn('multi_shot', threeShots);
+    await openOn('multi', threeShots);
     fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
     const third = readShots('p', 's', 'target')?.[2]?.id;
     fireEvent.click(screen.getByTestId('generate-storyboard-shot-2-remove'));
@@ -2526,7 +2639,7 @@ describe('the multi-shot mode', () => {
   });
 
   it('keeps the open shot when the user removes a collapsed one (#1201)', async () => {
-    await openOn('multi_shot', threeShots);
+    await openOn('multi', threeShots);
     const first = readShots('p', 's', 'target')?.[0]?.id;
     fireEvent.click(await screen.findByTestId('generate-storyboard-shot-3-remove'));
     await waitFor(() => expect(readShots('p', 's', 'target')).toHaveLength(2));
@@ -2535,7 +2648,7 @@ describe('the multi-shot mode', () => {
   });
 
   it('opens the next shot without moving the caret when a collaborator removes the open one (#1201)', async () => {
-    await openOn('multi_shot', threeShots);
+    await openOn('multi', threeShots);
     fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
     const second = readShots('p', 's', 'target')?.[1]?.id ?? '';
     act(() => {
@@ -2547,7 +2660,7 @@ describe('the multi-shot mode', () => {
   });
 
   it('keeps the shot that opened in place of a removed one open when a collaborator brings that one back before it (#1201)', async () => {
-    await openOn('multi_shot', threeShots);
+    await openOn('multi', threeShots);
     const shots = shotListOf('p', 's', 'target');
     if (!shots) throw new Error('no shots');
     const second = readShots('p', 's', 'target')?.[1]?.id;
@@ -2575,7 +2688,7 @@ describe('the multi-shot mode', () => {
   });
 
   it('opens the shot after the open one when one change removes it and adds a shot before it (#1201)', async () => {
-    await openOn('multi_shot', threeShots);
+    await openOn('multi', threeShots);
     fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
     const shots = shotListOf('p', 's', 'target');
     if (!shots) throw new Error('no shots');
@@ -2597,7 +2710,7 @@ describe('the multi-shot mode', () => {
   });
 
   it('shows a collapsed shot its first line, a chip by its name (#1201)', async () => {
-    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    await openOn('multi', () => enterStoryboardShots('p', 's', 'target', 5));
     act(() => {
       const shot = readShots('p', 's', 'target')?.[1];
       const paragraph = new Y.XmlElement('paragraph');
@@ -2613,16 +2726,34 @@ describe('the multi-shot mode', () => {
     );
   });
 
-  it('draws no shots outside the multi-shot mode, even when the node holds some', async () => {
-    await openOn('t2v', () => enterStoryboardShots('p', 's', 'target', 5));
+  it('opens a node left in the old multi-shot mode on a mode it serves, its shots back on Multi-shot', async () => {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [KLING, WAN, ...catalog().video] });
+    const old = { mode: 'multi_shot', model: 'kling-v3', modelByMode: { multi_shot: 'kling-v3' }, paramsByModel: { 'kling-v3': {} } };
+    seedVideoNode(old);
+    enterStoryboardShots('p', 's', 'target', 5);
+    mountContainer('video', old);
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
+    });
+    await screen.findByTestId('generate-video-execute');
+    expect(screen.getByTestId('generate-video-mode-trigger')).toHaveTextContent('Text to Video');
+    expect(screen.getByTestId('generate-video-shots-trigger')).toHaveTextContent('Single shot');
+    expect(screen.getByTestId('generate-prompt-editor')).toBeInTheDocument();
+    await pickShots('multi');
+    await waitFor(() => expect(stored().multiShot).toBe(true));
+    expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([2, 3]);
+  });
+
+  it('draws no shots on Single shot, even when the node holds some', async () => {
+    await openOn('single', () => enterStoryboardShots('p', 's', 'target', 5));
     expect(screen.queryByTestId('generate-storyboard-shots')).toBeNull();
     expect(screen.getByTestId('generate-prompt-editor')).toBeInTheDocument();
   });
 
-  it('sends Kling every shot in its own field and no main prompt, leaving auto multi-shot behind', async () => {
+  it('sends Kling every shot in its own field and no main prompt, with its own shot planning off', async () => {
     const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openOn(
-      'multi_shot',
+      'multi',
       () => {
         enterStoryboardShots('p', 's', 'target', 5);
         typeShot(0, 'a paper boat');
@@ -2642,13 +2773,13 @@ describe('the multi-shot mode', () => {
       ],
     });
     expect(params).not.toHaveProperty('prompt');
-    expect(params).not.toHaveProperty('auto_shots');
+    expect(params?.auto_shots).toBe(false);
   });
 
   it('writes the shots into the prompt for a model with no field for them', async () => {
     const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openOn(
-      'multi_shot',
+      'multi',
       () => {
         enterStoryboardShots('p', 's', 'target', 5);
         typeShot(0, 'a paper boat');
@@ -2664,9 +2795,9 @@ describe('the multi-shot mode', () => {
     expect(params).not.toHaveProperty('shots');
   });
 
-  it('sends auto multi-shot beside the main prompt in text-to-video', async () => {
+  it('sends auto multi-shot beside the main prompt on Auto multi-shot', async () => {
     const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
-    await openOn('t2v', () => typePrompt('a boat, then the pond'), 'kling-v3', { auto_shots: true });
+    await openOn('single', () => typePrompt('a boat, then the pond'), 'kling-v3', { auto_shots: true });
     fireEvent.click(screen.getByTestId('generate-video-execute'));
     await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
     expect(createTask.mock.calls[0]?.[0]?.params).toMatchObject({ prompt: 'a boat, then the pond', auto_shots: true });
@@ -2674,7 +2805,7 @@ describe('the multi-shot mode', () => {
 
   it('refuses an empty shot, naming it', async () => {
     const createTask = vi.spyOn(canvasApi, 'createTask');
-    await openOn('multi_shot', () => {
+    await openOn('multi', () => {
       enterStoryboardShots('p', 's', 'target', 5);
       typeShot(0, 'a paper boat');
     });
@@ -2684,7 +2815,7 @@ describe('the multi-shot mode', () => {
   });
 
   it('binds a shot box to the words a restore brings back under the same id and seconds', async () => {
-    await openOn('multi_shot', () => {
+    await openOn('multi', () => {
       enterStoryboardShots('p', 's', 'target', 5);
       typeShot(1, 'the words before');
     });
@@ -2716,7 +2847,7 @@ describe('the multi-shot mode', () => {
   });
 
   it('takes back a new total and the shots it re-split in one undo', async () => {
-    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    await openOn('multi', () => enterStoryboardShots('p', 's', 'target', 5));
     const name = docName.canvasSpace('p', 's');
     const undo = getCanvasUndoManager(getDoc(name), name);
     undo.clear();
@@ -2733,8 +2864,8 @@ describe('the multi-shot mode', () => {
     expect(data.paramsByModel?.['kling-v3']?.duration ?? 5).toBe(5);
   });
 
-  it('leaves the shots alone when the total changes outside the multi-shot mode', async () => {
-    await openOn('t2v', () => enterStoryboardShots('p', 's', 'target', 5));
+  it('leaves the shots alone when the total changes on Single shot', async () => {
+    await openOn('single', () => enterStoryboardShots('p', 's', 'target', 5));
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(await screen.findByTestId('generate-video-duration-option-10'));
     await waitFor(() => {
@@ -2744,14 +2875,13 @@ describe('the multi-shot mode', () => {
       expect(data.paramsByModel?.['kling-v3']?.duration).toBe(10);
     });
     expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([2, 3]);
-    // Back in the multi-shot mode, the shots are re-split to the longer video.
-    fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
-    await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
+    // Back on Multi-shot, the shots are re-split to the longer video.
+    await pickShots('multi');
     await waitFor(() => expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([4, 6]));
   });
 
-  it('keeps the open shot open across a model switch in the multi-shot mode (#1201)', async () => {
-    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+  it('keeps the open shot open across a model switch on Multi-shot (#1201)', async () => {
+    await openOn('multi', () => enterStoryboardShots('p', 's', 'target', 5));
     fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
     // The caret lands in the box a frame later, and would close a menu opened before it.
     await waitFor(() => expect(caretIn(2)).toBe(true));
@@ -2762,8 +2892,8 @@ describe('the multi-shot mode', () => {
     expect(screen.getByTestId('generate-storyboard-shot-1-editor')).not.toBeVisible();
   });
 
-  it('re-splits the shots to the new model\'s total on a model switch in the multi-shot mode', async () => {
-    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+  it('re-splits the shots to the new model\'s total on a model switch on Multi-shot', async () => {
+    await openOn('multi', () => enterStoryboardShots('p', 's', 'target', 5));
     const name = docName.canvasSpace('p', 's');
     const undo = getCanvasUndoManager(getDoc(name), name);
     undo.clear();
@@ -2799,7 +2929,7 @@ describe('the multi-shot mode', () => {
 
     it('says the limit an upstream here holds the prompt to on press, and sends nothing', async () => {
       const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
-      await openOn('t2v', () => typePrompt('a paper boat on the pond'), 'kling-v3', {}, CAPPED_KLING);
+      await openOn('single', () => typePrompt('a paper boat on the pond'), 'kling-v3', {}, CAPPED_KLING);
       // The refusal is worked out off the render path, once the rules have loaded.
       await new Promise((resolve) => setTimeout(resolve, 300));
       fireEvent.click(screen.getByTestId('generate-video-execute'));
@@ -2808,21 +2938,21 @@ describe('the multi-shot mode', () => {
       expect(createTask).not.toHaveBeenCalled();
     });
 
-    it('refuses nothing for a main prompt left from text-to-video once the multi-shot mode sends none of it', async () => {
+    it('refuses nothing for a main prompt left from text-to-video once Multi-shot sends none of it', async () => {
       const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
-      const view = await openOn('t2v', () => typePrompt('a paper boat on the pond'), 'kling-v3', {}, CAPPED_KLING);
+      const view = await openOn('single', () => typePrompt('a paper boat on the pond'), 'kling-v3', {}, CAPPED_KLING);
       await waitFor(() =>
         expect(screen.getByTestId('generate-prompt-editor').textContent).toContain('a paper boat on the pond'),
       );
-      // The switch writes the mode and the two shots; the harness hands the panel the stored mode by prop.
-      fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
-      await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
+      // The pick writes Multi-shot and the two shots; the harness hands the panel the stored node by prop.
+      await pickShots('multi');
       await waitFor(() => expect(readShots('p', 's', 'target')?.length).toBe(2));
       view.rerender(panelTree('video', {
-        mode: 'multi_shot',
+        mode: 't2v',
         model: 'kling-v3',
-        modelByMode: { t2v: 'kling-v3', multi_shot: 'kling-v3' },
-        paramsByModel: { 'kling-v3': {} },
+        modelByMode: { t2v: 'kling-v3' },
+        paramsByModel: { 'kling-v3': { auto_shots: false } },
+        multiShot: true,
       }));
       await screen.findByTestId('generate-storyboard-shots');
       typeShot(0, 'boat');
@@ -2856,7 +2986,7 @@ describe('the multi-shot mode', () => {
     it('says the limit the shots written into the prompt break, as they are typed, and sends nothing', async () => {
       const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
       vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [KLING, CAPPED_WAN, ...catalog().video] });
-      const stored = { mode: 'multi_shot', model: 'wan-3', modelByMode: { multi_shot: 'wan-3' }, paramsByModel: { 'wan-3': { duration: 5 } } };
+      const stored = { mode: 't2v', model: 'wan-3', modelByMode: { t2v: 'wan-3' }, paramsByModel: { 'wan-3': { duration: 5 } }, multiShot: true };
       seedVideoNode(stored);
       enterStoryboardShots('p', 's', 'target', 5);
       mountContainer('video', stored);
@@ -2896,14 +3026,14 @@ describe('camera commands', () => {
     ...T2V,
     name: 'minimax-h3-text-to-video',
     display_name: 'MiniMax H3',
-    mode: ['t2v', 'multi_shot'],
+    mode: ['t2v'],
     params: {
       duration: { description: '', values: [5, 10], default: 10, fill: 'panel' },
       shots: {
         description: '',
         default: null,
         type: 'items',
-        modes: ['multi_shot'],
+        modes: ['t2v'],
         into_prompt: 'Shot {n} [{start}-{end}s]: {prompt}',
         fill: 'storyboard',
         fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] } },
@@ -2924,15 +3054,17 @@ describe('camera commands', () => {
    * @param mode - The node's mode.
    * @param model - The node's model.
    * @param before - Writes to make before the panel opens.
+   * @param extra - Further node fields, such as `multiShot`.
    * @returns The render result, for a case that switches mode by rerendering.
    */
   async function openOn(
     mode: string,
     model: string,
     before: () => void = () => undefined,
+    extra: Record<string, unknown> = {},
   ): Promise<ReturnType<typeof render>> {
     vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [H3, ...catalog().video] });
-    const stored = { mode, model, modelByMode: { [mode]: model }, paramsByModel: { [model]: { duration: 5 } } };
+    const stored = { mode, model, modelByMode: { [mode]: model }, paramsByModel: { [model]: { duration: 5 } }, ...extra };
     seedVideoNode(stored);
     before();
     const view = mountContainer('video', stored);
@@ -2996,9 +3128,9 @@ describe('camera commands', () => {
     expect(createTask.mock.calls[0]?.[0]?.params.prompt).toBe('a red car [Push in,Zoom out,Truck right]');
   });
 
-  it('in the multi-shot mode writes into the open shot, the first one until another is opened, and sends it on that line', async () => {
+  it('on Multi-shot writes into the open shot, the first one until another is opened, and sends it on that line', async () => {
     const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 't1' } as never);
-    await openOn('multi_shot', 'minimax-h3-text-to-video', () => enterStoryboardShots('p', 's', 'target', 5));
+    await openOn('t2v', 'minimax-h3-text-to-video', () => enterStoryboardShots('p', 's', 'target', 5), { multiShot: true });
     await screen.findByTestId('generate-storyboard-shot-2-editor');
     await insert('Pan left');
     await waitFor(() => expect(readShots('p', 's', 'target')?.[0]?.prompt.toString()).toContain('[Pan left]'));
@@ -3018,23 +3150,24 @@ describe('camera commands', () => {
     expect(createTask.mock.calls[0]?.[0]?.params.prompt).toBe('Shot 1 [0-2s]: [Pan left]\nShot 2 [2-5s]: [Tilt up]');
   });
 
-  it('writes into the open first shot after a mode round trip, though the caret was last in shot 3 (#1201)', async () => {
-    const view = await openOn('multi_shot', 'minimax-h3-text-to-video', () => {
+  it('writes into the open first shot after a Single shot round trip, though the caret was last in shot 3 (#1201)', async () => {
+    const view = await openOn('t2v', 'minimax-h3-text-to-video', () => {
       enterStoryboardShots('p', 's', 'target', 5);
       addStoryboardShot('p', 's', 'target', 5, 6);
-    });
+    }, { multiShot: true });
     fireEvent.click(await screen.findByTestId('generate-storyboard-shot-3-toggle'));
     const third = screen.getByTestId('generate-storyboard-shot-3-editor').querySelector('.ProseMirror') as HTMLElement;
     fireEvent.focus(third);
-    const stored = (mode: string): Record<string, unknown> => ({
-      mode,
+    const stored = (multiShot: boolean): Record<string, unknown> => ({
+      mode: 't2v',
       model: 'minimax-h3-text-to-video',
-      modelByMode: { [mode]: 'minimax-h3-text-to-video' },
+      modelByMode: { t2v: 'minimax-h3-text-to-video' },
       paramsByModel: { 'minimax-h3-text-to-video': { duration: 5 } },
+      multiShot,
     });
-    view.rerender(panelTree('video', stored('t2v')));
+    view.rerender(panelTree('video', stored(false)));
     await waitFor(() => expect(screen.queryByTestId('generate-storyboard-shots')).toBeNull());
-    view.rerender(panelTree('video', stored('multi_shot')));
+    view.rerender(panelTree('video', stored(true)));
     await waitFor(() => expect(screen.getByTestId('generate-storyboard-shot-1-editor')).toBeVisible());
     expect(screen.getByTestId('generate-storyboard-shot-3-editor')).not.toBeVisible();
     await insert('Pan left');

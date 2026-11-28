@@ -13,7 +13,16 @@
  * param value reader all serve both.
  */
 
-import { referenceKinds, referencePool, VIDEO_GENERATION_MODES, type ReferencePool } from '@breatic/shared';
+import {
+  effectiveShots,
+  referenceKinds,
+  referencePool,
+  storyboardSpec,
+  VIDEO_GENERATION_MODES,
+  type ReferencePool,
+  type ShotsChoice,
+  type StoryboardSpec,
+} from '@breatic/shared';
 import type { FocusImage, ModelEntry } from '@breatic/shared';
 
 import { validFocusImages } from '@breatic/shared';
@@ -154,6 +163,10 @@ export interface VideoPanelViewModel {
    * where nothing about its parameters can be asked.
    */
   modelEntry: ModelEntry | undefined;
+  /** How the model takes shots in this mode; undefined when it takes none here and the Shots control is not drawn. */
+  storyboard: StoryboardSpec | undefined;
+  /** The Shots choice the node is on (inner#2192): its shot list is shown and sent only on `multi`. */
+  shots: ShotsChoice;
 
   /**
    * Whether the active model takes a prompt at all — the model's own
@@ -350,6 +363,8 @@ export function buildVideoPanelViewModel(input: {
     current ? resolveModelSwitch(content, current).params : {},
   );
 
+  const storyboard = current ? storyboardSpec(current.params, mode) : undefined;
+
   return {
     model,
     params: style.params,
@@ -377,6 +392,8 @@ export function buildVideoPanelViewModel(input: {
     // re-checks before enqueue are the same arithmetic (#1928).
     pool,
     modelEntry: current,
+    storyboard,
+    shots: effectiveShots(storyboard, content?.multiShot, style.params),
 
     // The model states it (#1966). This used to be inferred from a `prompt`
     // entry under `params` — a per-catalog writing habit, not a rule. Four of

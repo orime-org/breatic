@@ -24,8 +24,8 @@ describe("the names one mode offers", () => {
   it("stand when namesakes in one mode carry different variants", () => {
     expect(() =>
       assertNamesTellApart("video", [
-        { name: "a-t2v", display_name: "Model A", variant: "Text-to-Video", mode: ["t2v", "multi_shot"] },
-        { name: "a-i2v", display_name: "Model A", variant: "Image-to-Video", mode: ["i2v", "multi_shot"] },
+        { name: "a-t2v", display_name: "Model A", variant: "Text-to-Video", mode: ["t2v", "r2v"] },
+        { name: "a-i2v", display_name: "Model A", variant: "Image-to-Video", mode: ["i2v", "r2v"] },
       ]),
     ).not.toThrow();
   });
@@ -33,16 +33,16 @@ describe("the names one mode offers", () => {
   it("are refused when namesakes in one mode cannot be told apart", () => {
     expect(() =>
       assertNamesTellApart("video", [
-        { name: "a-t2v", display_name: "Model A", mode: ["t2v", "multi_shot"] },
-        { name: "a-i2v", display_name: "Model A", variant: "Image-to-Video", mode: ["i2v", "multi_shot"] },
+        { name: "a-t2v", display_name: "Model A", mode: ["t2v", "r2v"] },
+        { name: "a-i2v", display_name: "Model A", variant: "Image-to-Video", mode: ["i2v", "r2v"] },
       ]),
-    ).toThrow(/config\/models\/video.*multi_shot.*"Model A".*a-t2v, a-i2v/s);
+    ).toThrow(/config\/models\/video.*r2v.*"Model A".*a-t2v, a-i2v/s);
     expect(() =>
       assertNamesTellApart("video", [
-        { name: "a-t2v", display_name: "Model A", variant: "Pro", mode: "multi_shot" },
-        { name: "a-i2v", display_name: "Model A", variant: "Pro", mode: "multi_shot" },
+        { name: "a-t2v", display_name: "Model A", variant: "Pro", mode: "r2v" },
+        { name: "a-i2v", display_name: "Model A", variant: "Pro", mode: "r2v" },
       ]),
-    ).toThrow(/multi_shot/);
+    ).toThrow(/r2v/);
   });
 
   it("fall back to the model's id for an entry with no name, as the catalog does", () => {

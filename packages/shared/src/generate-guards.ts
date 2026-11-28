@@ -125,7 +125,7 @@ export interface ExecuteGateInput {
    */
   paramTooShort?: string;
   /**
-   * The shots of a run in the multi-shot mode, present only there. The main
+   * The shots of a run on Multi-shot, present only there. The main
    * prompt is not sent then, so the empty-prompt check gives way to these:
    * every shot written, no more shots than the model takes, none longer than
    * it takes, and shot seconds adding up to the total — Kling fails a run
@@ -263,7 +263,7 @@ export function evaluateExecute(
   // per rarer CJK glyph — and would refuse a message half the length of the
   // one the vendor would take.
   //
-  // In the multi-shot mode `promptText` is what goes out in place of the main
+  // On Multi-shot `promptText` is what goes out in place of the main
   // prompt: the shots written into one prompt, or nothing for a model that
   // takes its shots in a field of their own.
   if (

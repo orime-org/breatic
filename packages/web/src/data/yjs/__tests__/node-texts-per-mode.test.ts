@@ -7,7 +7,7 @@
  * Every mode's prompt is born with the node for the reason the single prompt
  * was (#1880): two clients creating a container on demand each mint their own
  * and one disappears with its words. The same goes for each shot of the
- * multi-shot mode, which is inserted whole with its own fragment.
+ * node, which is inserted whole with its own fragment.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';

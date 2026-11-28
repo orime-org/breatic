@@ -12,7 +12,7 @@ export const TRAILER_BEAT_3_SHOT: GenerationTemplate = {
       key: "result",
       role: "generate",
       type: "video",
-      mode: "multi_shot",
+      mode: "ref",
       model: "seedance-2.5-text-to-video",
       params: { aspect_ratio: "21:9", duration: 12, generate_audio: true },
       shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }],

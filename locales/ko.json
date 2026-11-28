@@ -871,7 +871,6 @@
         "horizontal_angle": "수평 각도",
         "vertical_angle": "수직 각도",
         "negative_prompt": "네거티브 프롬프트",
-        "auto_shots": "자동 멀티샷",
         "motion": "움직임 정도",
         "order": "순서",
         "model_mode": "영역",
@@ -926,7 +925,12 @@
         "addShot": "샷 추가",
         "shotPlaceholder": "이 샷을 설명하세요. @ 로 참조 추가",
         "shotCapReached": "최대 {max, number}개 샷",
-        "noSecondToSpare": "샷을 추가하려면 영상 길이를 늘리세요"
+        "noSecondToSpare": "샷을 추가하려면 영상 길이를 늘리세요",
+        "single": "단일 샷",
+        "multi": "멀티 샷",
+        "multiHint": "샷마다 직접 작성",
+        "auto": "자동 멀티 샷",
+        "autoHint": "모델이 샷을 나눔"
       },
       "refuseStoryboardShotEmpty": "샷 {shot, number}이(가) 비어 있습니다",
       "refuseStoryboardTooMany": "최대 {limit, number}개 샷",

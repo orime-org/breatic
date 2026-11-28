@@ -37,8 +37,8 @@ describe('video mode options (#1904)', () => {
     expect(slotsForMode('i2v')).toEqual(['firstFrame']);
     expect(slotsForMode('first_last')).toEqual(['firstFrame', 'endFrame']);
     expect(slotsForMode('animate')).toEqual(['characterImage', 'drivingVideo']);
-    // A model's first frame where it has one; the shots replace the prompt.
-    expect(slotsForMode('multi_shot')).toEqual(['firstFrame']);
+    // Multi-shot is a choice inside a mode, not a mode of its own (inner#2192).
+    expect(slotsForMode('multi_shot')).toEqual([]);
     expect(slotsForMode('talking_head')).toEqual([
       'characterImage',
       'sourceVideo',

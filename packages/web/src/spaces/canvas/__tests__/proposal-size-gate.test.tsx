@@ -97,7 +97,7 @@ function proposalOf(): CanvasProposal {
       { role: 'written', type: 'text', name: 'Verse', prompt: [{ text: 'la la' }] },
       { role: 'generate', type: 'audio', name: 'Song', mode: 't2m', model: 'some-model', takesPrompt: true, params: {}, prompt: [{ text: 'gentle pop' }] },
       {
-        role: 'generate', type: 'video', name: 'Clip', mode: 'multi_shot', model: 'some-model', takesPrompt: true, params: {},
+        role: 'generate', type: 'video', name: 'Clip', mode: 't2v', model: 'some-model', takesPrompt: true, params: {},
         shots: [
           { prompt: [{ text: 'first shot' }], duration: 2 },
           { prompt: [{ text: 'second shot' }], duration: 3 },

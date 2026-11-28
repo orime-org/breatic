@@ -8,7 +8,7 @@ export const CARTOON_GAG: GenerationTemplate = {
   id: "cartoon-gag",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "9:16", duration: 5, generate_audio: true } },
+    { key: "result", role: "generate", type: "video", mode: "ref", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "9:16", duration: 5, generate_audio: true } },
   ],
   edges: [],
   inputs: [{ key: "character", type: "image" }],

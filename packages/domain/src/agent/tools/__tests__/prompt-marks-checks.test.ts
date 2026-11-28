@@ -162,7 +162,7 @@ describe("the words a wired text node holds", () => {
           role: "generate",
           type: "video",
           name: "Clip",
-          mode: "multi_shot",
+          mode: "t2v",
           model: "kling-v3.0-4k-text-to-video",
           params: { duration: 5 },
           shots: [
@@ -251,7 +251,7 @@ describe("where each wired node goes, said on its edge", () => {
           role: "generate",
           type: "video",
           name: "Clip",
-          mode: "multi_shot",
+          mode: "ref",
           model: "happyhorse-1.1-reference-to-video",
           params: { duration: 5 },
           shots: [
@@ -365,7 +365,7 @@ describe("marks the user can act on", () => {
 
   it("asks for a ref for every node going into the pool, and a note for every node going into a slot", () => {
     const shape = inputSchema.shape.nodes.element.shape;
-    expect(shape.prompt.description ?? "").toMatch(/Every node going into the pool gets a ref where the prompt, or in multi_shot a shot, speaks of it, and a note too when it lands empty/);
+    expect(shape.prompt.description ?? "").toMatch(/Every node going into the pool gets a ref where the prompt, or on a node with shots a shot, speaks of it, and a note too when it lands empty/);
     expect(shape.prompt.description ?? "").toMatch(/a node going into a slot by an edge takes a note of its own \(a slot filled through fills takes none, the lyrics box takes none\)/);
     expect(shape.prompt.description ?? "").toMatch(/an empty node no edge sends into a generation \(unwired, or wired only as a link to a model that takes nothing from it\)/);
   });
@@ -545,7 +545,7 @@ describe("a mark the agent writes as words", () => {
           role: "generate",
           type: "video",
           name: "Clip",
-          mode: "multi_shot",
+          mode: "t2v",
           model: "kling-v3.0-4k-text-to-video",
           params: { duration: 5 },
           shots: [
@@ -733,13 +733,13 @@ describe("a note for every node going into a slot (design 5.7, user 2026-10-08)"
   });
 });
 
-describe("notes in a multi-shot node", () => {
+describe("notes in a node with shots", () => {
   it("are sent in a shot, and the refusal for a main prompt holding them says so", () => {
     const proposal: CanvasProposal = {
       nodes: [
         { role: "source", type: "image", name: "Style" },
         {
-          role: "generate", type: "video", name: "Clip", mode: "multi_shot", model: "seedance-2.5-text-to-video", params: { duration: 5 },
+          role: "generate", type: "video", name: "Clip", mode: "ref", model: "seedance-2.5-text-to-video", params: { duration: 5 },
           prompt: [{ slot: { kind: "note", label: "Pick the style picture into the style slot" } }],
           shots: [{ prompt: [{ text: "a boat" }], duration: 2 }, { prompt: [{ text: "the pond" }], duration: 3 }],
         },

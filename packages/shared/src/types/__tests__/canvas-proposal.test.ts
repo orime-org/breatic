@@ -23,7 +23,7 @@ describe("the marks of a node with shots (#2218)", () => {
       role: "generate",
       type: "video",
       name: "The clip",
-      mode: "multi_shot",
+      mode: "t2v",
       model: "kling-v3.0-4k-text-to-video",
       takesPrompt: true,
       prompt: [{ text: "a " }, asset("a")],

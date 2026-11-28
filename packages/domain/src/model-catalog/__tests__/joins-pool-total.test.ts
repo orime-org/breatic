@@ -66,7 +66,7 @@ describe("what the Agent reads for a joining model", () => {
  * spells it is provider's (inner#1743).
  */
 const VIDEO_JOINING: Readonly<Record<string, { total: number; mode: string }>> = {
-  "seedance-2.5-text-to-video": { total: 30, mode: "t2v" },
+  "seedance-2.5-text-to-video": { total: 30, mode: "ref" },
   "wan-3.0-reference-to-video": { total: 10, mode: "ref" },
   "minimax-h3-reference-to-video": { total: 9, mode: "ref" },
   // Google: from 2026-12-03 every 1.1 request runs on 1.2, which "supports up to 6 reference images per request".
@@ -119,8 +119,8 @@ describe("style images alone on a video model", () => {
     },
   );
 
-  it("make a full text-to-video run on Seedance 2.5", () => {
-    expect(missingSources(entry("seedance-2.5-text-to-video"), "t2v", styleOnly)).toEqual([]);
+  it("make a full reference-to-video run on Seedance 2.5, its upstream taking them as reference images", () => {
+    expect(missingSources(entry("seedance-2.5-text-to-video"), "ref", styleOnly)).toEqual([]);
   });
 });
 

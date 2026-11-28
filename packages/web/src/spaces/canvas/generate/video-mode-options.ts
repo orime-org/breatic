@@ -67,16 +67,6 @@ export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
     slots: [],
   },
   {
-    value: 'multi_shot',
-    label: 'Multi-Shot',
-    testId: 'generate-video-mode-multi-shot',
-    // Each shot gets its own prompt in place of the prompt box. An image to
-    // video model keeps its first frame; the slot is drawn only for a model
-    // declaring it (`videoSlotsForModel`), and a reference model's pool is
-    // fed from the rail as in Reference to Video.
-    slots: ['firstFrame'],
-  },
-  {
     value: 'talking_head',
     label: 'Talking Head',
     testId: 'generate-video-mode-talking-head',

@@ -869,21 +869,22 @@ describe("a template's shots sent as HOW_TO_SEND says (inner#1816)", () => {
     expect(verdict.ok ? "ok" : verdict.refusal).toBe("shots-duration");
   });
 
-  it("accepts shots adding up to the duration written on another multi_shot model that takes the picture", () => {
+  it("accepts shots adding up to the duration written on another model that takes shots and the picture in the mode", () => {
     const sent = sentWith("vertical-15s-quick-tip", "subject", { model: "wan-3.0-reference-to-video", params: { duration: 10 }, shots: shotsOf([2, 2, 2, 2, 2]) });
     expect(verdictFor(sent)).toEqual({ ok: true });
   });
 
-  it("accepts one prompt and no shots on another mode the model's family offers", () => {
+  // A node without shots is one shot from its prompt, even where the model
+  // takes shots.
+  it("accepts one prompt and no shots on a shot-list template's node that keeps its mode and model", () => {
     const sent = sentWith("vertical-15s-quick-tip", "subject", {
-      mode: "t2v",
       prompt: [{ text: "The person " }, { ref: 0 }, FIRST_SHOT_NOTE, { text: " shows the finished dish, then three steps." }],
     });
     expect(verdictFor(sent)).toEqual({ ok: true });
   });
 
-  it("accepts a prompt template moved to multi_shot with shots adding up to the duration written", () => {
-    const sent = sentWith("game-ui-livestream", "character", { mode: "multi_shot", params: { duration: 10 }, shots: shotsOf([5, 5]) });
+  it("accepts shots adding up to the duration written on a prompt template's node whose model takes shots in its mode", () => {
+    const sent = sentWith("game-ui-livestream", "character", { params: { duration: 10 }, shots: shotsOf([5, 5]) });
     expect(verdictFor(sent)).toEqual({ ok: true });
   });
 });

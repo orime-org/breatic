@@ -7,7 +7,7 @@
  */
 
 import type { MediaBinding, ProviderConfigInput } from "../../config/schema.js";
-import { shipped } from "../../config/__tests__/shipped.js";
+import { shipped, type CatalogModel } from "../../config/__tests__/shipped.js";
 import { rejectedInput } from "../../pricing/estimate.js";
 import { createProvider } from "../../provider.js";
 import { createMediaRunner } from "../runner.js";
@@ -15,6 +15,16 @@ import { driven, fakeUpstream } from "./fake-upstream.js";
 
 const config = shipped();
 const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+
+/**
+ * Whether the model has a mode no source group asks material of: a binding that takes no material runs the model there.
+ * @param model - The catalog model.
+ * @returns True when one of its modes needs no material.
+ */
+export function hasPlainMode(model: CatalogModel): boolean {
+  const grouped = new Set((model.source_groups ?? []).map((g) => g.mode));
+  return ([] as string[]).concat(model.mode ?? []).some((mode) => !grouped.has(mode));
+}
 
 /** One sample run: our params and prompt, and the body the runner sent for the run's own call. */
 export interface SampleRun {

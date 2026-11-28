@@ -116,6 +116,8 @@ interface ContentNodeViewBase extends NodeViewCommon {
    * restores its own record rather than inheriting the outgoing model's.
    */
   paramsByModel?: Record<string, Record<string, unknown>>;
+  /** Whether a video node writes its shots out (wire `data.multiShot`, inner#2192). */
+  multiShot?: boolean;
   /**
    * Style images of an image or video node (inner#826, inner#828, wire
    * `data.styleImageUrls`):
@@ -380,6 +382,7 @@ export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
     mode: data.mode,
     modelByMode: data.modelByMode,
     paramsByModel: data.paramsByModel,
+    multiShot: data.multiShot,
     styleImageUrls: data.styleImageUrls,
     firstFrameUrl: data.firstFrameUrl,
     endFrameUrl: data.endFrameUrl,

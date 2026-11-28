@@ -281,9 +281,17 @@ export function mad(a: Buffer, b: Buffer): number {
  */
 export function expectSlot(actual: Buffer, oracle: readonly Buffer[], slot: number, label: string): void {
   const own = mad(actual, oracle[slot]!);
+  // A held source picture may occupy hundreds of slots. Reuse only byte-identical pictures' distances, keeping each
+  // original slot and the stable nearest-slot tie below. Rebuild for every call so mutable Buffers cannot stale a cache.
+  const measured = [{ frame: oracle[slot]!, distance: own }];
   // Only source frames told apart from this slot's by more than the noise can be nearer: near-still footage repeats a
   // picture within the noise across slots, and an encoded slot then lands as close to the repeat as to its own.
-  const nearest = oracle.map((frame, at) => ({ at, distance: mad(actual, frame) }))
+  const nearest = oracle.map((frame, at) => {
+    const previous = measured.find((entry) => entry.frame.equals(frame));
+    const distance = previous === undefined ? mad(actual, frame) : previous.distance;
+    if (previous === undefined) measured.push({ frame, distance });
+    return { at, distance };
+  })
     .filter(({ at, distance }) => at === slot || distance >= own || mad(oracle[at]!, oracle[slot]!) > NOISE)
     .sort((a, b) => a.distance - b.distance)[0]!;
   expect(own, `${label}: slot ${slot} differs by ${own}; nearest is slot ${nearest.at} at ${nearest.distance}`).toBeLessThanOrEqual(Math.min(NOISE, nearest.distance + 1e-9));

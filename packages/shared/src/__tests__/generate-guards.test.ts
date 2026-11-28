@@ -526,14 +526,14 @@ describe('evaluateExecute — more references than the model takes', () => {
   });
 });
 
-describe('evaluateExecute — the multi-shot mode', () => {
+describe('evaluateExecute — a run on Multi-shot', () => {
   const shots = [
     { text: 'a paper boat, close-up', duration: 2 },
     { text: 'the pond at dusk', duration: 3 },
   ];
   const custom = { ...ok, promptText: '', storyboard: { shots, total: 5, maxShots: 6, maxChars: 512 } };
 
-  it('does not ask for the main prompt, which the multi-shot mode does not send', () => {
+  it('does not ask for the main prompt, which a run on Multi-shot does not send', () => {
     expect(refusalOf(custom)).toBeNull();
   });
 

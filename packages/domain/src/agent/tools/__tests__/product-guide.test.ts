@@ -264,8 +264,8 @@ describe("what the guide says", () => {
     expect(section("Proposal cards")).toMatch(/When a template applied from the panel or a placed proposal carries a ✏️ mark \(in a prompt box or a text node's words\), the message/);
   });
 
-  it("says material wired into the pool arrives @'d in the prompt, or in the shot on a multi-shot node", () => {
-    expect(section("Proposal cards")).toMatch(/one wired into the reference pool is already @'d in its prompt, or in its shot on a node in Multi-Shot\./);
+  it("says material wired into the pool arrives @'d in the prompt, or in the shot on a node on Multi-shot", () => {
+    expect(section("Proposal cards")).toMatch(/one wired into the reference pool is already @'d in its prompt, or in its shot on a node on "Multi-shot"\./);
   });
 
   it("says words bound for a song's lyrics box arrive @'d there", () => {
@@ -355,13 +355,16 @@ describe("what the guide says", () => {
     expect(doc).not.toMatch(/marked not open yet\)/);
   });
 
-  it("walks through the multi-shot mode, and says each mode keeps its own prompt", () => {
+  it("walks through the Shots pill, and says each mode keeps its own prompt (inner#2192)", () => {
     const panel = section("Inside the generation panel");
-    expect(panel).toMatch(/- Multi-Shot, a mode in the video panel's mode picker: the prompt box gives way to one card per shot/);
-    expect(panel).toMatch(/switching into it with no shots lays out two/);
+    expect(panel).toMatch(/- Shots, a pill right of the settings pill in the video panel, shown where the model takes shots in the mode/);
+    expect(panel).toMatch(/never in first-last frame, image animation or talking head/);
+    expect(panel).toMatch(/"Multi-shot" \(Write each shot yourself\): the prompt box gives way to one card per shot/);
+    expect(panel).toMatch(/picking it with no shots lays out two/);
+    expect(panel).toMatch(/"Auto multi-shot" \(The model plans the shots\) keeps the prompt box, and the model splits the prompt into shots itself/);
+    expect(renderProductGuide()).not.toMatch(/Multi-Shot/);
     expect(panel).toMatch(/Under the cards, in the middle, is "Add shot"/);
     expect(panel).toMatch(/The shots' seconds keep adding up to the video's length/);
-    expect(panel).toMatch(/"Auto multi-shot" switch in the settings pill/);
     expect(panel).toMatch(/each mode keeps its own words/);
     expect(section("Generating")).toMatch(/"Shot 2 is empty"/);
     expect(section("Groups and undo")).toMatch(/a video's shots/);
@@ -373,7 +376,7 @@ describe("what the guide says", () => {
     expect(panel).toMatch(/Only one shot is open at a time/);
     expect(panel).toMatch(/one row showing its number, its seconds and the first line of its words/);
     expect(panel).toMatch(/clicking a chip in the strip puts it in the open shot's box/);
-    expect(panel).toMatch(/in Multi-Shot it goes into the open shot/);
+    expect(panel).toMatch(/on "Multi-shot" it goes into the open shot/);
     // VideoGeneratePanelContainer.tsx: `shots[at] ?? shots[at - 1]`.
     expect(panel).toMatch(/removing the open shot opens the one after it, or the one before it when it was the last/);
     expect(panel).not.toMatch(/clicked into last/);

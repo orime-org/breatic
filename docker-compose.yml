@@ -68,7 +68,7 @@ services:
 
   # ── Frontend + Reverse Proxy ───────────────────
   web:
-    image: ghcr.io/orime-org/breatic-web:v0.0.36
+    image: ghcr.io/orime-org/breatic-web:v0.0.37
     ports:
       - "${WEB_BIND_ADDRESS:-127.0.0.1}:80:80"
       - "${WEB_BIND_ADDRESS:-127.0.0.1}:443:443"
@@ -86,7 +86,7 @@ services:
   # Must run from packages/server so Node can resolve @breatic/core's
   # transitive deps (drizzle-orm, postgres) via server's node_modules.
   migrate:
-    image: ghcr.io/orime-org/breatic:v0.0.36
+    image: ghcr.io/orime-org/breatic:v0.0.37
     working_dir: /app/packages/server
     # After the migrations it creates collab's own login from COLLAB_DATABASE_URL
     # in .env (role collab_writer, inner#2043); collab does not start without it.
@@ -110,7 +110,7 @@ services:
   # here in the sense that it becomes VISIBLE, not that it is auto-repaired
   # (see AGENTS.md#health-checks).
   server:
-    image: ghcr.io/orime-org/breatic:v0.0.36
+    image: ghcr.io/orime-org/breatic:v0.0.37
     command: ["node", "packages/server/dist/index.js"]
     # The back office internal API (INTERNAL_API_*, off by default) listens on
     # 3002 on all container interfaces. It is exposed on the compose network
@@ -140,7 +140,7 @@ services:
     restart: unless-stopped
 
   collab:
-    image: ghcr.io/orime-org/breatic:v0.0.36
+    image: ghcr.io/orime-org/breatic:v0.0.37
     command: ["node", "packages/collab/dist/index.js"]
     # Deliberately not published. Browsers reach collab through nginx's /ws
     # location, and nginx is what sets the X-Real-IP the connection gate needs
@@ -164,7 +164,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ghcr.io/orime-org/breatic:v0.0.36
+    image: ghcr.io/orime-org/breatic:v0.0.37
     command: ["node", "packages/worker/dist/index.js"]
     env_file: .env
     volumes:

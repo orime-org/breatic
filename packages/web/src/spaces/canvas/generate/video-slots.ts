@@ -203,6 +203,7 @@ export type VideoSlotUrls = Partial<Record<VideoSlot, string>>;
  * @param slots - The slots this panel draws for that mode, in display order.
  * @param slotUrls - What those slots hold.
  * @param references - The references the prompt names, by kind.
+ * @param runParams - The run's own params, which carry the style pictures a group may name.
  * @returns Each unmet requirement, in toolbar order; empty when the run has
  *   what it needs or no model resolves.
  */
@@ -212,10 +213,11 @@ export function videoMissing(
   slots: readonly VideoSlot[],
   slotUrls: VideoSlotUrls,
   references: ReferenceUrls,
+  runParams: Readonly<Record<string, unknown>>,
 ): MissingSource[] {
   if (model === undefined) return [];
   const pool = referencePool(model, mode);
-  const params: Record<string, unknown> = poolParams(pool, references);
+  const params: Record<string, unknown> = { ...runParams, ...poolParams(pool, references) };
   for (const slot of slots) params[VIDEO_SLOTS[slot].param] = slotUrls[slot];
   const order = [
     ...slots.map((slot) => VIDEO_SLOTS[slot].param),

@@ -8,7 +8,7 @@ export const STORYBOARD_TO_VIDEO: GenerationTemplate = {
   id: "storyboard-to-video",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "16:9", duration: 15, generate_audio: true } },
+    { key: "result", role: "generate", type: "video", mode: "ref", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "16:9", duration: 15, generate_audio: true } },
     { key: "sheet", role: "generate", type: "image", mode: "i2i", model: "nano-banana-pro-edit-ultra", params: { aspect_ratio: "16:9" } },
   ],
   edges: [{ from: "sheet", to: "result", into: "pool" }],

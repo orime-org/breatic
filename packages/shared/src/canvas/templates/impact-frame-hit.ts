@@ -9,7 +9,7 @@ export const IMPACT_FRAME_HIT: GenerationTemplate = {
   anchor: "result",
   styles: "impact-accents",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "16:9", duration: 10, generate_audio: true }, styleWords: "accent" },
+    { key: "result", role: "generate", type: "video", mode: "ref", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "16:9", duration: 10, generate_audio: true }, styleWords: "accent" },
   ],
   edges: [],
   inputs: [

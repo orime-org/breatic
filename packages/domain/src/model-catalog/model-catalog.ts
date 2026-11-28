@@ -81,6 +81,8 @@ export interface FullParamSpec {
   absent_value?: string | number | boolean;
   /** The template each entry of a list is written into the prompt with. */
   into_prompt?: string;
+  /** A switch that lets the model plan its own shots, drawn in the Shots control. */
+  shots_auto?: boolean;
   /** How the param's value reaches the run. */
   fill?: string;
   /** What has to hold before this param counts; dropped from the run otherwise. */

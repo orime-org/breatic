@@ -66,8 +66,8 @@ describe('what a video run still needs', () => {
   it('asks for a pool the model does not mark optional', () => {
     const strict = model({ images: POOL });
 
-    expect(videoMissing(strict, 'ref', [], {}, refs())).toEqual([['images']]);
-    expect(videoMissing(strict, 'ref', [], {}, refs(['https://a']))).toEqual([]);
+    expect(videoMissing(strict, 'ref', [], {}, refs(), {})).toEqual([['images']]);
+    expect(videoMissing(strict, 'ref', [], {}, refs(['https://a']), {})).toEqual([]);
   });
 
   it('leaves out a slot this mode does not fill', () => {
@@ -75,8 +75,8 @@ describe('what a video run still needs', () => {
       image: { description: '', default: null, fill: 'canvas', accepts: 'image', modes: ['i2v'] },
     });
 
-    expect(videoMissing(framed, 'ref', ['firstFrame'], {}, refs())).toEqual([]);
-    expect(videoMissing(framed, 'i2v', ['firstFrame'], {}, refs())).toEqual([['image']]);
+    expect(videoMissing(framed, 'ref', ['firstFrame'], {}, refs(), {})).toEqual([]);
+    expect(videoMissing(framed, 'i2v', ['firstFrame'], {}, refs(), {})).toEqual([['image']]);
   });
 
   it('counts a filled slot as filled', () => {
@@ -84,7 +84,7 @@ describe('what a video run still needs', () => {
       image: { description: '', default: null, fill: 'canvas', accepts: 'image' },
     });
 
-    expect(videoMissing(framed, 'i2v', ['firstFrame'], { firstFrame: 'https://a.png' }, refs()))
+    expect(videoMissing(framed, 'i2v', ['firstFrame'], { firstFrame: 'https://a.png' }, refs(), {}))
       .toEqual([]);
   });
 
@@ -96,7 +96,7 @@ describe('what a video run still needs', () => {
       image: { description: '', default: null, fill: 'canvas', accepts: 'image' },
     });
 
-    expect(videoMissing(frames, 'first_last', ['firstFrame', 'endFrame'], {}, refs()))
+    expect(videoMissing(frames, 'first_last', ['firstFrame', 'endFrame'], {}, refs(), {}))
       .toEqual([['image'], ['end_image']]);
   });
 
@@ -109,18 +109,31 @@ describe('what a video run still needs', () => {
       [{ mode: 'ref', any_of: ['images', 'videos'] }],
     );
 
-    expect(videoMissing(grouped, 'ref', [], {}, refs())).toEqual([['images', 'videos']]);
-    expect(videoMissing(grouped, 'ref', [], {}, refs([], ['https://v.mp4']))).toEqual([]);
+    expect(videoMissing(grouped, 'ref', [], {}, refs(), {})).toEqual([['images', 'videos']]);
+    expect(videoMissing(grouped, 'ref', [], {}, refs([], ['https://v.mp4']), {})).toEqual([]);
+  });
+
+  it('counts the style pictures the run sends toward a group that names them (inner#2192)', () => {
+    const grouped = model(
+      {
+        images: { ...POOL, optional: true },
+        style_images: { ...POOL, type: 'list', fill: 'canvas', optional: true },
+      },
+      [{ mode: 'ref', any_of: ['images', 'style_images'] }],
+    );
+
+    expect(videoMissing(grouped, 'ref', [], {}, refs(), {})).toEqual([['images', 'style_images']]);
+    expect(videoMissing(grouped, 'ref', [], {}, refs(), { style_images: ['https://s.png'] })).toEqual([]);
   });
 
   it('reads the pool only in the modes the model gives it', () => {
     const pooled = model({ images: POOL });
 
-    expect(videoMissing(pooled, 'i2v', [], {}, refs())).toEqual([]);
+    expect(videoMissing(pooled, 'i2v', [], {}, refs(), {})).toEqual([]);
   });
 
   it('needs nothing when no model resolves', () => {
-    expect(videoMissing(undefined, 'ref', [], {}, refs())).toEqual([]);
+    expect(videoMissing(undefined, 'ref', [], {}, refs(), {})).toEqual([]);
   });
 });
 
