@@ -37,7 +37,6 @@ import type {
   AccountActivityKind,
   Attribution,
   ConsentRecord,
-  ConsentSnapshot,
   MessagePart,
   RequestFailedReason,
 } from "@breatic/shared";
@@ -3202,12 +3201,6 @@ export const uploadGrants = pgTable(
     }),
     /** Why the grant was voided, written with `voided_at`. */
     failureReason: text("failure_reason"),
-    /**
-     * The uploading browser's analytics consent when the ticket was issued
-     * (0097, inner#1442). Every finish path that writes `asset:uploaded`
-     * reads it here, since none of them has the browser's request.
-     */
-    analyticsConsent: jsonb("analytics_consent").$type<ConsentSnapshot>(),
     /**
      * How long the ticket itself stays usable. The same instant is signed into
      * the ticket, and the Worker checks that copy once, when the browser asks

@@ -91,7 +91,6 @@ function grantFor(assetSource: string | null): Record<string, unknown> {
     assetSource,
     generationTaskId: null,
     sceneLook: null,
-    analyticsConsent: null,
     createdAt: new Date(),
   };
 }

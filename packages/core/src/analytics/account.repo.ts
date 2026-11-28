@@ -99,8 +99,8 @@ export async function getAccountAttribution(userId: string): Promise<Attribution
 }
 
 /**
- * Remove what deleted accounts' consent left behind: the latest report, and
- * the consent snapshots on their upload tickets and ad uploads, and their own
+ * Remove what deleted accounts' consent left behind: the latest report, the
+ * consent snapshots on their ad uploads, and their own
  * provider keys and model choices (inner#1953); the snapshots on their orders
  * are dropped by the billing service, told in the same transaction through
  * the outbox (inner#1993 §3.4). Only accounts already soft-deleted are touched; when any id
@@ -117,7 +117,6 @@ export async function eraseAccountAnalytics(userIds: readonly string[]): Promise
     const notDeleted = ids.filter((id) => !found.has(id));
     if (notDeleted.length > 0) return { notDeleted };
     await tx.execute(sql`UPDATE users SET consent_seen = NULL WHERE id = ANY(${idArray})`);
-    await tx.execute(sql`UPDATE upload_grants SET analytics_consent = NULL WHERE user_id = ANY(${idArray}) AND analytics_consent IS NOT NULL`);
     await tx.execute(sql`
       UPDATE ads_conversion_uploads SET job = jsonb_set(job, '{browser}', 'null'::jsonb), updated_at = now()
       WHERE job->>'userId' = ANY(${`{${ids.join(",")}}`}::text[]) AND job->'browser' <> 'null'::jsonb`);
