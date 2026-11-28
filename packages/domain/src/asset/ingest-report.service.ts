@@ -46,9 +46,8 @@ import {
   NotFoundError,
   announceSpaceTasksVersion,
   publishUploadEnded,
-  reportCollaboratorFirstAction,
 } from "@breatic/core";
-import { canvasSpaceDocName, NO_CONSENT, t, threeDSpaceDocName, uprightKeyFor } from "@breatic/shared";
+import { canvasSpaceDocName, t, threeDSpaceDocName, uprightKeyFor } from "@breatic/shared";
 import type { NodeTaskResult, StudioAssetEntity, UprightCopy } from "@breatic/shared";
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
@@ -372,12 +371,6 @@ async function settleSceneUpload(
       payload: { fileUrl: outcome.asset.fileUrl, kind: outcome.asset.kind, model: { name: row.label } },
     });
     activityAppendFailed = !appended.ok;
-    if (appended.ok) {
-      await reportCollaboratorFirstAction(
-        { projectId: grant.projectId, userId: grant.userId, action: "asset" },
-        grant.analyticsConsent ?? NO_CONSENT,
-      );
-    }
   }
   const countsPublishFailed = await announceSpaceTasksVersion(threeDSpaceDocName(grant.projectId, row.spaceId)).then(() => false, () => true);
   return {
@@ -863,12 +856,6 @@ export async function applyIngestReport(
           : { fileUrl: asset.fileUrl, kind: asset.kind },
     });
     activityAppendFailed = !appended.ok;
-    if (appended.ok) {
-      await reportCollaboratorFirstAction(
-        { projectId: grant.projectId, userId: grant.userId, action: type === "asset:uploaded" ? "asset" : "generation" },
-        grant.analyticsConsent ?? NO_CONSENT,
-      );
-    }
   }
 
   const terminal = await settleUploadTerminal(grant.storageKey, { kind: "completed", assetId: asset.id });

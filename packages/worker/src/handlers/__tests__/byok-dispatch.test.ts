@@ -86,7 +86,6 @@ vi.mock("@breatic/core", () => ({
   // Product analytics (inner#1442) runs the job under its consent and reports
   // milestones; neither is what these cases are about.
   runWithConsent: (_consent: unknown, fn: () => unknown) => fn(),
-  reportCollaboratorFirstAction: vi.fn(async () => undefined),
   serverAnalyticsWanted: vi.fn(() => false),
   trackServerEvent: vi.fn(),
   projectsRepo: { findOwnerStudioId: vi.fn(async () => undefined) },

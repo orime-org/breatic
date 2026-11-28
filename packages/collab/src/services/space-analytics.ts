@@ -8,14 +8,7 @@
  * project, both put in scope with `runWithConsent` by the caller.
  */
 
-import {
-  logger,
-  projectsRepo,
-  reportCollaboratorFirstAction,
-  serverAnalyticsWanted,
-  trackServerEvent,
-} from "@breatic/core";
-import type { ProjectActivityType } from "@breatic/shared";
+import { logger, projectsRepo, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 
 /**
  * Send `space_created`.
@@ -49,19 +42,4 @@ export async function reportSpaceCreated(space: {
   } catch (err) {
     logger.warn({ err, projectId: space.projectId, spaceId: space.spaceId }, "space_created_report_failed");
   }
-}
-
-/**
- * Report a Space change as a collaboration action, when a person made it.
- * @param projectId - The project.
- * @param actorUserId - Who made it; null for a change the system made.
- * @param type - The activity written.
- */
-export async function reportSpaceAction(
-  projectId: string,
-  actorUserId: string | null | undefined,
-  type: ProjectActivityType,
-): Promise<void> {
-  if (!actorUserId || !type.startsWith("space:")) return;
-  await reportCollaboratorFirstAction({ projectId, userId: actorUserId, action: "space" });
 }

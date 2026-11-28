@@ -331,11 +331,6 @@ export {
   type AdsConversionName,
   type AdsUploadStatus,
 } from "@core/ads/ads-types.js";
-export {
-  collaborationActionOf,
-  reportCollaboratorFirstAction,
-  type CollaborationAction,
-} from "@core/analytics/collaboration.js";
 export { claimFirstMilestone, type FirstMilestone } from "@core/analytics/first-milestone.js";
 export {
   accountOnlyConsent,

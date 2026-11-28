@@ -64,23 +64,6 @@ export async function findOwnerStudioId(
 }
 
 /**
- * Reads who created a project and the studio it belongs to, for the
- * collaboration milestone (inner#1442 design §4.8).
- * @param projectId - Project to look up.
- * @returns Both, or undefined when no live project has that id.
- */
-export async function findCreatorAndStudio(
-  projectId: string,
-): Promise<{ createdByUserId: string; studioId: string } | undefined> {
-  const rows = await db
-    .select({ createdByUserId: projects.createdByUserId, studioId: projects.studioId })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
-    .limit(1);
-  return rows[0];
-}
-
-/**
  * Whether collab has already copied a duplicated Project's documents (inner#1706), so a lifecycle command delivered
  * again copies nothing and cannot overwrite what the user has since done in the copy.
  * @param projectId - The copy.

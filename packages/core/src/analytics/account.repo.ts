@@ -75,8 +75,8 @@ export async function adsAllowedFor(userId: string, browser: BrowserAdsSnapshot 
 }
 
 /**
- * The account's consent for an event no browser is behind (a renewal, a
- * collaboration conversion): its latest report.
+ * The account's consent for an event no browser is behind (a renewal): its
+ * latest report.
  * @param userId - The account.
  * @returns The snapshot; nothing for a missing or deleted account or one that never reported.
  */

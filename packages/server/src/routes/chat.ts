@@ -9,7 +9,7 @@
  * which replays the run's resumable stream (inner#1717).
  */
 
-import { accountActivityRepo, reportCollaboratorFirstAction, holdsOnlyStorableText, validate, AppError, getRedis, logger, getAgentConfig, NotFoundError, SpendCapReachedError, ValidationError } from "@breatic/core";
+import { accountActivityRepo, holdsOnlyStorableText, validate, AppError, getRedis, logger, getAgentConfig, NotFoundError, SpendCapReachedError, ValidationError } from "@breatic/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { randomUUID } from "node:crypto";
@@ -266,10 +266,6 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   // A turn needs a balance above zero to start (#296), on the payer's own key too (inner#1953). Payments off: no
   // check. Checked before an answer is taken, so a refused answer leaves the card waiting.
   await precheckAgentTurn(body.project_id, user.id, keys === undefined ? undefined : keyOwner);
-
-  // A message in the project's Agent chat is a collaboration action (inner#1442
-  // §4.8). Reported alongside the turn; it never rejects.
-  void reportCollaboratorFirstAction({ projectId: body.project_id, userId: user.id, action: "agent" });
 
   // A deployment with no upstream for the model, or none for the upstream a resumed turn stays on, refuses before
   // the card's answer is taken, saying what it is missing.

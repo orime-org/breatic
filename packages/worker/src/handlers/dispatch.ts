@@ -28,7 +28,7 @@ import { StillRunning } from "@worker/handlers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { announceSpaceTasksVersion, getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
-import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
+import { runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { accountKeyFailureIn, costsOf, type Cost, type KeySet } from "@breatic/provider";
 import { failureOutcome, keyOwnerOf, taskRepo, taskService, upstreamStepRepo, type MiniToolAnalysisJob, type MiniToolExecutionJob } from "@breatic/domain";
@@ -1398,10 +1398,7 @@ async function recordGenerationActivity(args: {
       });
       changed = inserted !== null;
     }
-    if (changed) {
-      await publishActivityNew(args.projectId);
-      await reportCollaboratorFirstAction({ projectId: args.projectId, userId: args.userId, action: "generation" });
-    }
+    if (changed) await publishActivityNew(args.projectId);
   } catch (err) {
     logger.warn(
       { err, taskId: args.taskId, projectId: args.projectId },

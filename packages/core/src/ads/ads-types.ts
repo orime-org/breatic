@@ -5,7 +5,7 @@ import { z } from "zod";
 import { BrowserAdsSnapshotSchema, type AdClick, type BrowserAdsSnapshot } from "@breatic/shared";
 
 /** The conversions the product reports, each a conversion action in Google Ads. */
-export const ADS_CONVERSIONS = ["signup", "first_project", "collaboration", "credit_purchase", "subscription"] as const;
+export const ADS_CONVERSIONS = ["signup", "first_project", "credit_purchase", "subscription"] as const;
 export type AdsConversionName = (typeof ADS_CONVERSIONS)[number];
 
 /** Where an upload stands (inner#1442 design §4.9 state table). */

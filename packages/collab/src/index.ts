@@ -31,7 +31,6 @@ import {
   runGracefulShutdown,
   InfraNotReadyError,
   flushServerAnalytics,
-  adsConversionState,
   initServerAnalytics,
   taskEventsStreamKey,
   lifecycleStreamKey,
@@ -71,7 +70,6 @@ const analytics = initServerAnalytics({
   },
 });
 if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
-if (adsConversionState() === "invalid") logger.error({}, "google_ads_config_invalid");
 
 /**
  * Deadline (ms) for the concurrent teardown drains.

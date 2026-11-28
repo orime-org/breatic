@@ -18,7 +18,6 @@ vi.mock("@breatic/core", () => ({
   serverAnalyticsWanted: h.serverAnalyticsWanted,
   trackServerEvent: h.trackServerEvent,
   projectsRepo: { findOwnerStudioId: h.findOwnerStudioId },
-  reportCollaboratorFirstAction: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
