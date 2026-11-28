@@ -36,7 +36,12 @@ import { createQueue, defaultJobOpts } from "@core/infra/queue.js";
 export const ADS_CONVERSION_QUEUE = "ads-conversion";
 
 const credentialsSchema = z.object({ client_email: z.string().min(1), private_key: z.string().min(1) }).passthrough();
-const actionsSchema = z.record(z.enum(ADS_CONVERSIONS), z.string().regex(/^\d+$/));
+const actionId = z.string().regex(/^\d+$/);
+// Every known conversion is optional and other keys are ignored, so a deployment that lists only some, or still
+// lists a conversion the product dropped, keeps uploading the ones it names.
+const actionsSchema = z.object(
+  Object.fromEntries(ADS_CONVERSIONS.map((name) => [name, actionId.optional()])) as Record<AdsConversionName, z.ZodOptional<typeof actionId>>,
+);
 
 /** The parsed deployment configuration the worker uploads with. */
 export interface AdsConversionConfig {
@@ -45,7 +50,7 @@ export interface AdsConversionConfig {
   readonly credentials: z.infer<typeof credentialsSchema>;
 }
 
-let parsed: { config: AdsConversionConfig | null; state: "on" | "off" | "invalid" } | undefined;
+let parsed: { config: AdsConversionConfig | null; state: "on" | "off" | "invalid"; ignoredKeys: string[] } | undefined;
 
 /**
  * Read the ad conversion configuration once.
@@ -57,16 +62,19 @@ function readConfig(): NonNullable<typeof parsed> {
   const rawActions = env.GOOGLE_ADS_CONVERSION_ACTIONS;
   const rawCredentials = env.GOOGLE_DATA_MANAGER_CREDENTIALS;
   if (customerId === "" && rawActions === "" && rawCredentials === "") {
-    parsed = { config: null, state: "off" };
+    parsed = { config: null, state: "off", ignoredKeys: [] };
     return parsed;
   }
   try {
-    const actions = actionsSchema.parse(JSON.parse(rawActions));
+    const rawObject: unknown = JSON.parse(rawActions);
+    const parsedActions = actionsSchema.parse(rawObject);
+    const ignoredKeys = Object.keys(rawObject as object).filter((key) => !(ADS_CONVERSIONS as readonly string[]).includes(key));
+    const actions = Object.fromEntries(Object.entries(parsedActions).filter(([, id]) => id !== undefined)) as Partial<Record<AdsConversionName, string>>;
     const credentials = credentialsSchema.parse(JSON.parse(rawCredentials));
     if (!/^\d{10}$/.test(customerId)) throw new Error("customer id");
-    parsed = { config: { customerId, actions, credentials }, state: "on" };
+    parsed = { config: { customerId, actions, credentials }, state: "on", ignoredKeys };
   } catch {
-    parsed = { config: null, state: "invalid" };
+    parsed = { config: null, state: "invalid", ignoredKeys: [] };
   }
   return parsed;
 }
@@ -77,6 +85,15 @@ function readConfig(): NonNullable<typeof parsed> {
  */
 export function adsConversionState(): "on" | "off" | "invalid" {
   return readConfig().state;
+}
+
+/**
+ * Keys of `GOOGLE_ADS_CONVERSION_ACTIONS` that name no conversion the product
+ * reports, such as the dropped `collaboration`, for the service entry to log.
+ * @returns The ignored keys; empty when ad conversions are off or malformed.
+ */
+export function adsConversionIgnoredKeys(): string[] {
+  return readConfig().ignoredKeys;
 }
 
 /**
@@ -236,5 +253,5 @@ export async function unscheduleAdsUploadSweep(): Promise<void> {
  * @param config - The configuration to use, null for off.
  */
 export function setAdsConversionConfigForTest(config: AdsConversionConfig | null | undefined): void {
-  parsed = config === undefined ? undefined : { config, state: config ? "on" : "off" };
+  parsed = config === undefined ? undefined : { config, state: config ? "on" : "off", ignoredKeys: [] };
 }

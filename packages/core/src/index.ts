@@ -311,6 +311,7 @@ export {
   ADS_CONVERSION_QUEUE,
   adsConversionConfig,
   adsConversionState,
+  adsConversionIgnoredKeys,
   enqueueAdsConversion,
   requeueStaleAdsUploads,
   unscheduleAdsUploadSweep,
