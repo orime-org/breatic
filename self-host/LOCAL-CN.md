@@ -73,7 +73,7 @@ REDIS_KEY_PREFIX=personal
 ```dotenv
 DATABASE_URL=postgres://breatic:breatic@postgres:5432/breatic
 YJS_DATABASE_URL=postgres://breatic:breatic@postgres:5432/breatic_yjs
-COLLAB_DATABASE_URL=postgres://breatic_collab:<你的密码>@postgres:5432/breatic
+COLLAB_DATABASE_URL=postgres://breatic_collab:<your password>@postgres:5432/breatic
 REDIS_URL=redis://redis:6379/0
 REDIS_QUEUE_URL=redis://redis:6379/1
 REDIS_STREAM_URL=redis://redis:6379/2
