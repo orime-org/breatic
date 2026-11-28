@@ -5,12 +5,12 @@ import { describe, expect, it } from "vitest";
 import { ANALYTICS_EVENT_NAMES, sanitizeEventProperties } from "../analytics/events.js";
 
 describe("ANALYTICS_EVENT_NAMES", () => {
-  it("lists the issue's eighteen events and the two failure events", () => {
+  it("lists the issue's seventeen remaining events and the two failure events", () => {
     expect([...ANALYTICS_EVENT_NAMES].sort()).toEqual(
       [
         "landing_viewed", "signup_started", "signup_completed", "signup_failed", "login_completed",
         "pricing_viewed", "project_created", "space_created", "first_agent_action_completed",
-        "first_generation_completed", "member_invited", "invitation_accepted", "collaborator_first_action",
+        "first_generation_completed", "member_invited", "invitation_accepted",
         "active_project_session", "credit_purchase_completed", "credit_purchase_failed",
         "subscription_started", "subscription_renewed", "subscription_cancelled", "refund_completed",
       ].sort(),

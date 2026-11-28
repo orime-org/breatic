@@ -1002,6 +1002,20 @@
       "when": 1795761263121,
       "tag": "0142_influencers",
       "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1795831786067,
+      "tag": "0143_collab_writer_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1795831786312,
+      "tag": "0144_upload_grants_drop_analytics_consent",
+      "breakpoints": true
     }
   ]
 }

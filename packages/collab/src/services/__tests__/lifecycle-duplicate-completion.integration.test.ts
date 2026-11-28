@@ -17,7 +17,8 @@ import { randomUUID } from "node:crypto";
 import fc from "fast-check";
 import * as Y from "yjs";
 
-import { initCore, rawPg as sql, writeSpaceEntry } from "@breatic/core";
+import { initCore, writeSpaceEntry } from "@breatic/core";
+import { adminSql as sql } from "@collab/__tests__/helpers/admin-sql.js";
 import { projectMetaDocName, spaceContentDocName } from "@breatic/shared";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import { handleLifecycleEvent } from "@collab/services/lifecycle-listener.js";

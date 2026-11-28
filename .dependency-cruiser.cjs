@@ -160,6 +160,16 @@ module.exports = {
       to: { path: "@breatic/domain|^@domain/|^packages/domain/(src|dist)" },
     },
     {
+      name: "collab-no-bullmq",
+      comment:
+        "collab never opens a queue (inner#2043): core's queue factories refuse " +
+        "once its entry called forbidQueues(), and this closes the other way, a " +
+        "collab module building a BullMQ queue, worker or listener itself.",
+      severity: "error",
+      from: { path: "^packages/collab/src/" },
+      to: { path: "node_modules/bullmq/|^bullmq($|/)" },
+    },
+    {
       name: "service-no-hono",
       comment:
         "Services never import hono (AGENTS.md#backend-package-boundaries): a domain service layer file " +

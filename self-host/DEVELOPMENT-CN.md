@@ -63,6 +63,7 @@ VITE_DEV_PORT=8000
 ALLOWED_ORIGINS=http://localhost:8000
 DATABASE_URL=postgres://breatic:breatic@localhost:5432/breatic
 YJS_DATABASE_URL=postgres://breatic:breatic@localhost:5432/breatic_yjs
+COLLAB_DATABASE_URL=postgres://breatic_collab:breatic_collab@localhost:5432/breatic
 REDIS_URL=redis://localhost:6379/0
 REDIS_QUEUE_URL=redis://localhost:6379/1
 REDIS_STREAM_URL=redis://localhost:6379/2
@@ -206,7 +207,7 @@ pnpm db:migrate
 pnpm db:check-watermark
 ```
 
-`pnpm db:migrate` 应先报告业务数据库迁移完成，再报告 Yjs 迁移完成，最终退出成功；水位检查也应退出成功。若只执行 `pnpm install` 就迁移，会因为尚无 `packages/core/dist/index.js` 而失败。
+`pnpm db:migrate` 应先报告业务数据库迁移完成，再报告 Yjs 迁移完成，再报告 `✓ collab login ready`，最终退出成功。最后一步按 `COLLAB_DATABASE_URL` 建好 collab 自己的数据库账号，这个账号只能写 collab 负责的几张表；没有它 collab 不会启动。水位检查也应退出成功。若只执行 `pnpm install` 就迁移，会因为尚无 `packages/core/dist/index.js` 而失败。
 
 这是新数据库的步骤。已有历史数据的升级应先备份；如果检查涉及历史迁移时间戳问题，先运行 `pnpm db:journal-repair` 阅读报告，再决定修复，不要直接对已有数据库试改迁移记录。
 

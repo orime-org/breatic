@@ -4,7 +4,8 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Server } from "@hocuspocus/server";
-import { initCore, loadLocales, rawPg as sql } from "@breatic/core";
+import { initCore, loadLocales } from "@breatic/core";
+import { adminSql as sql } from "./helpers/admin-sql.js";
 import { parseDocName, projectMetaDocName, SpaceRpcRequestSchema } from "@breatic/shared";
 import type { SpaceRpcRequest, SpaceRpcResponse } from "@breatic/shared";
 import { handleSpaceRpc } from "@collab/services/space-rpc.js";

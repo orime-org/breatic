@@ -21,7 +21,7 @@
 
 import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db, uploadGrants, type DbTx } from "@breatic/core";
-import { focusImageTicketSchema, type ConsentSnapshot, type FocusImageTicket, type StudioAssetEntity } from "@breatic/shared";
+import { focusImageTicketSchema, type FocusImageTicket, type StudioAssetEntity } from "@breatic/shared";
 import { z } from "zod";
 
 /**
@@ -90,8 +90,6 @@ export interface UploadGrant {
   generationTaskId: string | null;
   /** The 3D object part a picture upload is for, and the picture it held at the start (inner#1693). */
   sceneLook: SceneLookTarget | null;
-  /** The uploading browser's analytics consent when the ticket was issued (inner#1442 §4.4.5). */
-  analyticsConsent: ConsentSnapshot | null;
   createdAt: Date;
 }
 
@@ -158,7 +156,6 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     sceneLook: row.sceneObjectId !== null && row.scenePart !== null
       ? { objectId: row.sceneObjectId, part: row.scenePart, startMap: row.sceneStartMap }
       : null,
-    analyticsConsent: row.analyticsConsent,
     createdAt: row.createdAt,
   };
 }
@@ -188,8 +185,6 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  * @param input.context.generationTaskId - The generation that produced these
  *   bytes, when one did.
  * @param input.context.sceneLook - The 3D object part a picture upload is for.
- * @param input.analyticsConsent - The uploading browser's analytics consent;
- *   absent reads as no consent.
  * @param tx - Optional enclosing upload admission transaction.
  * @returns The persisted grant.
  * @throws {Error} When the storage key was already issued (UNIQUE violation).
@@ -214,7 +209,6 @@ export async function issueGrant(input: {
     generationTaskId?: string | null;
     sceneLook?: SceneLookTarget | null;
   };
-  analyticsConsent?: ConsentSnapshot;
 }, tx?: DbTx): Promise<UploadGrant> {
   const rows = await (tx ?? db)
     .insert(uploadGrants)
@@ -238,7 +232,6 @@ export async function issueGrant(input: {
       sceneObjectId: input.context.sceneLook?.objectId ?? null,
       scenePart: input.context.sceneLook?.part ?? null,
       sceneStartMap: input.context.sceneLook?.startMap ?? null,
-      analyticsConsent: input.analyticsConsent ?? null,
     })
     .returning();
   return toEntity(rows[0]!);

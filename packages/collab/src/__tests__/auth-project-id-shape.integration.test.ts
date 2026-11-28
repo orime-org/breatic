@@ -29,7 +29,8 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   }),
 }));
 
-import { initCore, getRedis, rawPg as sql, sessionCookieName, setSession } from "@breatic/core";
+import { initCore, getRedis, sessionCookieName, setSession } from "@breatic/core";
+import { adminSql as sql } from "./helpers/admin-sql.js";
 import { createAuthHook } from "@collab/hooks/auth.js";
 import type { DocumentRegistry } from "@collab/services/project-space-list.js";
 

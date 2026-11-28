@@ -24,8 +24,8 @@ vi.mock("@core/db/client.js", () => ({ pingDb: vi.fn(), yjsRawPg: yjsRawPgStub }
 vi.mock("@core/infra/redis.js", () => ({ pingRedis: vi.fn() }));
 vi.mock("@core/config/env.js", () => ({
   env: {
-    DATABASE_URL: "postgres://test/db",
-    YJS_DATABASE_URL: "postgres://test/yjs",
+    DATABASE_URL: "postgres://app:main-secret@test/db",
+    YJS_DATABASE_URL: "postgres://app:yjs-secret@test/yjs",
   },
 }));
 
@@ -79,6 +79,23 @@ describe("checkInfraReady", () => {
     expect((err as InfraNotReadyError).component).toBe("yjs PostgreSQL");
     // yjs PG fails before the Redis loop, so no Redis probe is attempted.
     expect(pingRedisMock).not.toHaveBeenCalled();
+  });
+
+  it("names the PostgreSQL URL without its password when the probe fails", async () => {
+    pingDbMock.mockRejectedValue(new Error("connection refused"));
+    const err = (await checkInfraReady({ general: client("g") }).catch((e) => e)) as InfraNotReadyError;
+    expect(err.hint).toContain("postgres://app:***@test/db");
+    expect(err.hint).not.toContain("main-secret");
+  });
+
+  it("names the yjs PostgreSQL URL without its password when the probe fails", async () => {
+    pingDbMock.mockImplementation(async (c?: Sql) => {
+      if (c === yjsRawPg) throw new Error("yjs connection refused");
+      return true;
+    });
+    const err = (await checkInfraReady({ general: client("g") }).catch((e) => e)) as InfraNotReadyError;
+    expect(err.hint).toContain("postgres://app:***@test/yjs");
+    expect(err.hint).not.toContain("yjs-secret");
   });
 
   it("tags the failing Redis client by its role name", async () => {

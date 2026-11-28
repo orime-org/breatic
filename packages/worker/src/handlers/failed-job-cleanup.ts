@@ -31,8 +31,7 @@
  * outcome (the row marked failed, its counts republished) applied by the collab
  * task-listener; re-applying it to an already-idle node is harmless.
  */
-import { reportCollaboratorFirstAction } from "@breatic/core";
-import { NO_CONSENT, type TaskFailureReason } from "@breatic/shared";
+import type { TaskFailureReason } from "@breatic/shared";
 import type { getStreamRedis } from "@breatic/core";
 import { logger, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import {
@@ -262,10 +261,6 @@ export async function cleanupFailedJobNodes(
         },
       });
       await publishActivityNew(projectId);
-      await reportCollaboratorFirstAction(
-        { projectId, userId: task.userId, action: "generation" },
-        job.data.analyticsConsent ?? NO_CONSENT,
-      );
     } catch (err) {
       // Best-effort activity; the node re-record + write-back below is critical.
       logger.error({ err, taskId: job.data.taskId, projectId }, "crash_net_success_activity_failed");
@@ -332,13 +327,7 @@ export async function cleanupFailedJobNodes(
         errorMessage: `Task failed: ${reason}`,
       },
     });
-    if (inserted) {
-      await publishActivityNew(projectId);
-      await reportCollaboratorFirstAction(
-        { projectId, userId: job.data.userId, action: "generation" },
-        job.data.analyticsConsent ?? NO_CONSENT,
-      );
-    }
+    if (inserted) await publishActivityNew(projectId);
   } catch (err) {
     // The node write-backs below are the critical part, so this moves on.
     // Nothing above catches this, so the reason is written here or nowhere.

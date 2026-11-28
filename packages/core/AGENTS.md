@@ -16,6 +16,10 @@ The backend shared kernel. These rules apply when you change anything under `pac
 
 **There are two databases: the product database (`db/schema.ts`, `db/migrations/`, clients `db` / `rawPg`) and the Yjs database (`db/yjs-schema.ts`, `db/migrations-yjs/` with its own journal, clients `yjsDb` / `yjsRawPg`, URL `YJS_DATABASE_URL`).** Every migration belongs to exactly one of them, so name which one, and pass `--yjs` to `pnpm db:journal-add` for the Yjs database.
 
+### Collab's write scope
+
+**collab logs in as its own login holding `collab_writer` (migration `0143`), and its write list is `COLLAB_WRITE_SCOPE` in `src/db/collab-write-scope.ts`; a change to what collab writes changes the grants in a migration and that list in the same change.** collab compares its grants with the list at startup (`checkWriteScope`) and exits on any difference, and its integration suite runs every collab write under such a login. Check: does this migration grant `collab_writer` something, or create a `SECURITY DEFINER` function? Then collab will refuse to start until the list matches or the function is gone.
+
 ### Migrations are hand-written
 
 **Since `0018` every migration is a hand-written `NNNN_name.sql`; never run `drizzle-kit generate`.** drizzle-kit's snapshot is frozen at `0017`, so generating diffs `schema.ts` against it and emits every later change again as new.

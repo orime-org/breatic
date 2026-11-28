@@ -64,23 +64,6 @@ export async function findOwnerStudioId(
 }
 
 /**
- * Reads who created a project and the studio it belongs to, for the
- * collaboration milestone (inner#1442 design §4.8).
- * @param projectId - Project to look up.
- * @returns Both, or undefined when no live project has that id.
- */
-export async function findCreatorAndStudio(
-  projectId: string,
-): Promise<{ createdByUserId: string; studioId: string } | undefined> {
-  const rows = await db
-    .select({ createdByUserId: projects.createdByUserId, studioId: projects.studioId })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
-    .limit(1);
-  return rows[0];
-}
-
-/**
  * Whether collab has already copied a duplicated Project's documents (inner#1706), so a lifecycle command delivered
  * again copies nothing and cannot overwrite what the user has since done in the copy.
  * @param projectId - The copy.
@@ -95,12 +78,14 @@ export async function isDuplicateCompleted(projectId: string): Promise<boolean> 
 
 /**
  * Record that collab has copied a duplicated Project's documents, which is when it opens. Only the first record
- * counts.
+ * counts. Written by hand because drizzle's `update` also sets `updated_at` through its `$onUpdate`, a column
+ * collab's database account may not write (`COLLAB_WRITE_SCOPE`).
  * @param projectId - The copy.
  * @returns Nothing.
  * @throws {Error} When the database write fails.
  */
 export async function markDuplicateCompleted(projectId: string): Promise<void> {
-  await db.update(projects).set({ duplicateCompletedAt: sql`now()` })
-    .where(and(eq(projects.id, projectId), isNull(projects.duplicateCompletedAt)));
+  await db.execute(sql`
+    UPDATE projects SET duplicate_completed_at = now()
+    WHERE id = ${projectId} AND duplicate_completed_at IS NULL`);
 }

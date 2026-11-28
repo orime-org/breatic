@@ -18,7 +18,8 @@ import * as Y from "yjs";
 import * as encoding from "lib0/encoding";
 import { ExecutionError, Redlock, type ExecutionStats } from "@sesamecare-oss/redlock";
 
-import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/core";
+import { createRedisClient, initCore, schema, type Redis } from "@breatic/core";
+import { adminDb as db } from "@collab/__tests__/helpers/admin-sql.js";
 import { eq } from "drizzle-orm";
 import {
   CANVAS_NODES_KEY, documentBodyFragment, documentSpaceDocName, FOCUS_IMAGE_UPLOAD_EVENT_TYPE, MAX_FOCUS_ENTRIES, SCENE_FORMAT_VERSION,

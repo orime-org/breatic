@@ -11,6 +11,7 @@ import { createCollabServer } from "@collab/hocuspocus.js";
 import { collabActivityRows, connectCollabActivity, rejectCollabActivity, seedCollabActivity } from "./helpers/account-activity-fixture.js";
 import type { ActivityClient, ActivityCollabFixture } from "./helpers/account-activity-fixture.js";
 import { statelessFrame, syncFrame, SYNC, WIRE, waitFor } from "./helpers/live-hocuspocus.js";
+import { adminSql as sql } from "./helpers/admin-sql.js";
 
 core.initCore(process.env);
 core.loadLocales();
@@ -99,9 +100,9 @@ function mutation(client: ActivityClient): Uint8Array {
  * @throws {Error} When real PG or Redis writes fail.
  */
 async function viewer(fixture: ActivityCollabFixture): Promise<ActivityCollabFixture> {
-  const [user] = await core.rawPg<{ id: string }[]>`INSERT INTO users(email,email_verified) VALUES(${`assembly-viewer-${randomUUID()}@example.test`},true) RETURNING id`;
-  await core.rawPg`INSERT INTO studio_members(studio_id,user_id,role) SELECT studio_id,${user!.id},'guest' FROM projects WHERE id=${fixture.projectId}`;
-  await core.rawPg`INSERT INTO project_members(project_id,user_id,role) VALUES(${fixture.projectId},${user!.id},'viewer')`;
+  const [user] = await sql<{ id: string }[]>`INSERT INTO users(email,email_verified) VALUES(${`assembly-viewer-${randomUUID()}@example.test`},true) RETURNING id`;
+  await sql`INSERT INTO studio_members(studio_id,user_id,role) SELECT studio_id,${user!.id},'guest' FROM projects WHERE id=${fixture.projectId}`;
+  await sql`INSERT INTO project_members(project_id,user_id,role) VALUES(${fixture.projectId},${user!.id},'viewer')`;
   const token = randomBytes(24).toString("hex");
   await core.setSession(core.getRedis(), token, user!.id);
   return { ...fixture, userId: user!.id, cookie: `${core.sessionCookieName()}=${token}` };

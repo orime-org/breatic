@@ -29,10 +29,10 @@ import {
   checkInfraReady,
   startHealthServer,
   runGracefulShutdown,
-  closeQueues,
   InfraNotReadyError,
+  checkWriteScope,
+  COLLAB_WRITE_SCOPE,
   flushServerAnalytics,
-  adsConversionState,
   initServerAnalytics,
   taskEventsStreamKey,
   lifecycleStreamKey,
@@ -43,6 +43,7 @@ import {
   type MemberChangeListener,
 } from "@breatic/core";
 import { getTimelineConfig, onDatabaseWaitTimeout, publishSceneLookSettled } from "@breatic/core";
+import { collabPostgresHint } from "@collab/collab-core-env.js";
 import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
@@ -72,7 +73,6 @@ const analytics = initServerAnalytics({
   },
 });
 if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
-if (adsConversionState() === "invalid") logger.error({}, "google_ads_config_invalid");
 
 /**
  * Deadline (ms) for the concurrent teardown drains.
@@ -183,12 +183,25 @@ async function main(): Promise<void> {
   } catch (err) {
     if (err instanceof InfraNotReadyError) {
       logger.error(
-        { component: err.component, hint: err.hint, err: err.cause },
+        {
+          component: err.component,
+          hint: err.component === "PostgreSQL" ? collabPostgresHint(env.DATABASE_URL) : err.hint,
+          err: err.cause,
+        },
         "infra_not_ready",
       );
     } else {
       logger.error({ err }, "infra_check_unexpected_error");
     }
+    await flushLogger();
+    await exitProcess(1);
+  }
+
+  // The connection must hold exactly collab's write scope: a privilege too
+  // many lets collab write business data, one too few fails its own writes.
+  const violations = await checkWriteScope(COLLAB_WRITE_SCOPE);
+  if (violations.length > 0) {
+    logger.error({ violations }, "collab_write_scope_mismatch");
     await flushLogger();
     await exitProcess(1);
   }
@@ -524,8 +537,6 @@ async function main(): Promise<void> {
         () => seatHandover.stop(),
         () => controlRedis.quit(),
         () => closeCollabRedis(),
-        // The `timeline` queue a Timeline store enqueues landed executions on (inner#1711).
-        () => closeQueues(),
       ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });

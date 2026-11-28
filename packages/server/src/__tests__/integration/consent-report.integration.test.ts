@@ -212,22 +212,12 @@ describe("adsAllowedFor with a browser", () => {
 
 describe("eraseAccountAnalytics", () => {
   /**
-   * An account with a report, and consent kept on an upload ticket and an
-   * ad upload.
+   * An account with a report, and consent kept on an ad upload.
    * @returns Its id.
    */
   async function accountWithConsent(): Promise<string> {
     const id = await insertUser();
     await recordReportedConsent(id, { analytics: true, ads: true });
-    const [studio] = await sql<{ id: string }[]>`
-      INSERT INTO studios (created_by_user_id, slug, type, name)
-      VALUES (${id}, ${`erase-${crypto.randomUUID().slice(0, 8)}`}, 'team', 'Team') RETURNING id
-    `;
-    await sql`
-      INSERT INTO upload_grants (user_id, studio_id, storage_key, declared_size, expires_at, analytics_consent)
-      VALUES (${id}, ${studio!.id}, ${`k/${crypto.randomUUID()}`}, 1, now() + interval '1 hour',
-              ${sql.json({ analytics: true, ads: true })})
-    `;
     const job = { userId: id, browser: { consent: true } };
     await sql`
       INSERT INTO ads_conversion_uploads (conversion, transaction_id, status, job)
@@ -249,11 +239,17 @@ describe("eraseAccountAnalytics", () => {
     await sql`UPDATE users SET deleted_at = now() WHERE id = ${id}`;
     expect(await eraseAccountAnalytics([id])).toEqual({ notDeleted: [] });
     expect(await stored(id)).toBeNull();
-    const [grant] = await sql<{ c: unknown }[]>`SELECT analytics_consent AS c FROM upload_grants WHERE user_id = ${id}`;
-    expect(grant!.c).toBeNull();
     const [upload] = await sql<{ job: Record<string, unknown> }[]>`
       SELECT job FROM ads_conversion_uploads WHERE transaction_id = ${`signup:${id}`}
     `;
     expect(upload!.job.browser).toBeNull();
+  });
+
+  it("has no consent left on upload tickets to clear, because they no longer keep one", async () => {
+    const rows = await sql`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'upload_grants' AND column_name = 'analytics_consent'
+    `;
+    expect(rows).toHaveLength(0);
   });
 });

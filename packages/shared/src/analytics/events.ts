@@ -33,7 +33,6 @@ const EVENT_PROPERTIES = {
   first_generation_completed: { studio_id: "string", project_id: "string", kind: "string" },
   member_invited: { studio_id: "string", project_id: "string", scope: "string", role: "string", invitation_id: "string" },
   invitation_accepted: { studio_id: "string", project_id: "string", scope: "string", role: "string", invitation_id: "string" },
-  collaborator_first_action: { studio_id: "string", project_id: "string", action: "string" },
   active_project_session: { studio_id: "string", project_id: "string" },
   credit_purchase_completed: { credits: "number", amount_cents: "number", currency: "string" },
   credit_purchase_failed: { error_code: "string" },

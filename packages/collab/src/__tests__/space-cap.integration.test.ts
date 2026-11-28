@@ -17,7 +17,8 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
 import * as Y from "yjs";
 
-import { initCore, createRedisClient, getCollabRedis, rawPg as sql, writeSpaceEntry } from "@breatic/core";
+import { initCore, createRedisClient, getCollabRedis, writeSpaceEntry } from "@breatic/core";
+import { adminSql as sql } from "./helpers/admin-sql.js";
 import {
   MAX_SPACES_PER_PROJECT,
   projectMetaDocName,

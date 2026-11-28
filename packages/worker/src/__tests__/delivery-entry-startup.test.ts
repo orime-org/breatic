@@ -21,7 +21,7 @@ vi.mock("@worker/sentry.js", () => ({ initSentry: () => "disabled", exitProcess:
 vi.mock("@breatic/core", async (original) => ({ ...await original<typeof coreModule>(),
   env: { WORKER_HEALTH_PORT: 19101, AMPLITUDE_API_KEY: undefined },
   initLogger: vi.fn(), loadLocales: vi.fn(), getAgentConfig: () => ({}), assertKnownQueues: vi.fn(),
-  initServerAnalytics: () => "disabled", adsConversionState: () => "disabled", adsConversionConfig: () => null,
+  initServerAnalytics: () => "disabled", adsConversionState: () => "disabled", adsConversionIgnoredKeys: () => [], adsConversionConfig: () => null,
   scheduleAdsUploadSweep: h.sweep, unscheduleAdsUploadSweep: h.sweep,
   installDeadlineBoundDispatcher: vi.fn(), checkInfraReady: vi.fn().mockResolvedValue(undefined),
   getRedis: () => ({ on: vi.fn() }), getQueueRedis: () => ({ on: vi.fn() }), getStreamRedis: () => ({}),

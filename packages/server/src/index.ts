@@ -19,6 +19,7 @@ import {
   getAgentConfig,
   onDatabaseWaitTimeout,
   adsConversionState,
+  adsConversionIgnoredKeys,
   closeDb,
   flushServerAnalytics,
   initServerAnalytics,
@@ -71,6 +72,8 @@ const analytics = initServerAnalytics({
 });
 if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
 if (adsConversionState() === "invalid") logger.error({}, "google_ads_config_invalid");
+const ignoredAdsKeys = adsConversionIgnoredKeys();
+if (ignoredAdsKeys.length > 0) logger.warn({ keys: ignoredAdsKeys }, "google_ads_config_unknown_conversion");
 
 // Route the AI SDK's warnings into our logger. Without this the SDK writes
 // them to console, and our logs are JSON on disk — console output lands

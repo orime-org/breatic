@@ -20,5 +20,9 @@ declare module "vitest" {
     REDIS_QUEUE_URL: string;
     REDIS_STREAM_URL: string;
     REDIS_COLLAB_URL: string;
+    /** collab's own login, used only by the code paths collab runs normally. */
+    COLLAB_DATABASE_URL: string;
+    /** A second login holding the same role, for tests that write out of scope on purpose. */
+    COLLAB_PROBE_DATABASE_URL: string;
   }
 }

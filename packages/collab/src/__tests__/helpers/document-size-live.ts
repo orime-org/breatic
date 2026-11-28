@@ -36,6 +36,7 @@ import WebSocket from "ws";
 import * as Y from "yjs";
 
 import type { ActivityCollabFixture } from "./account-activity-fixture.js";
+import { adminSql } from "./admin-sql.js";
 import { authFrame, statelessFrame, SYNC, syncFrame, waitFor, WIRE } from "./live-hocuspocus.js";
 
 /** One decoded server → client frame. */
@@ -449,9 +450,9 @@ export function documentOf(fixture: ActivityCollabFixture): string {
  * @returns The member's fixture.
  */
 export async function member(fixture: ActivityCollabFixture, role: "editor" | "viewer"): Promise<ActivityCollabFixture> {
-  const [user] = await core.rawPg<{ id: string }[]>`INSERT INTO users(email,email_verified) VALUES(${`size-${role}-${randomUUID()}@example.test`},true) RETURNING id`;
-  await core.rawPg`INSERT INTO studio_members(studio_id,user_id,role) SELECT studio_id,${user!.id},'guest' FROM projects WHERE id=${fixture.projectId}`;
-  await core.rawPg`INSERT INTO project_members(project_id,user_id,role) VALUES(${fixture.projectId},${user!.id},${role})`;
+  const [user] = await adminSql<{ id: string }[]>`INSERT INTO users(email,email_verified) VALUES(${`size-${role}-${randomUUID()}@example.test`},true) RETURNING id`;
+  await adminSql`INSERT INTO studio_members(studio_id,user_id,role) SELECT studio_id,${user!.id},'guest' FROM projects WHERE id=${fixture.projectId}`;
+  await adminSql`INSERT INTO project_members(project_id,user_id,role) VALUES(${fixture.projectId},${user!.id},${role})`;
   const token = randomBytes(24).toString("hex");
   await core.setSession(core.getRedis(), token, user!.id);
   return { ...fixture, userId: user!.id, cookie: `${core.sessionCookieName()}=${token}` };

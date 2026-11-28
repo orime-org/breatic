@@ -38,6 +38,7 @@ import {
   installDeadlineBoundDispatcher,
   flushServerAnalytics,
   adsConversionState,
+  adsConversionIgnoredKeys,
   initServerAnalytics,
   ADS_CONVERSION_QUEUE,
   scheduleAdsUploadSweep,
@@ -83,6 +84,8 @@ const analytics = initServerAnalytics({
 });
 if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
 if (adsConversionState() === "invalid") logger.error({}, "google_ads_config_invalid");
+const ignoredAdsKeys = adsConversionIgnoredKeys();
+if (ignoredAdsKeys.length > 0) logger.warn({ keys: ignoredAdsKeys }, "google_ads_config_unknown_conversion");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
 // back when no catalog is loaded, so without this a failed node reads a
 // message key where a sentence belongs.

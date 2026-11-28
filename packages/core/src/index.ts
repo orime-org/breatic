@@ -28,6 +28,9 @@ export type { DbTx, YjsDbTx } from "@core/db/client.js";
 export { runMigrations, runYjsMigrations } from "@core/db/migrate.js";
 export type { LegacyGiftConfirmation } from "@core/db/legacy-gift-migration.js";
 export { createTestDb, migrateDatabase, migrateYjsDatabase } from "@core/db/test-support.js";
+export { ensureCollabLogin } from "@core/db/collab-login.js";
+export { COLLAB_WRITE_SCOPE, type CollabWriteScope } from "@core/db/collab-write-scope.js";
+export { checkWriteScope } from "@core/infra/write-scope-check.js";
 export type { TestDb } from "@core/db/test-support.js";
 export * as schema from "@core/db/schema.js";
 // Yjs document store schema (separate database — see `yjsDb`). Exported
@@ -128,9 +131,9 @@ export {
   installDeadlineBoundDispatcher,
 } from "@core/infra/idle-socket-dispatcher.js";
 export type { GracefulShutdownDeps } from "@core/infra/graceful-shutdown.js";
-export { checkInfraReady } from "@core/infra/connectivity-check.js";
-export { InfraNotReadyError } from "@core/infra/errors.js";
-export { createQueue, createQueueEvents, createWorker, defaultJobOpts, closeQueues } from "@core/infra/queue.js";
+export { checkInfraReady, withoutPassword } from "@core/infra/connectivity-check.js";
+export { InfraNotReadyError, QueuesForbiddenError } from "@core/infra/errors.js";
+export { createQueue, createQueueEvents, createWorker, defaultJobOpts, closeQueues, forbidQueues, forbiddenQueueAttempts } from "@core/infra/queue.js";
 export {
   coverKeyFor,
   getStorageAdapter,
@@ -283,7 +286,6 @@ export {
 export {
   flushServerAnalytics,
   initServerAnalytics,
-  reportAnalyticsFailure,
   resetServerAnalyticsForTest,
   serverAnalyticsOn,
   serverAnalyticsWanted,
@@ -311,6 +313,7 @@ export {
   ADS_CONVERSION_QUEUE,
   adsConversionConfig,
   adsConversionState,
+  adsConversionIgnoredKeys,
   enqueueAdsConversion,
   requeueStaleAdsUploads,
   unscheduleAdsUploadSweep,
@@ -330,11 +333,6 @@ export {
   type AdsConversionName,
   type AdsUploadStatus,
 } from "@core/ads/ads-types.js";
-export {
-  collaborationActionOf,
-  reportCollaboratorFirstAction,
-  type CollaborationAction,
-} from "@core/analytics/collaboration.js";
 export { claimFirstMilestone, type FirstMilestone } from "@core/analytics/first-milestone.js";
 export {
   accountOnlyConsent,
