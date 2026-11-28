@@ -24,16 +24,18 @@
 
 import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
-import { initCore, MONOREPO_ROOT } from "@breatic/core";
+import { forbidQueues, initCore, MONOREPO_ROOT } from "@breatic/core";
+import { collabCoreEnv } from "@collab/collab-core-env.js";
 
 // Load the root .env in dev; a no-op when absent (docker / prod
 // inject env vars directly into the container).
 loadDotenv({ path: resolve(MONOREPO_ROOT, ".env") });
 
 try {
-  initCore(process.env);
+  // collab connects to the product database only with its own login (inner#2043).
+  initCore(collabCoreEnv(process.env));
 } catch (err) {
-  // Config validation failed (missing / malformed env). The
+  // Config validation failed (missing / malformed env, or no COLLAB_DATABASE_URL). The
   // env-dependent logger can't be built either, so write to stderr
   // and fail fast - this is the application entry, where `console`
   // is permitted (it is banned only in library code). Exiting here
@@ -45,3 +47,7 @@ try {
   );
   process.exit(1);
 }
+
+// collab never enqueues or consumes a job (inner#2043): any queue it opens
+// through core's factories throws.
+forbidQueues();

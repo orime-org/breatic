@@ -153,6 +153,10 @@ export const coreConfigSchema = z.object({
   // ── Database ──────────────────────────────────────
   DATABASE_URL: z.string().url(),
   DB_POOL_SIZE: numeric(z.coerce.number().int().positive().default(10)),
+  // collab's own login (inner#2043), holding the role `collab_writer`. collab's
+  // entry hands it to core as DATABASE_URL; server and worker never read it,
+  // and the migration command creates the login from it.
+  COLLAB_DATABASE_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
 
   // ── yjs Database (separate Postgres DB for the Yjs binary store) ──
   // The Yjs document store lives in its OWN database, a separate

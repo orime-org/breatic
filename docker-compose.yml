@@ -88,7 +88,9 @@ services:
   migrate:
     image: ghcr.io/orime-org/breatic:v0.0.36
     working_dir: /app/packages/server
-    command: ["node", "-e", "import('@breatic/core').then(async m => { m.initCore(process.env); try { await m.runMigrations(); await m.runYjsMigrations(); } finally { await Promise.all([m.closeDb(), m.closeYjsDb()]); } }).catch(e => { console.error(e); process.exit(1); })"]
+    # After the migrations it creates collab's own login from COLLAB_DATABASE_URL
+    # in .env (role collab_writer, inner#2043); collab does not start without it.
+    command: ["node", "-e", "import('@breatic/core').then(async m => { m.initCore(process.env); try { await m.runMigrations(); await m.runYjsMigrations(); if (process.env.COLLAB_DATABASE_URL) await m.ensureCollabLogin(process.env.DATABASE_URL, process.env.COLLAB_DATABASE_URL); else console.error('COLLAB_DATABASE_URL is not set: collab will not start'); } finally { await Promise.all([m.closeDb(), m.closeYjsDb()]); } }).catch(e => { console.error(e); process.exit(1); })"]
     env_file: .env
     depends_on:
       postgres:

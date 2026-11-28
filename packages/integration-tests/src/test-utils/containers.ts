@@ -7,10 +7,23 @@
  * Starts PostgreSQL + Redis testcontainers BEFORE any test worker is forked,
  * migrates both databases, and forwards the addresses to the workers through
  * Vitest's provide() API; `env.ts` re-applies them to process.env there.
+ *
+ * It also creates collab's two logins (inner#2043), both holding the role
+ * `collab_writer`: `breatic_collab_test`, which only the code paths collab
+ * runs normally use, and `breatic_collab_probe`, for tests that write out of
+ * scope on purpose. PostgreSQL logs each line with its user, and teardown
+ * fails the run when any line from `breatic_collab_test` was refused for
+ * lack of a privilege, so a refusal collab's code caught and logged still
+ * fails CI.
  */
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import { GenericContainer, type StartedTestContainer } from "testcontainers";
+import { GenericContainer, getContainerRuntimeClient, type StartedTestContainer } from "testcontainers";
+
+/** The login collab's own code connects as in the integration suites. */
+const COLLAB_TEST_LOGIN = "breatic_collab_test";
+/** The login for tests that write outside collab's scope on purpose. */
+const COLLAB_PROBE_LOGIN = "breatic_collab_probe";
 
 /** Shared state across setup / teardown. */
 let pgContainer: StartedPostgreSqlContainer;
@@ -35,6 +48,8 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
       .withDatabase("breatic_test")
       .withUsername("breatic")
       .withPassword("breatic")
+      // Each log line names its user, so teardown can find collab's refusals.
+      .withCommand(["postgres", "-c", "log_line_prefix=%m [%p] %u "])
       .start(),
     new GenericContainer("redis:7-alpine")
       .withExposedPorts(6379)
@@ -87,10 +102,14 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   // migrations run through core's own functions, so this file needs no
   // database driver of its own.
   console.log("[integration] Running migrations...");
-  const { migrateDatabase, migrateYjsDatabase, createTestDb } = await import(
+  const { migrateDatabase, migrateYjsDatabase, createTestDb, ensureCollabLogin } = await import(
     "@breatic/core"
   );
   await migrateDatabase(pgUrl);
+  const collabUrl = loginUrl(pgUrl, COLLAB_TEST_LOGIN);
+  const collabProbeUrl = loginUrl(pgUrl, COLLAB_PROBE_LOGIN);
+  await ensureCollabLogin(pgUrl, collabUrl);
+  await ensureCollabLogin(pgUrl, collabProbeUrl);
 
   // Create + migrate the separate yjs test database in the same container.
   // CREATE DATABASE can't run inside a transaction; postgres-js sends the
@@ -115,11 +134,41 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   provide("REDIS_QUEUE_URL", urls.REDIS_QUEUE_URL);
   provide("REDIS_STREAM_URL", urls.REDIS_STREAM_URL);
   provide("REDIS_COLLAB_URL", urls.REDIS_COLLAB_URL);
+  provide("COLLAB_DATABASE_URL", collabUrl);
+  provide("COLLAB_PROBE_DATABASE_URL", collabProbeUrl);
 }
 
 /**
- * Close the pools the migration step opened, then stop both containers.
- * @returns once the containers are stopped.
+ * The admin URL with another login's name, its password the same as the name.
+ * @param adminUrl - The container's admin URL.
+ * @param login - The login.
+ * @returns The login's URL.
+ */
+function loginUrl(adminUrl: string, login: string): string {
+  const url = new URL(adminUrl);
+  url.username = login;
+  url.password = login;
+  return url.toString();
+}
+
+/**
+ * Read the stopped PostgreSQL container's whole log and pick out the lines
+ * where collab's own login was refused a privilege.
+ * @param container - The stopped container; its log stream ends because it is stopped.
+ * @returns The offending lines.
+ */
+async function collabRefusals(container: StartedPostgreSqlContainer): Promise<string[]> {
+  const stream = await container.logs();
+  let text = "";
+  for await (const chunk of stream) text += String(chunk);
+  return text.split("\n").filter((line) => line.includes(` ${COLLAB_TEST_LOGIN} `) && line.includes("permission denied"));
+}
+
+/**
+ * Close the pools the migration step opened, stop both containers, and fail
+ * the run when PostgreSQL refused collab's own login anything.
+ * @returns once the containers are stopped and removed.
+ * @throws {Error} When the PostgreSQL log holds a refusal for `breatic_collab_test`.
  */
 export async function teardown(): Promise<void> {
   console.log("[integration] Stopping containers...");
@@ -127,9 +176,30 @@ export async function teardown(): Promise<void> {
   // as a module side effect; close it before tearing down the container.
   const { closeDb, closeYjsDb } = await import("@breatic/core");
   await Promise.allSettled([closeDb(), closeYjsDb()]);
-  await Promise.allSettled([
-    pgContainer?.stop(),
-    redisContainer?.stop(),
-  ]);
+  let refusals: string[] = [];
+  /**
+   * Stop PostgreSQL, read its log, then remove it.
+   * @returns once it is removed.
+   */
+  const stopPostgres = async (): Promise<void> => {
+    if (!pgContainer) return;
+    // Kept until its log is read: `logs()` follows, so on a running container it never ends.
+    const stopped = await pgContainer.stop({ remove: false });
+    try {
+      refusals = await collabRefusals(pgContainer);
+    } finally {
+      const client = await getContainerRuntimeClient();
+      await client.container.remove(client.container.getById(stopped.getId()), { removeVolumes: true });
+    }
+  };
+  const results = await Promise.allSettled([stopPostgres(), redisContainer?.stop()]);
   console.log("[integration] Containers stopped.");
+  for (const result of results) {
+    if (result.status === "rejected") console.error("[integration] Container teardown failed:", result.reason);
+  }
+  if (refusals.length > 0) {
+    throw new Error(
+      `PostgreSQL refused ${COLLAB_TEST_LOGIN} ${refusals.length} time(s); collab wrote outside its scope:\n${refusals.join("\n")}`,
+    );
+  }
 }

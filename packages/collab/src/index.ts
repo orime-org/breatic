@@ -30,6 +30,8 @@ import {
   startHealthServer,
   runGracefulShutdown,
   InfraNotReadyError,
+  checkWriteScope,
+  COLLAB_WRITE_SCOPE,
   flushServerAnalytics,
   initServerAnalytics,
   taskEventsStreamKey,
@@ -186,6 +188,15 @@ async function main(): Promise<void> {
     } else {
       logger.error({ err }, "infra_check_unexpected_error");
     }
+    await flushLogger();
+    await exitProcess(1);
+  }
+
+  // The connection must hold exactly collab's write scope: a privilege too
+  // many lets collab write business data, one too few fails its own writes.
+  const violations = await checkWriteScope(COLLAB_WRITE_SCOPE);
+  if (violations.length > 0) {
+    logger.error({ violations }, "collab_write_scope_mismatch");
     await flushLogger();
     await exitProcess(1);
   }
