@@ -33,10 +33,10 @@ describe("collabCoreEnv", () => {
     expect(() => collabCoreEnv({ DATABASE_URL: ADMIN, COLLAB_DATABASE_URL: "" })).toThrow("COLLAB_DATABASE_URL");
   });
 
-  it("leaves the caller's environment unchanged", () => {
-    const raw = { DATABASE_URL: ADMIN, COLLAB_DATABASE_URL: COLLAB };
-    collabCoreEnv(raw);
-    expect(raw.DATABASE_URL).toBe(ADMIN);
+  it("points the process environment itself at the collab account, as collab's integration setup does", () => {
+    const raw: Record<string, string | undefined> = { DATABASE_URL: ADMIN, COLLAB_DATABASE_URL: COLLAB };
+    expect(collabCoreEnv(raw)).toBe(raw);
+    expect(raw.DATABASE_URL).toBe(COLLAB);
   });
 });
 

@@ -2,17 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The environment collab hands core (inner#2043): the same values, except
- * that `DATABASE_URL` is collab's own login from `COLLAB_DATABASE_URL`, so
- * core's `db`, health check and startup probe all connect as collab.
+ * The environment collab hands core (inner#2043): the process environment
+ * with `DATABASE_URL` set to collab's own login from `COLLAB_DATABASE_URL`,
+ * so core's `db`, health check and startup probe, and anything else in the
+ * process that reads `DATABASE_URL`, connect as collab, as in collab's
+ * integration suite.
  */
 
 import { withoutPassword } from "@breatic/core";
 
 /**
- * Build the environment collab passes to `initCore`.
- * @param raw - The process environment.
- * @returns A copy with `DATABASE_URL` set to `COLLAB_DATABASE_URL`.
+ * Point the environment collab passes to `initCore` at collab's own login.
+ * @param raw - The process environment, changed in place.
+ * @returns The same object, with `DATABASE_URL` set to `COLLAB_DATABASE_URL`.
  * @throws {Error} When `COLLAB_DATABASE_URL` is missing or blank.
  */
 export function collabCoreEnv(raw: Record<string, string | undefined>): Record<string, string | undefined> {
@@ -20,7 +22,8 @@ export function collabCoreEnv(raw: Record<string, string | undefined>): Record<s
   if (collabUrl === undefined || collabUrl === "") {
     throw new Error("COLLAB_DATABASE_URL is required: collab connects to the product database only with its own login");
   }
-  return { ...raw, DATABASE_URL: collabUrl };
+  raw.DATABASE_URL = collabUrl;
+  return raw;
 }
 
 /**
