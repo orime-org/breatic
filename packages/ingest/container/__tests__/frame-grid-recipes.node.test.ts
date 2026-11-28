@@ -251,7 +251,13 @@ describe.concurrent("chunk_encode and stitch: the playback file (§5.4, §7.17)"
     const oracle = await oracleFrames(path, facts.grid);
     const out = await playback(name, cut);
     const frames = await rawFrames(out, "rgb24");
-    expect(frames).toHaveLength(facts.grid.frameCount);
+    if (frames.length !== facts.grid.frameCount) {
+      // Once on CI (inner#2212) the stitched file held every packet the stitch checks and decoded short; what the
+      // decoder said and where each packet sits is the evidence of why.
+      const decoded = await run("ffmpeg", ["-v", "error", "-i", out, "-map", "0:v:0", "-f", "null", "-"]);
+      const packets = await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts,dts,flags,size", "-of", "csv=p=0", out]);
+      expect.fail(`${name} playback decoded ${frames.length} of ${facts.grid.frameCount} frames. FFmpeg: ${decoded.stderr || "(nothing)"}\nPackets (pts,dts,size,flags):\n${packets.stdout}`);
+    }
     frames.forEach((frame, at) => expectSlot(frame, oracle, at, `${name} playback slot ${at}`));
     const fps = facts.grid.fps.numerator / facts.grid.fps.denominator;
     expect(Number((await streamOf(out, "v:0"))!.duration)).toBeCloseTo(facts.grid.frameCount / fps, 4);
