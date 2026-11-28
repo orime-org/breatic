@@ -18,7 +18,7 @@ The backend shared kernel. These rules apply when you change anything under `pac
 
 ### Collab's write scope
 
-**collab logs in as its own login holding `collab_writer` (migration `0143`), and its write list is `COLLAB_WRITE_SCOPE` in `src/db/collab-write-scope.ts`; a change to what collab writes changes the grants and that list together, in one migration.** collab compares its grants with the list at startup (`checkWriteScope`) and exits on any difference, and its integration suite runs every collab write under such a login. Check: does this migration grant `collab_writer` something, or create a `SECURITY DEFINER` function? Then collab will refuse to start until the list matches or the function is gone.
+**collab logs in as its own login holding `collab_writer` (migration `0143`), and its write list is `COLLAB_WRITE_SCOPE` in `src/db/collab-write-scope.ts`; a change to what collab writes changes the grants in a migration and that list in the same change.** collab compares its grants with the list at startup (`checkWriteScope`) and exits on any difference, and its integration suite runs every collab write under such a login. Check: does this migration grant `collab_writer` something, or create a `SECURITY DEFINER` function? Then collab will refuse to start until the list matches or the function is gone.
 
 ### Migrations are hand-written
 
