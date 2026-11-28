@@ -40,8 +40,8 @@ import {
   webAnimationDshEnv,
   type WebAnimationCheckObservation,
   type WebAnimationInlinePieces,
-  type WebAnimationFontFace,
 } from "./web-animation-package.js";
+import type { TimelineFontFace } from "@shared/timeline/font-face.js";
 
 /** Where the image keeps what a run needs, read from its environment once. */
 export interface WebAnimationRunnerSettings {
@@ -549,7 +549,7 @@ export async function runWebAnimation(job: WebAnimationRunBody, settings: WebAni
      * @returns Them.
      */
     const piecesOf = async (fontSetVersion: number): Promise<WebAnimationInlinePieces> => {
-      const faces = JSON.parse(await readFile(join(settings.fontsDir, `v${fontSetVersion}`, "faces.json"), "utf8")) as WebAnimationFontFace[];
+      const faces = JSON.parse(await readFile(join(settings.fontsDir, `v${fontSetVersion}`, "faces.json"), "utf8")) as TimelineFontFace[];
       return { runtime, bridge: WEB_ANIMATION_BRIDGE_SCRIPT, fontStylesheet: buildFontSetStylesheet(fontSetVersion, faces) };
     };
     const pieces = await piecesOf(job.fontSetVersion);

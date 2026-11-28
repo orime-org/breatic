@@ -6,7 +6,7 @@
  *
  * A copy's length is not in the document: `resolveTimelineClipExtent(document, web, clip)` reads it from the
  * `TimelineWebResolution` the web-sources endpoint answers, and every planner rule that reads a video's source length
- * reads that instead. `add_web_animation` carries the new copy's extent itself, the way `add_video` carries its
+ * reads that instead. `add_web_animation` carries the new copy's extent itself, the way `add_media` carries its
  * source, and places the copy with `placeWebAnimationClip`: above the highest video over its
  * span, or on a new top track.
  */
@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
 import {
-  resolveTimelineArrangement, resolveTimelineClipExtent,
+  arrangeTimelineClips, resolveTimelineClipExtent,
 } from '@web/data/yjs/timeline-arrangement';
 import { TimelineEditCommandSchema, planTimelineEdit, type TimelineEditCommand, type TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import type { TimelineDocumentV1, TimelineWebAnimationClip } from '@breatic/shared';
@@ -110,23 +110,22 @@ describe('resolveTimelineClipExtent', () => {
   });
 });
 
-describe('resolveTimelineArrangement with web copies', () => {
-  it('counts a copy inside its resolved source as ready', () => {
+// A web copy needs no source record, so the clip view keeps it while its track exists (inner#1709 design §3.5).
+describe('the clip view with web copies', () => {
+  it('keeps a copy inside its resolved source as it is', () => {
     const doc = timeline([webClip(cid(1), V2, 0, 48, boundTo(SRC_A)), webClip(cid(2), V2, 100, 72, waitingFor(EXEC_RUNNING))]);
-    expect(resolveTimelineArrangement(doc, RESOLUTION).readyClipIds).toEqual([cid(1), cid(2)]);
+    expect(arrangeTimelineClips(doc, RESOLUTION)).toEqual(doc.clips);
   });
 
-  it('reports a copy that reads past its source end as invalid_range', () => {
+  it('plays a copy that reads past its source end to that end', () => {
     const doc = timeline([webClip(cid(1), V2, 0, 40, boundTo(SRC_A), { sourceInFrame: 10 })]);
-    const arrangement = resolveTimelineArrangement(doc, RESOLUTION);
-    expect(arrangement.readyClipIds).toEqual([]);
-    expect(arrangement.conflicts[0]?.reasons.map((reason) => reason.code)).toContain('invalid_range');
+    expect(arrangeTimelineClips(doc, RESOLUTION)[cid(1)]?.durationFrames).toBe(38);
   });
 
-  it('keeps an unresolved copy out of the ready set', () => {
+  it('keeps an unresolved copy at its own length', () => {
     const doc = timeline([webClip(cid(1), V2, 0, 10, boundTo(SRC_GONE))]);
-    expect(resolveTimelineArrangement(doc, RESOLUTION).readyClipIds).toEqual([]);
-    expect(resolveTimelineArrangement(doc, EMPTY_RESOLUTION).readyClipIds).toEqual([]);
+    expect(arrangeTimelineClips(doc, RESOLUTION)).toEqual(doc.clips);
+    expect(arrangeTimelineClips(doc, EMPTY_RESOLUTION)).toEqual(doc.clips);
   });
 });
 
@@ -234,7 +233,7 @@ describe('placeWebAnimationClip, through add_web_animation', () => {
     const doc = timeline([], [track(MAIN, 0)]);
     const result = accepted(plan(doc, addResult(cid(1), SRC_A, 0, NEW_TRACK, OFF)));
     expect(createdCopy(result, cid(1)).trackId).toBe(NEW_TRACK);
-    expect(result.next.tracks[NEW_TRACK]).toEqual({ id: NEW_TRACK, kind: 'visual', order: 1 });
+    expect(result.next.tracks[NEW_TRACK]).toEqual({ id: NEW_TRACK, order: 1 });
   });
 
   it('goes to the first free visual track above the highest video over the span', () => {
@@ -264,7 +263,7 @@ describe('placeWebAnimationClip, through add_web_animation', () => {
     const doc = timeline([clip(cid(8), MAIN, 0, 100), clip(cid(9), V2, 0, 100)]);
     const result = accepted(plan(doc, addResult(cid(1), SRC_A, 10, NEW_TRACK, OFF)));
     expect(createdCopy(result, cid(1)).trackId).toBe(NEW_TRACK);
-    expect(result.next.tracks[NEW_TRACK]).toEqual({ id: NEW_TRACK, kind: 'visual', order: 2 });
+    expect(result.next.tracks[NEW_TRACK]).toEqual({ id: NEW_TRACK, order: 2 });
     expect(result.next.clips[cid(8)]).toEqual(doc.clips[cid(8)]);
     expect(result.next.clips[cid(9)]).toEqual(doc.clips[cid(9)]);
   });

@@ -43,10 +43,14 @@ export interface TimelineClientLimits {
      * sends this and the two below; a client without them shares no address and premounts and keeps no page.
      */
     previewTokenTtlMs?: number;
-    /** How far ahead of its first visible frame the preview loads a video clip's element or a web copy's page. */
+    /** How far ahead of its first visible frame the preview loads a clip: a video or sound's element, a picture, a text's font slices or a web copy's page. */
     premountMs?: number;
     /** How many loaded preview pages no copy uses are kept for reuse. */
     idleInstancesMax?: number;
   };
   preview: TimelinePreviewSyncLimits;
+  /** A new picture's and text clip's length in seconds, and a new text clip's size as a share of the frame height. */
+  media: { imageDurationSeconds: number; textDurationSeconds: number; textSize: number };
+  /** Where the preview reads the text font set: the ingest Worker's `/web-animation/fonts/v<version>/`, ending in a slash. */
+  text: { fontBaseUrl: string };
 }

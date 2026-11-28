@@ -45,10 +45,12 @@ async function expectEmptyTimeline(page: Page, projectId: string, spaceId: strin
   await addMedia.click();
   const dialog = page.getByRole('dialog', { name: 'Add media', exact: true });
   await expect(dialog).toBeVisible();
-  const projectVideos = dialog.getByTestId('timeline-material-project');
-  await expect(projectVideos).toHaveText('Project videos');
-  await expect(projectVideos).toBeEnabled();
-  await expect(projectVideos).toHaveAttribute('aria-pressed', 'true');
+  // The Project list is for every kind of media, video picked first (inner#1709 design §6.2).
+  const projectMedia = dialog.getByTestId('timeline-material-project');
+  await expect(projectMedia).toHaveText('Project media');
+  await expect(projectMedia).toBeEnabled();
+  await expect(projectMedia).toHaveAttribute('aria-pressed', 'true');
+  await expect(dialog.getByTestId('timeline-material-kind-video')).toHaveAttribute('aria-selected', 'true');
   if (directoryResponse !== null) {
     const response = await directoryResponse;
     expect(response.status(), `read Project ${projectId} video directory`).toBe(200);

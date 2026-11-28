@@ -26,7 +26,7 @@ import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, openSpaceById, visibleSpace } from '../helpers/space';
 import {
   addProjectTimelineVideo, expectTimelineStart, moveTimelineClip, openTimeline, selectTimelineClip, timelineClipIds,
-  timelineVideoOf, uploadTimelineVideo, watchTimelineErrors, withTimelinePeer,
+  timelineLayerOf, timelineVideoOf, uploadTimelineVideo, watchTimelineErrors, withTimelinePeer,
 } from '../helpers/timeline-media';
 
 /** The shortest prompt whose picture visibly changes over time, so two moments of it look different. */
@@ -328,7 +328,7 @@ test('one real web animation made in Motion is reused as three copies over a vid
       // Where the video, the first copy and the third copy overlap, both copies stack above the video.
       await seekPreview(page, Math.round(2.5 * nominal));
       await expect(timelineVideoOf(page, uploaded.clipId)).toBeVisible();
-      await expect(timelineVideoOf(page, uploaded.clipId)).toHaveCSS('z-index', '1');
+      await expect(timelineLayerOf(page, uploaded.clipId)).toHaveCSS('z-index', '1');
       await expect(playerOf(first)).toHaveCSS('z-index', '2');
       await expect(playerOf(copies[1])).toHaveCSS('z-index', '3');
       // The second copy starts within the premount lead, so its page is loaded ahead of it, hidden.
@@ -368,7 +368,7 @@ test('one real web animation made in Motion is reused as three copies over a vid
     await test.step('stack: a video on a higher track is drawn above the web copy beneath it at the frames it covers', async () => {
       await selectTimelineClip(page, uploaded.clipId);
       const cover = await addProjectTimelineVideo(page, uploaded.asset.assetId);
-      await moveTimelineClip(page, cover, 6 * nominal, uploaded.durationFrames, 'New visual track');
+      await moveTimelineClip(page, cover, 6 * nominal, uploaded.durationFrames, 'New track');
       await seekPreview(page, 5 * nominal);
       await expect(timelineVideoOf(page, uploaded.clipId)).toBeVisible();
       await expect(timelineVideoOf(page, cover)).not.toBeVisible();
@@ -379,9 +379,9 @@ test('one real web animation made in Motion is reused as three copies over a vid
       await expect(timelineVideoOf(page, uploaded.clipId)).toBeVisible();
       await expect(timelineVideoOf(page, cover)).toBeVisible();
       await expect(drawnOf(copies[0])).toHaveCount(1);
-      await expect(timelineVideoOf(page, uploaded.clipId)).toHaveCSS('z-index', '1');
+      await expect(timelineLayerOf(page, uploaded.clipId)).toHaveCSS('z-index', '1');
       await expect(playerOf(copies[0])).toHaveCSS('z-index', '2');
-      await expect(timelineVideoOf(page, cover)).toHaveCSS('z-index', '3');
+      await expect(timelineLayerOf(page, cover)).toHaveCSS('z-index', '3');
       // Take the covering video away again so the later steps see the three copies over one video.
       await selectTimelineClip(page, cover);
       await outlet.getByTestId('timeline-delete').click();
@@ -730,13 +730,13 @@ test('play enters a web copy, replays into it and reveals it from under a video 
       const reveal = lower + 2 * nominal;
       await selectTimelineClip(page, uploaded.clipId);
       const cover = await addProjectTimelineVideo(page, uploaded.asset.assetId);
-      await moveTimelineClip(page, cover, reveal - uploaded.durationFrames, uploaded.durationFrames, 'New visual track');
+      await moveTimelineClip(page, cover, reveal - uploaded.durationFrames, uploaded.durationFrames, 'New track');
       // Under the video the copy is drawn like any layer (#1410 design §6.1), below the video on the higher track.
       await seekPreview(page, lower + nominal);
       await expect(timelineVideoOf(page, cover)).toBeVisible();
       await expect(drawnOf(revealed)).toHaveCount(1);
       await expect(playerOf(revealed)).toHaveCSS('z-index', '1');
-      await expect(timelineVideoOf(page, cover)).toHaveCSS('z-index', '2');
+      await expect(timelineLayerOf(page, cover)).toHaveCSS('z-index', '2');
       // An empty pool again; a second before the copy starts it is premounted, so it has its player from the start.
       await reopenTimeline(page, spaceId);
       const from = reveal - 3 * nominal;

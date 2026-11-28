@@ -223,9 +223,12 @@ class_name = "WebReaderContainer"
 [env.production.exports.WebReaderContainer]
 type = "durable-object"
 storage = "sqlite"
+
+[env.production.assets]
+directory = "./assets"
 ```
 
-`compatibility_flags` is required: without `nodejs_compat` the Worker fails to load (`No such module "node:async_hooks"`), and `enable_request_signal` lets the page reader stop when the Agent's request ends. Every container class above is required as well: a Worker missing one of the bindings `MEDIA`, `MINI_TOOL_STD1`, `MINI_TOOL_STD4`, `LONG_MEDIA` or `WEB_READER` answers every request with 500 naming it. A configuration created before these lines were added needs them before the next deploy. `max_instances` caps how many instances of each class run at once; raise it for more simultaneous users, except `LongMediaContainer`, which stays at the `container_max_instances` that `config/understand.yaml` sets. No error-reporting settings are needed; with no `SENTRY_DSN` the Worker reports nothing.
+`compatibility_flags` is required: without `nodejs_compat` the Worker fails to load (`No such module "node:async_hooks"`), and `enable_request_signal` lets the page reader stop when the Agent's request ends. Every container class above is required as well: a Worker missing one of the bindings `MEDIA`, `MINI_TOOL_STD1`, `MINI_TOOL_STD4`, `LONG_MEDIA` or `WEB_READER` answers every request with 500 naming it. A configuration created before these lines were added needs them before the next deploy. `max_instances` caps how many instances of each class run at once; raise it for more simultaneous users, except `LongMediaContainer`, which stays at the `container_max_instances` that `config/understand.yaml` sets. `[env.production.assets]` is required too: it serves the font set that every Timeline preview with text reads, under `/web-animation/fonts/`, whether or not web animation is enabled, and `deploy:worker` lays the font set out into `assets/` before it deploys. A configuration created before this block was added needs it before the next deploy, and the ingest Worker is deployed with it before web. No error-reporting settings are needed; with no `SENTRY_DSN` the Worker reports nothing.
 
 For multiple instances in one Cloudflare account, give each a distinct production `name`, bucket and shared secret. Do not overwrite an existing Worker. This deployment configuration has no `[dev].port`, `remote=true` or `.dev.vars`.
 

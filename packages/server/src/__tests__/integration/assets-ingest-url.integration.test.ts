@@ -198,10 +198,11 @@ describe("POST /assets/ingest-url — a Document body block (breatic#1574)", () 
     const res = await submit(cookie, { project_id: projectId, space_id: spaceId, upload_id: uploadId });
 
     expect(res.status).toBe(201);
-    const grants = await sql<{ document_upload_id: string | null }[]>`
-      SELECT document_upload_id FROM upload_grants WHERE project_id = ${projectId}
+    // A fetched address only ever lands in a Document block (inner#1709 design §4.1).
+    const grants = await sql<{ space_upload_id: string | null; space_upload_target: string | null }[]>`
+      SELECT space_upload_id, space_upload_target FROM upload_grants WHERE project_id = ${projectId}
     `;
-    expect(grants).toEqual([{ document_upload_id: uploadId }]);
+    expect(grants).toEqual([{ space_upload_id: uploadId, space_upload_target: "document" }]);
     const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
     const events = raw.map(([, f]) => JSON.parse(f[f.indexOf("payload") + 1]!) as Record<string, unknown>)
       .filter((e) => e.type === "document-upload" && e.uploadId === uploadId);

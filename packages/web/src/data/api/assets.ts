@@ -94,6 +94,7 @@ export const assetsApi = {
       ...(params.nodeId !== undefined && { node_id: params.nodeId }),
       ...(params.spaceId !== undefined && { space_id: params.spaceId }),
       ...(params.uploadId !== undefined && { upload_id: params.uploadId }),
+      ...(params.uploadTarget !== undefined && { upload_target: params.uploadTarget }),
       ...(params.source !== undefined && { source: params.source }),
       ...(params.toolName !== undefined && { tool_name: params.toolName }),
       ...(params.derived !== undefined && { derived: params.derived }),

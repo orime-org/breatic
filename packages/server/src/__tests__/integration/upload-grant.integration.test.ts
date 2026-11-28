@@ -52,6 +52,7 @@ vi.mock("ai", () => ({
 }));
 
 import crypto from "node:crypto";
+import { readdir, readFile } from "node:fs/promises";
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
 import { uploadGrantRepo } from "@breatic/domain";
@@ -252,7 +253,8 @@ describe("upload-grant repo — the permission to finish an upload", () => {
       assetSource: null,
       projectId: null,
       spaceId: null,
-      documentUploadId: null,
+      spaceUploadId: null,
+      spaceUploadTarget: null,
     });
     const rows = await sql<{ finalizing_upload_id: string | null }[]>`
       SELECT finalizing_upload_id FROM upload_grants WHERE storage_key = ${storageKey}
@@ -260,14 +262,26 @@ describe("upload-grant repo — the permission to finish an upload", () => {
     expect(rows[0]!.finalizing_upload_id).toBe("upload-a");
   });
 
-  it("hands back the Document block the upload is for, so the finish can tell it without reading the grant again", async () => {
-    const userId = await insertUser();
-    const studioId = await insertStudio(userId);
-    const storageKey = freshKey();
-    await issueGrant({ ...grantFields({ userId, studioId, storageKey, declaredSize: 1 }), context: { documentUploadId: "u1" } });
+  it.each(["document", "timeline"] as const)(
+    "hands back the %s placeholder the upload is for, so the finish can tell it without reading the grant again (inner#1709 design §4.1)",
+    async (target) => {
+      const userId = await insertUser();
+      const studioId = await insertStudio(userId);
+      const storageKey = freshKey();
+      await issueGrant({
+        ...grantFields({ userId, studioId, storageKey, declaredSize: 1 }),
+        context: { spaceUploadId: "u1", spaceUploadTarget: target },
+      });
 
-    expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toMatchObject({ granted: true, documentUploadId: "u1" });
-  });
+      expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toMatchObject({
+        granted: true, spaceUploadId: "u1", spaceUploadTarget: target,
+      });
+      const rows = await sql<{ space_upload_id: string | null; space_upload_target: string | null }[]>`
+        SELECT space_upload_id, space_upload_target FROM upload_grants WHERE storage_key = ${storageKey}
+      `;
+      expect(rows).toEqual([{ space_upload_id: "u1", space_upload_target: target }]);
+    },
+  );
 
   it("lets the same upload ask again, so three deliveries all get through", async () => {
     const userId = await insertUser();
@@ -281,7 +295,8 @@ describe("upload-grant repo — the permission to finish an upload", () => {
         assetSource: null,
         projectId: null,
         spaceId: null,
-        documentUploadId: null,
+        spaceUploadId: null,
+      spaceUploadTarget: null,
       });
     }
   });
@@ -319,7 +334,8 @@ describe("upload-grant repo — the permission to finish an upload", () => {
       assetSource: null,
       projectId: null,
       spaceId: null,
-      documentUploadId: null,
+      spaceUploadId: null,
+      spaceUploadTarget: null,
     });
   });
 
@@ -339,7 +355,8 @@ describe("upload-grant repo — the permission to finish an upload", () => {
       assetSource: "project_cover",
       projectId: null,
       spaceId: null,
-      documentUploadId: null,
+      spaceUploadId: null,
+      spaceUploadTarget: null,
     });
   });
 
@@ -475,5 +492,110 @@ describe("T36: completeTransferGrant completes only a live transfer grant (inner
     expect(await uploadGrantRepo.completeTransferGrant(storageKey)).toBe(false);
 
     expect(await stateOf(storageKey)).toBeUndefined();
+  });
+});
+
+describe("upload_grants names the Space placeholder an upload lands in (inner#1709 design §4.1)", () => {
+  const MIGRATIONS = new URL("../../../../core/src/db/migrations/", import.meta.url);
+
+  class Rollback extends Error {}
+
+  /**
+   * Run `body` in a transaction that is always rolled back.
+   * @param body - Seeds, replays and reads.
+   */
+  async function rolledBack(body: (tx: postgres.TransactionSql) => Promise<void>): Promise<void> {
+    await sql
+      .begin(async (tx) => {
+        await body(tx);
+        throw new Rollback();
+      })
+      .catch((err: unknown) => {
+        if (!(err instanceof Rollback)) throw err;
+      });
+  }
+
+  /**
+   * The one migration that introduces `space_upload_target`.
+   * @returns Its SQL.
+   */
+  async function placeholderMigration(): Promise<string> {
+    const files = (await readdir(MIGRATIONS)).filter((name) => name.endsWith(".sql")).sort();
+    const found: { name: string; text: string }[] = [];
+    for (const name of files) {
+      const text = await readFile(new URL(name, MIGRATIONS), "utf8");
+      if (text.includes("space_upload_target")) found.push({ name, text });
+    }
+    expect(found.map((f) => f.name)).toHaveLength(1);
+    return found[0]!.text;
+  }
+
+  it("keeps the placeholder in space_upload_id and its Space type in space_upload_target, with no document_upload_id left", async () => {
+    const columns = await sql<{ column_name: string; data_type: string }[]>`
+      SELECT column_name, data_type FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'upload_grants'
+        AND column_name IN ('document_upload_id', 'space_upload_id', 'space_upload_target')
+      ORDER BY column_name
+    `;
+    expect(columns).toEqual([
+      { column_name: "space_upload_id", data_type: "text" },
+      { column_name: "space_upload_target", data_type: "text" },
+    ]);
+  });
+
+  it.each([
+    ["a placeholder without its Space type", "u1", null],
+    ["a Space type without a placeholder", null, "timeline"],
+  ])("refuses a grant row naming %s", async (_label, uploadId, target) => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    await expect(sql`
+      INSERT INTO upload_grants (user_id, studio_id, storage_key, declared_size, expires_at, space_upload_id, space_upload_target)
+      VALUES (${userId}, ${studioId}, ${freshKey()}, 1, now() + interval '5 minutes', ${uploadId}, ${target})
+    `).rejects.toMatchObject({ code: "23514" });
+  });
+
+  it("accepts a grant row naming both or neither", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    for (const [uploadId, target] of [["u1", "document"], ["u2", "timeline"], [null, null]] as const) {
+      const storageKey = freshKey();
+      await sql`
+        INSERT INTO upload_grants (user_id, studio_id, storage_key, declared_size, expires_at, space_upload_id, space_upload_target)
+        VALUES (${userId}, ${studioId}, ${storageKey}, 1, now() + interval '5 minutes', ${uploadId}, ${target})
+      `;
+      const rows = await sql<{ space_upload_id: string | null; space_upload_target: string | null }[]>`
+        SELECT space_upload_id, space_upload_target FROM upload_grants WHERE storage_key = ${storageKey}
+      `;
+      expect(rows).toEqual([{ space_upload_id: uploadId, space_upload_target: target }]);
+    }
+  });
+
+  it("moves every existing Document block upload to space_upload_id with the Document target, and leaves other grants without one", async () => {
+    const migration = await placeholderMigration();
+    await rolledBack(async (tx) => {
+      // The table as it stood before the migration: the migrated one with the Document block column back in place.
+      await tx.unsafe(`
+        CREATE SCHEMA grant_migration_1709;
+        CREATE TABLE grant_migration_1709.upload_grants (LIKE public.upload_grants INCLUDING DEFAULTS);
+        ALTER TABLE grant_migration_1709.upload_grants DROP COLUMN space_upload_target;
+        ALTER TABLE grant_migration_1709.upload_grants RENAME COLUMN space_upload_id TO document_upload_id;
+      `);
+      const block = crypto.randomUUID();
+      await tx.unsafe(`
+        INSERT INTO grant_migration_1709.upload_grants (user_id, studio_id, storage_key, declared_size, expires_at, document_upload_id)
+        VALUES (gen_random_uuid(), gen_random_uuid(), 'block', 1, now(), '${block}'),
+               (gen_random_uuid(), gen_random_uuid(), 'node', 1, now(), NULL);
+      `);
+      await tx.unsafe("SET LOCAL search_path TO grant_migration_1709");
+      await tx.unsafe(migration);
+      const rows = await tx.unsafe<{ storage_key: string; space_upload_id: string | null; space_upload_target: string | null }[]>(
+        "SELECT storage_key, space_upload_id, space_upload_target FROM grant_migration_1709.upload_grants ORDER BY storage_key",
+      );
+      expect([...rows]).toEqual([
+        { storage_key: "block", space_upload_id: block, space_upload_target: "document" },
+        { storage_key: "node", space_upload_id: null, space_upload_target: null },
+      ]);
+    });
   });
 });

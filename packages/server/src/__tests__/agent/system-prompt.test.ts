@@ -600,6 +600,8 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     const reach = (paragraphs().get("Timeline") ?? "").split("Reach:")[1] ?? "";
     expect(reach).toContain("Motion Space");
     expect(reach).not.toContain("it makes from a typed request");
+    expect(reach).toContain("video, picture and sound clips from the Project's files, text clips");
+    expect(reach).toContain("every video and sound heard together at its own volume");
   });
 
   it("says in Motion that the user makes a web animation in a Motion Space from a request written in full, and what the Space does with it", () => {
@@ -627,10 +629,12 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(para).not.toContain("takes at the lowest resolution");
   });
 
-  it("makes a clip the Timeline lacks as a video on the Canvas, and sends titles or motion graphics to a Motion Space", () => {
+  it("makes a clip the Timeline lacks as its kind on the Canvas, a title as a text clip and motion graphics in a Motion Space", () => {
     const craft = ((paragraphs().get("Timeline") ?? "").split("Craft:")[1] ?? "").split("Keep:")[0] ?? "";
-    expect(craft).toContain("a clip they lack made as a video on the Canvas");
-    expect(craft).toContain("Motion Space");
+    expect(craft).toContain("a video, picture or sound they lack made as that kind on the Canvas");
+    expect(craft).toContain("a simple title as a text clip");
+    expect(craft).toContain("for motion graphics, a web animation made in a Motion Space");
+    expect(craft).not.toContain("for titles or motion graphics");
     expect(craft).not.toContain("for them to type in the Timeline");
   });
 

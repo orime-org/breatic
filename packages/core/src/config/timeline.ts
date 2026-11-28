@@ -5,7 +5,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MAX_TIMELINE_ASSET_PAGE_SIZE, TIMELINE_FRAME_PRESETS, TIMELINE_PREVIEW_DEFAULTS, timelineFramePresetOf } from "@breatic/shared";
+import {
+  MAX_TIMELINE_ASSET_PAGE_SIZE, TIMELINE_FRAME_PRESETS, TIMELINE_PREVIEW_DEFAULTS, TimelineTextClipSchema, timelineFramePresetOf,
+} from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 import { reportGraceMs } from "@core/config/mini-tools.js";
 
@@ -80,6 +82,14 @@ const previewSchema = z.object({
   drift_steer_rate: z.number().positive().lt(1).default(TIMELINE_PREVIEW_DEFAULTS.driftSteerRate),
 });
 
+/** New still-picture and text clips (inner#1709); the user may stretch either without limit. */
+const mediaSchema = z.object({
+  image_duration_seconds: positiveSeconds.default(5),
+  text_duration_seconds: positiveSeconds.default(5),
+  /** A new text clip's size as a share of the frame height, within the bounds the clip format accepts. */
+  text_size: TimelineTextClipSchema.shape.text.shape.size.default(0.06),
+});
+
 /** Runtime creation defaults and Project media parameters for Timeline. */
 export const timelineConfigSchema = z.object({
   defaults: z.object({
@@ -97,6 +107,7 @@ export const timelineConfigSchema = z.object({
   }).prefault({}),
   web_animation: webAnimationSchema.prefault({}),
   preview: previewSchema.prefault({}),
+  media: mediaSchema.prefault({}),
 }).superRefine((config, ctx) => {
   if (config.assets.page_size > config.assets.page_max) ctx.addIssue({ code: "custom", path: ["assets", "page_size"], message: "page_size exceeds page_max" });
   // A new Timeline must open on one of the ratio control's presets (#1502).

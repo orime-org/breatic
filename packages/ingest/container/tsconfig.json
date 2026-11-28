@@ -62,6 +62,7 @@
     "../../shared/src/upload/agent-picture-types.ts",
     "../../shared/src/media/long-media-job-types.ts",
     "../../shared/src/mini-tools/types.ts",
+    "../../shared/src/timeline/font-face.ts",
     "../../shared/src/upload/video-presentation-types.ts",
     "../../shared/src/mini-tools/video-encode-plan.ts",
     "../../shared/src/upload/frame-grid-rate.ts",

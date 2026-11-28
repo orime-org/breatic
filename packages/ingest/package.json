@@ -31,6 +31,7 @@
     "fast-check": "catalog:",
     "@cloudflare/vitest-pool-workers": "0.12.21",
     "@cloudflare/workers-types": "^5.20260830.1",
+    "fontkit": "2.0.4",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "wrangler": "^4.127.1",

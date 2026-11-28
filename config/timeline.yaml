@@ -32,7 +32,8 @@ web_animation:
   font_set_version: 3
   preview_token_ttl_ms: 3600000
   player_load_timeout_ms: 15000
-  # The preview loads a video clip's element or a web copy's page this far ahead of its first visible frame, hidden.
+  # The preview loads a video, sound or picture clip's element, a text's font slices or a web copy's page this far ahead
+  # of its first visible frame, hidden.
   preview_premount_ms: 2000
   # Loaded preview pages no copy uses that are kept for reuse; beyond this the oldest is unloaded.
   preview_idle_instances_max: 8
@@ -64,3 +65,9 @@ preview:
   # While the preview waits, lanes not waited for are sought back to the held frame only when further off than this.
   resume_seek_seconds: 0.15
   drift_steer_rate: 0.03
+media:
+  # Where a new still picture or text clip starts; the user may stretch it without limit.
+  image_duration_seconds: 5
+  text_duration_seconds: 5
+  # A new text clip's size, as a share of the frame height.
+  text_size: 0.06

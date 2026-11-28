@@ -12,8 +12,8 @@ import * as Y from "yjs";
 
 import * as spaceContent from "../../space-content.js";
 import {
-  initializeTimelineDocument, readTimelineContent, readTimelineDocument, readTimelineSource, timelineDocumentNeedsUpgrade,
-  upgradeTimelineDocument,
+  attachTimelineRecord, initializeTimelineDocument, readTimelineContent, readTimelineDocument, readTimelineSource, timelineDocumentNeedsUpgrade,
+  timelineRecordJson, upgradeTimelineDocument,
 } from "../document.js";
 import { TimelineClipSchema, TimelineDocumentV1Schema } from "../schema.js";
 
@@ -91,18 +91,19 @@ afterEach(() => {
 });
 
 describe("Timeline document ownership and schema", () => {
-  it("seeds a complete version 2 document with a single stable visual track (#1502 design §5)", () => {
+  it("seeds a complete version 3 document with a single stable track of no kind (inner#1709 design §2.1)", () => {
     const doc = seededDoc();
-    expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(3);
     expect(readTimelineDocument(doc)).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       settings,
-      tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
+      tracks: { "visual-1": { id: "visual-1", order: 0 } },
       clips: {},
       sources: {},
     });
     expect([...doc.share.keys()].sort()).toEqual(["clips", "sources", "timeline", "tracks"]);
     expect(doc.getMap("tracks").get("visual-1")).toBeInstanceOf(Y.Map);
+    expect([...(doc.getMap("tracks").get("visual-1") as Y.Map<unknown>).keys()].sort()).toEqual(["id", "order"]);
     expect(TimelineDocumentV1Schema.parse(readTimelineDocument(doc))).toEqual(readTimelineDocument(doc));
   });
 
@@ -122,7 +123,7 @@ describe("Timeline document ownership and schema", () => {
     expect(() => readTimelineDocument(empty)).toThrow(Error);
     expect(Y.encodeStateAsUpdate(empty)).toEqual(emptyBytes);
     const unsupported = seededDoc();
-    unsupported.getMap("timeline").set("schemaVersion", 3);
+    unsupported.getMap("timeline").set("schemaVersion", 4);
     const unsupportedBytes = Y.encodeStateAsUpdate(unsupported);
     expect(() => readTimelineDocument(unsupported)).toThrow(Error);
     expect(Y.encodeStateAsUpdate(unsupported)).toEqual(unsupportedBytes);
@@ -132,7 +133,7 @@ describe("Timeline document ownership and schema", () => {
     const doc = seededDoc();
     attachClip(doc);
     const value = readTimelineDocument(doc);
-    expect(TimelineDocumentV1Schema.safeParse({ ...value, schemaVersion: 3 }).success).toBe(false);
+    expect(TimelineDocumentV1Schema.safeParse({ ...value, schemaVersion: 4 }).success).toBe(false);
     expect(TimelineDocumentV1Schema.safeParse({ ...value, settings: { ...settings, fps: { num: 24, den: 0 } } }).success).toBe(false);
     expect(TimelineDocumentV1Schema.safeParse({ ...value, clips: { [clip.id]: { ...clip, startFrame: 0.5 } } }).success).toBe(false);
     expect(TimelineDocumentV1Schema.safeParse({ ...value, sources: { [source.id]: { ...source, fileUrl: "https://example.com/video.mp4" } } }).success).toBe(false);
@@ -202,7 +203,7 @@ describe("Timeline content with damaged records (inner#1708 F1b)", () => {
   const BAD_TRACK = "track-damaged";
 
   /**
-   * A document holding one valid clip, a clip record missing most fields and a track record missing its kind.
+   * A document holding one valid clip, a clip record missing most fields and a track record missing its id.
    * @returns The document.
    * @throws {Error} When seeding fails.
    */
@@ -224,7 +225,7 @@ describe("Timeline content with damaged records (inner#1708 F1b)", () => {
     const doc = damagedDoc();
     const content = readTimelineContent(doc);
     expect(content.document.clips).toEqual({ [clip.id]: clip });
-    expect(content.document.tracks).toEqual({ "visual-1": { id: "visual-1", kind: "visual", order: 0 } });
+    expect(content.document.tracks).toEqual({ "visual-1": { id: "visual-1", order: 0 } });
     expect(content.document.sources).toEqual({ [source.id]: source });
     // A damaged track record is left out of the document but not listed (inner#1708 Q3).
     expect(content.damaged).toEqual({ clips: [BAD_CLIP] });
@@ -246,7 +247,7 @@ describe("Timeline content with damaged records (inner#1708 F1b)", () => {
     expect(typeof readTimelineContent).toBe("function");
     expect(() => readTimelineContent(trackedDoc())).toThrow(Error);
     const unsupported = seededDoc();
-    unsupported.getMap("timeline").set("schemaVersion", 3);
+    unsupported.getMap("timeline").set("schemaVersion", 4);
     expect(() => readTimelineContent(unsupported)).toThrow(Error);
   });
 });
@@ -355,7 +356,7 @@ describe("Timeline records stored under a key other than their id (inner#1708 Q1
     const doc = seededDoc();
     attachUnder(doc, "tracks", "track-key", { id: "track-other", kind: "visual", order: 1 });
     const content = readTimelineContent(doc);
-    expect(content.document.tracks).toEqual({ "visual-1": { id: "visual-1", kind: "visual", order: 0 } });
+    expect(content.document.tracks).toEqual({ "visual-1": { id: "visual-1", order: 0 } });
     expect(content.damaged).toEqual({ clips: [] });
   });
 });
@@ -454,6 +455,8 @@ function versionOneDoc(frame: { width: number; height: number } = settings): Y.D
   const doc = trackedDoc();
   initializeTimelineDocument(doc, { ...settings, ...frame });
   doc.getMap("timeline").set("schemaVersion", 1);
+  // Before version 3 every track record carried a kind (inner#1709 design §2.1).
+  (doc.getMap("tracks").get("visual-1") as Y.Map<unknown>).set("kind", "visual");
   return doc;
 }
 
@@ -521,7 +524,7 @@ describe("Reading version 1 and version 2 documents and pixel-format clips (#150
   it("reads any whole-pixel offset within ten frame sizes as that offset divided by the frame size, in any preset", () => {
     fc.assert(fc.property(
       fc.constantFrom(...Object.values(FRAMES)), fc.integer({ min: -10, max: 10 }), fc.integer({ min: -10, max: 10 }),
-      fc.double({ min: -1, max: 1, noNaN: true }), fc.double({ min: -1, max: 1, noNaN: true }), fc.constantFrom(1, 2),
+      fc.double({ min: -1, max: 1, noNaN: true }), fc.double({ min: -1, max: 1, noNaN: true }), fc.constantFrom(1, 2, 3),
       (frame, wholeX, wholeY, partX, partY, version) => {
         const x = Math.round((wholeX + partX) * frame.width);
         const y = Math.round((wholeY + partY) * frame.height);
@@ -542,8 +545,11 @@ describe("upgradeTimelineDocument: storing pixel clips as frame offsets (#1502 d
     expect(spaceContent.timelineDocumentNeedsUpgrade).toBe(timelineDocumentNeedsUpgrade);
   });
 
-  it("finds an upgrade needed for a version 1 document, or for any document holding a pixel clip, and none otherwise", () => {
+  it("finds an upgrade needed for a version 1 or 2 document, or for any document holding a pixel clip, and none otherwise", () => {
     expect(timelineDocumentNeedsUpgrade(versionOneDoc())).toBe(true);
+    const versionTwo = seededDoc();
+    versionTwo.getMap("timeline").set("schemaVersion", 2);
+    expect(timelineDocumentNeedsUpgrade(versionTwo)).toBe(true);
     const latePixel = seededDoc();
     storeClip(latePixel, clip.id, { x: 10, y: 10, ...PIXEL_SCALE });
     expect(timelineDocumentNeedsUpgrade(latePixel)).toBe(true);
@@ -556,16 +562,16 @@ describe("upgradeTimelineDocument: storing pixel clips as frame offsets (#1502 d
     expect(timelineDocumentNeedsUpgrade(trackedDoc())).toBe(false);
   });
 
-  it("writes version 2 to a version 1 document that holds no pixel clip, in one update", () => {
+  it("writes version 3 to a version 1 document that holds no pixel clip, in one update (inner#1709 design §2.1)", () => {
     const doc = versionOneDoc();
     const updates = vi.fn();
     doc.on("update", updates);
     expect(upgradeTimelineDocument(doc)).toBe(0);
-    expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(3);
     expect(updates).toHaveBeenCalledTimes(1);
   });
 
-  it("writes nothing to a version 2 document that holds no pixel clip", () => {
+  it("writes nothing to a version 3 document that holds no pixel clip or old record", () => {
     const doc = seededDoc();
     storeClip(doc, clip.id, { frameX: 0.1, frameY: 0.1, ...PIXEL_SCALE });
     const before = Y.encodeStateAsUpdate(doc);
@@ -584,7 +590,7 @@ describe("upgradeTimelineDocument: storing pixel clips as frame offsets (#1502 d
     doc.on("update", updates);
     expect(upgradeTimelineDocument(doc)).toBe(1);
     expect(updates).toHaveBeenCalledTimes(1);
-    expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(3);
     expect(doc.getMap("clips").get(clip.id)).toBe(pixel);
     expect(pixel.get("transform")).toEqual({ frameX: 0.1, frameY: -0.1, ...PIXEL_SCALE });
     expect((doc.getMap("clips").get(SECOND_CLIP) as Y.Map<unknown>).get("transform")).toEqual({ frameX: 0.35, frameY: -0.35, ...PIXEL_SCALE });
@@ -606,7 +612,7 @@ describe("upgradeTimelineDocument: storing pixel clips as frame offsets (#1502 d
       fc.record({ frameX: fc.double({ min: -10, max: 10, noNaN: true }), frameY: fc.double({ min: -10, max: 10, noNaN: true }) }),
     );
     fc.assert(fc.property(
-      fc.constantFrom(...Object.values(FRAMES)), fc.constantFrom(1, 2), fc.array(transform, { maxLength: 5 }),
+      fc.constantFrom(...Object.values(FRAMES)), fc.constantFrom(1, 2, 3), fc.array(transform, { maxLength: 5 }),
       (frame, version, transforms) => {
         const doc = versionOneDoc(frame);
         doc.getMap("timeline").set("schemaVersion", version);
@@ -615,11 +621,167 @@ describe("upgradeTimelineDocument: storing pixel clips as frame offsets (#1502 d
         upgradeTimelineDocument(doc);
         const once = Y.encodeStateAsUpdate(doc);
         expect(readTimelineDocument(doc).clips).toEqual(shown);
-        expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
+        expect(doc.getMap("timeline").get("schemaVersion")).toBe(3);
         expect(timelineDocumentNeedsUpgrade(doc)).toBe(false);
         expect(upgradeTimelineDocument(doc)).toBe(0);
         expect(Y.encodeStateAsUpdate(doc)).toEqual(once);
       },
     ));
+  });
+});
+
+describe("Version 3: tracks without kind, placeholders naming their kind, image, audio and text (inner#1709 design §2)", () => {
+  const PLACEHOLDER = "60000000-0000-4000-8000-000000000001";
+  const UPLOAD = "b0000000-0000-4000-8000-000000000001";
+  const placeholder = {
+    ...clip, id: PLACEHOLDER, kind: "upload" as const, sourceId: undefined,
+    upload: { uploadId: UPLOAD, name: "beach.mp4", durationSeconds: 2.5 },
+  };
+  const { sourceId: _sourceId, ...placeholderWithoutKind } = placeholder;
+  const imageSource = { id: "10000000-0000-4000-8000-000000000002", kind: "image" as const, url: "https://cdn.example.com/assets/still.png", name: "still.png", mimeType: "image/png", width: 800, height: 600 };
+  const { coverUrl: _cover, width: _width, height: _height, ...soundFields } = source;
+  const audioSource = { ...soundFields, id: "10000000-0000-4000-8000-000000000003", kind: "audio" as const, url: "https://cdn.example.com/assets/song.mp3", name: "song.mp3", mimeType: "audio/mpeg" };
+  const imageClip = { ...clip, id: "30000000-0000-4000-8000-000000000012", kind: "image" as const, sourceId: imageSource.id, durationFrames: 120 };
+  const audioClip = { ...clip, id: "30000000-0000-4000-8000-000000000013", kind: "audio" as const, sourceId: audioSource.id, sourceInFrame: 12, durationFrames: 36 };
+  const { sourceId: _textSource, ...textPlacement } = clip;
+  const textClip = { ...textPlacement, id: "30000000-0000-4000-8000-000000000014", kind: "text" as const, durationFrames: 120, text: { body: "Hello", size: 0.06 } };
+
+  /**
+   * Store a track record the way the code before version 3 wrote one: a map carrying `kind: 'visual'`.
+   * @param doc - A seeded document.
+   * @param id - The track id.
+   * @param order - Its stacking order.
+   * @throws {Error} When Yjs cannot attach the map.
+   */
+  function storeLegacyTrack(doc: Y.Doc, id: string, order: number): void {
+    doc.transact(() => attachTimelineRecord(doc.getMap("tracks"), id, { id, kind: "visual", order }), "old-page");
+  }
+
+  /**
+   * Store an upload placeholder the way the code before version 3 wrote one: without `upload.kind`.
+   * @param doc - A seeded document.
+   * @throws {Error} When Yjs cannot attach the map.
+   */
+  function storeLegacyPlaceholder(doc: Y.Doc): void {
+    doc.transact(() => attachTimelineRecord(doc.getMap("clips"), PLACEHOLDER, placeholderWithoutKind), "old-page");
+  }
+
+  /**
+   * The stored JSON of one record.
+   * @param doc - The document.
+   * @param map - The collection.
+   * @param id - The record id.
+   * @returns The stored value as JSON.
+   * @throws {never} Never.
+   */
+  function stored(doc: Y.Doc, map: "tracks" | "clips", id: string): unknown {
+    return timelineRecordJson(doc.getMap(map).get(id));
+  }
+
+  it.each([1, 2])("upgrades a version %i document to version 3 in one update, dropping track kinds and naming placeholders video", (version) => {
+    const doc = seededDoc();
+    (doc.getMap("tracks").get("visual-1") as Y.Map<unknown>).set("kind", "visual");
+    storeLegacyTrack(doc, "visual-2", 1);
+    storeLegacyPlaceholder(doc);
+    doc.getMap("timeline").set("schemaVersion", version);
+    expect(timelineDocumentNeedsUpgrade(doc)).toBe(true);
+    const updates = vi.fn();
+    doc.on("update", updates);
+    upgradeTimelineDocument(doc);
+    expect(updates).toHaveBeenCalledTimes(1);
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(3);
+    expect(stored(doc, "tracks", "visual-1")).toEqual({ id: "visual-1", order: 0 });
+    expect(stored(doc, "tracks", "visual-2")).toEqual({ id: "visual-2", order: 1 });
+    expect(stored(doc, "clips", PLACEHOLDER)).toEqual({ ...placeholderWithoutKind, upload: { ...placeholder.upload, kind: "video" } });
+    expect(timelineDocumentNeedsUpgrade(doc)).toBe(false);
+    expect(upgradeTimelineDocument(doc)).toBe(0);
+  });
+
+  it("reads a version 3 document holding a track an old page wrote with a kind, finds it needs the upgrade and drops the kind", () => {
+    const doc = seededDoc();
+    storeLegacyTrack(doc, "visual-2", 1);
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(readTimelineContent(doc)).toEqual({
+      document: { schemaVersion: 3, settings, tracks: { "visual-1": { id: "visual-1", order: 0 }, "visual-2": { id: "visual-2", order: 1 } }, clips: {}, sources: {} },
+      damaged: { clips: [] },
+    });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(timelineDocumentNeedsUpgrade(doc)).toBe(true);
+    upgradeTimelineDocument(doc);
+    expect(stored(doc, "tracks", "visual-2")).toEqual({ id: "visual-2", order: 1 });
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(3);
+    expect(timelineDocumentNeedsUpgrade(doc)).toBe(false);
+  });
+
+  it("reads a version 3 document holding a placeholder an old page wrote without upload.kind as a video placeholder, and the upgrade stores the kind", () => {
+    const doc = seededDoc();
+    storeLegacyPlaceholder(doc);
+    const before = Y.encodeStateAsUpdate(doc);
+    const content = readTimelineContent(doc);
+    expect(content.document.clips).toEqual({ [PLACEHOLDER]: { ...placeholderWithoutKind, upload: { ...placeholder.upload, kind: "video" } } });
+    expect(content.damaged).toEqual({ clips: [] });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(timelineDocumentNeedsUpgrade(doc)).toBe(true);
+    upgradeTimelineDocument(doc);
+    expect(stored(doc, "clips", PLACEHOLDER)).toEqual({ ...placeholderWithoutKind, upload: { ...placeholder.upload, kind: "video" } });
+    expect(timelineDocumentNeedsUpgrade(doc)).toBe(false);
+  });
+
+  it("finds no upgrade needed for a version 3 document holding only current records", () => {
+    const doc = seededDoc();
+    doc.transact(() => {
+      attachTimelineRecord(doc.getMap("tracks"), "visual-2", { id: "visual-2", order: 1 });
+      attachTimelineRecord(doc.getMap("clips"), PLACEHOLDER, { ...placeholderWithoutKind, upload: { ...placeholder.upload, kind: "video" } });
+    }, "peer");
+    expect(timelineDocumentNeedsUpgrade(doc)).toBe(false);
+  });
+
+  it("reads image, audio and text clips and image and audio sources", () => {
+    const doc = seededDoc();
+    doc.transact(() => {
+      doc.getMap("sources").set(imageSource.id, imageSource);
+      doc.getMap("sources").set(audioSource.id, audioSource);
+      for (const record of [imageClip, audioClip, textClip]) attachTimelineRecord(doc.getMap("clips"), record.id, record);
+    }, "peer");
+    const content = readTimelineContent(doc);
+    expect(content.document.sources).toEqual({ [imageSource.id]: imageSource, [audioSource.id]: audioSource });
+    expect(content.document.clips).toEqual({ [imageClip.id]: imageClip, [audioClip.id]: audioClip, [textClip.id]: textClip });
+    expect(content.damaged).toEqual({ clips: [] });
+  });
+
+  it("reads image and audio sources one by one", () => {
+    expect(readTimelineSource(imageSource, imageSource.id)).toEqual(imageSource);
+    expect(readTimelineSource(audioSource, audioSource.id)).toEqual(audioSource);
+    expect(readTimelineSource({ ...imageSource, width: null, height: null }, imageSource.id)).toEqual({ ...imageSource, width: null, height: null });
+  });
+
+  it("reads an image clip a merge left with an in-point at in-point 0, as its conversion writes it", () => {
+    const doc = seededDoc();
+    doc.transact(() => {
+      doc.getMap("sources").set(imageSource.id, imageSource);
+      attachTimelineRecord(doc.getMap("clips"), imageClip.id, imageClip);
+      attachTimelineRecord(doc.getMap("clips"), SECOND_CLIP, { ...imageClip, id: SECOND_CLIP, sourceInFrame: 5 });
+    }, "peer");
+    expect(readTimelineContent(doc)).toEqual({
+      document: expect.objectContaining({ clips: { [imageClip.id]: imageClip, [SECOND_CLIP]: { ...imageClip, id: SECOND_CLIP } } }),
+      damaged: { clips: [] },
+    });
+  });
+
+  it("still lists a text clip with an in-point as damaged, since no landing writes text", () => {
+    const doc = seededDoc();
+    doc.transact(() => attachTimelineRecord(doc.getMap("clips"), textClip.id, { ...textClip, sourceInFrame: 5 }), "peer");
+    expect(readTimelineContent(doc).damaged).toEqual({ clips: [textClip.id] });
+  });
+
+  it("reads a landed clip a merge left with its placeholder's upload as the clip alone", () => {
+    const doc = seededDoc();
+    doc.transact(() => {
+      doc.getMap("sources").set(imageSource.id, imageSource);
+      attachTimelineRecord(doc.getMap("clips"), imageClip.id, {
+        ...imageClip, upload: { uploadId: "b0000000-0000-4000-8000-000000000001", name: "a.png", kind: "image", durationSeconds: null, state: "failed", failure: "failed", retryable: true },
+      });
+    }, "peer");
+    expect(readTimelineContent(doc)).toEqual({ document: expect.objectContaining({ clips: { [imageClip.id]: imageClip } }), damaged: { clips: [] } });
   });
 });

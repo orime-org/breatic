@@ -48,8 +48,8 @@ import {
   mostOutputsOf,
 } from "@breatic/shared/mini-tools";
 import {
-  announceDocumentUploadProcessing,
-  documentTargetOf,
+  announceSpaceUploadProcessing,
+  spaceUploadTargetOf,
   assetService,
   ingestReportService,
   mediaReadService,
@@ -164,11 +164,16 @@ const uploadTicketFields = z.object({
    * bytes that really landed.
    */
   client_hash: z.string().regex(SHA256_HEX),
-  /** Where the bytes land. Absent for an upload with no node: a focus crop, or a Document body block (`upload_id`). */
+  /** Where the bytes land. Absent for an upload with no node: a focus crop, or a Space placeholder (`upload_id`). */
   node_id: z.string().uuid().optional(),
   space_id: z.string().uuid().optional(),
-  /** The Document body block the bytes land in, by its `uploadId`; it names `space_id` and no node (breatic#1574). */
+  /**
+   * The Space placeholder the bytes land in, by its `uploadId`: a Document body block (breatic#1574) or a Timeline
+   * upload clip (inner#1709). It names `space_id` and no node, and comes with `upload_target`.
+   */
   upload_id: z.string().uuid().optional(),
+  /** Which Space type holds the `upload_id` placeholder; the page that started the upload names it. */
+  upload_target: z.enum(["document", "timeline"]).optional(),
   /** The name a 3D model is imported under, shown on its task row (inner#1690). */
   label: SceneObjectValuesSchema.shape.name.optional(),
   /** The 3D object a part picture is for (inner#1693 design 6.3). */
@@ -215,6 +220,7 @@ const uploadTicketSchema = z
       node_id: z.never().optional(),
       space_id: z.never().optional(),
       upload_id: z.never().optional(),
+      upload_target: z.never().optional(),
       label: z.never().optional(),
       focusImage: z.never().optional(),
       object_id: z.never().optional(),
@@ -236,9 +242,13 @@ const uploadTicketSchema = z
     if (body.focusImage !== undefined && (body.space_id === undefined || body.node_id !== undefined || body.upload_id !== undefined || body.purpose !== undefined || body.source !== undefined)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["focusImage"], message: "a focus crop names its Space and lands in the pool of the node it names, on nothing else", params: REQUEST_SHAPE_PARAMS });
     }
-    // A Document block is the one place a body upload lands: its Space, and no node or purpose.
+    // A Space placeholder names the Space type that holds it, and only a placeholder names one.
+    if ((body.upload_id === undefined) !== (body.upload_target === undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["upload_target"], message: "a Space placeholder upload names its upload id and Space type together", params: REQUEST_SHAPE_PARAMS });
+    }
+    // A Space placeholder is the one place such an upload lands: its Space, and no node or purpose.
     if (body.upload_id !== undefined && (body.space_id === undefined || body.node_id !== undefined || body.purpose !== undefined || body.source !== undefined)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["upload_id"], message: "a Document block upload names its Space and nothing else to land on", params: REQUEST_SHAPE_PARAMS });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["upload_id"], message: "a Space placeholder upload names its Space and nothing else to land on", params: REQUEST_SHAPE_PARAMS });
     }
     if (body.purpose === "scene_look") {
       if (!isSceneLookImageMediaType(body.content_type)) {
@@ -648,13 +658,13 @@ assets.post(
       );
       return c.json({ error: { message: t("server.error.internal") } }, 502);
     }
-    // A Document block shows every member the wait; its ending arrives with the finish, so losing this only costs
-    // that display (breatic#1574).
-    const documentTarget = documentTargetOf(claim);
+    // A Space placeholder shows every member the wait; its ending arrives with the finish, so losing this only costs
+    // that display (breatic#1574, inner#1709).
+    const spaceTarget = spaceUploadTargetOf(claim);
     try {
-      if (documentTarget !== null) await announceDocumentUploadProcessing(documentTarget);
+      if (spaceTarget !== null) await announceSpaceUploadProcessing(spaceTarget);
     } catch (err) {
-      logger.error({ err, key: storageKey }, "document_upload_processing_publish_failed");
+      logger.error({ err, key: storageKey }, "space_upload_processing_publish_failed");
     }
     return c.json({ data: { storageKey } }, 202);
   },

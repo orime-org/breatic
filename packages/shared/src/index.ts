@@ -544,13 +544,21 @@ export {
   TimelineSettingsSchema,
   TimelineTrackSchema,
   TimelineVideoSourceSchema,
+  TimelineImageSourceSchema,
+  TimelineAudioSourceSchema,
+  TimelineSourceSchema,
   TimelineVideoClipSchema,
+  TimelineImageClipSchema,
+  TimelineAudioClipSchema,
+  TimelineTextClipSchema,
   TimelineWebAnimationClipSchema,
   TimelineUploadClipSchema,
   TimelineClipSchema,
   TimelineDocumentV1Schema,
   TIMELINE_MAIN_TRACK_ID,
+  TIMELINE_MAX_GAIN,
   TIMELINE_SCHEMA_VERSIONS,
+  isPresentableTimelineClip,
   isTimelineSchemaVersion,
 } from "@shared/timeline/schema.js";
 export type {
@@ -558,7 +566,13 @@ export type {
   TimelineSettings,
   TimelineTrack,
   TimelineVideoSource,
+  TimelineImageSource,
+  TimelineAudioSource,
+  TimelineSource,
   TimelineVideoClip,
+  TimelineImageClip,
+  TimelineAudioClip,
+  TimelineTextClip,
   TimelineWebAnimationClip,
   TimelineWebAnimationContentBinding,
   TimelineUploadClip,
@@ -567,8 +581,17 @@ export type {
 } from "@shared/timeline/schema.js";
 // The web-animation contracts are exported from `@breatic/shared/space-content` only: their schemas are built at
 // module load from the Timeline schemas, which share a bundle chunk with Yjs, and the main entry is in every page.
-export { assertTimelineRate, durationToFrames, timelineDurationFraction } from "@shared/timeline/time.js";
-export type { TimelineFraction } from "@shared/timeline/time.js";
+export {
+  assertTimelineRate, durationToFrames, timelineDurationFraction, timelineSourceRoom, timelineUploadExtent,
+} from "@shared/timeline/time.js";
+export type { TimelineFraction, TimelineSourceExtent } from "@shared/timeline/time.js";
+export { compareTimelineIds, orderedTimelineClips } from "@shared/timeline/order.js";
+export {
+  TIMELINE_TEXT_FONT_FAMILIES, TIMELINE_TEXT_STYLE, TimelineFontFaceSchema, TimelineFontFacesSchema, TimelineFontGlyphSchema,
+  TimelineFontGlyphsSchema, timelineFontFilesMatch,
+} from "@shared/timeline/text.js";
+export type { TimelineFontGlyph } from "@shared/timeline/text.js";
+export type { TimelineFontFace } from "@shared/timeline/font-face.js";
 export { MAX_TIMELINE_ASSET_PAGE_SIZE, TIMELINE_PREVIEW_DEFAULTS } from "@shared/timeline/api.js";
 export type { TimelineClientLimits, TimelinePreviewSyncLimits } from "@shared/timeline/api.js";
 export {

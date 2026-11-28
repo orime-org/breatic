@@ -91,6 +91,8 @@ const LIMITS = {
   defaults: SETTINGS,
   assets: { pageSize: 50, pageMax: 100 },
   webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000 },
+  media: { imageDurationSeconds: 5, textDurationSeconds: 5, textSize: 0.06 },
+  text: { fontBaseUrl: 'https://ingest.test/web-animation/fonts/v1/' },
 };
 const CONNECTED: SocketState = {
   provider: null, synced: true, hasEverSynced: true, status: 'connected', writeAccess: 'granted', authFailedReason: null,
@@ -193,7 +195,8 @@ describe('track toolbar', () => {
    */
   function toolbarButtons(): Array<string | null> {
     const bar = screen.getByRole('toolbar', { name: t('timeline.tracks') });
-    return within(bar).getAllByRole('button').map((button) => button.getAttribute('data-testid'));
+    // More stays mounted but inert while every control fits (inner#1709), so it is not one the user can press.
+    return within(bar).getAllByRole('button').filter((button) => button.closest('[inert]') === null).map((button) => button.getAttribute('data-testid'));
   }
   const EDITING = ['timeline-undo', 'timeline-redo', 'timeline-split', 'timeline-duplicate', 'timeline-delete', 'timeline-toggle-magnet', 'timeline-toggle-snap', 'timeline-toggle-linkage'];
 
@@ -201,7 +204,7 @@ describe('track toolbar', () => {
     seed();
     showTimeline();
     expect(await screen.findByTestId('timeline-add-web-animation')).toHaveAccessibleName(t('timeline.webAnimation.add'));
-    expect(toolbarButtons()).toEqual(['timeline-add-media', 'timeline-add-web-animation', ...EDITING]);
+    expect(toolbarButtons()).toEqual(['timeline-add-media', 'timeline-add-web-animation', 'timeline-add-text', ...EDITING]);
   });
 
   it('offers Add web animation while the Timeline limits are still read', async () => {

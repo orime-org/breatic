@@ -5,7 +5,7 @@
 
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { TIMELINE_LAYER_TRANSFORM_LIMITS, setLocale, t, type TimelineClip, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
@@ -14,7 +14,10 @@ import { RESOLUTION, webClip } from '@web/data/yjs/__tests__/timeline-web-fixtur
 import { uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
 import { TimelineClipProperties } from '@web/spaces/timeline/TimelineClipProperties';
 import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
+import { toast } from '@web/lib/toast';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
+
+vi.mock('@web/lib/toast', () => ({ toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
 const SELECTED = clip(cid(1), V2, 10, 14, { sourceInFrame: 4 });
 const LABELS: TimelineTrackLabels = { visual: [{ id: V2, label: 'Visual 2' }], nameOf: () => 'Visual 2' };
@@ -31,7 +34,7 @@ afterEach(() => {
  */
 function showFields(selected: TimelineVideoClip = SELECTED): ReturnType<typeof vi.fn<(command: TimelineEditCommand) => void>> {
   const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
-  renderWithTooltips(<TimelineClipProperties spaceId='space' document={timeline([selected])} clip={selected} name='Clip' conflict={false}
+  renderWithTooltips(<TimelineClipProperties spaceId='space' document={timeline([selected])} clip={selected} name='Clip'
     labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />);
   return onCommit;
 }
@@ -56,11 +59,13 @@ describe('TimelineClipProperties field input', () => {
     expect(screen.getByTestId('timeline-clip-field-error')).toBeInTheDocument();
   });
 
-  it.each(['timeline-clip-start', 'timeline-clip-in', 'timeline-clip-duration'])('keeps the frame-range copy for an invalid %s (breatic#1410)', (testId) => {
-    showFields();
-    typeAndBlur(testId, '');
-    expect(t('timeline.errors.invalid_range')).toBe('Enter a frame range inside the video.');
-    expect(screen.getByTestId('timeline-clip-field-error')).toHaveTextContent('Enter a frame range inside the video.');
+  it.each(['timeline-clip-start', 'timeline-clip-in', 'timeline-clip-duration'])('says the range is inside the media, not only a video, for an invalid %s (inner#1709 design §6.7)', (testId) => {
+    act(() => { setLocale('zh-CN'); });
+    try {
+      showFields();
+      typeAndBlur(testId, '');
+      expect(screen.getByTestId('timeline-clip-field-error')).toHaveTextContent('请输入素材范围内的帧。');
+    } finally { act(() => { setLocale('en'); }); }
   });
 
   it.each(['timeline-clip-start', 'timeline-clip-in', 'timeline-clip-duration'])('keeps only the digits typed in %s, a plain text field with the numeric keypad', (testId) => {
@@ -143,7 +148,7 @@ function showLive(selected: TimelineVideoClip = SELECTED): { onCommit: ReturnTyp
    * @returns The element, keyed by the clip id as TimelineSpace renders it.
    * @throws {never} Never.
    */
-  const panel = (item: TimelineVideoClip, options: PanelOptions = {}): React.JSX.Element => <TimelineClipProperties key={item.id} spaceId='space' document={timeline([item], undefined, [SOURCE, SHORT_SOURCE])} clip={item} name='Clip' conflict={false}
+  const panel = (item: TimelineVideoClip, options: PanelOptions = {}): React.JSX.Element => <TimelineClipProperties key={item.id} spaceId='space' document={timeline([item], undefined, [SOURCE, SHORT_SOURCE])} clip={item} name='Clip'
     labels={LABELS} readOnly={options.readOnly ?? false} placement={options.placement ?? OFF} atFrame onCommit={onCommit} />;
   const view = renderWithTooltips(panel(selected));
   return { onCommit, show: (next, options) => view.rerender(panel(next, options)) };
@@ -414,9 +419,12 @@ describe('TimelineClipProperties marks an out-of-range field invalid (inner#1708
 });
 
 describe('TimelineClipProperties names the source length and rate (inner#1708 visual V18)', () => {
-  it('shows the source frames at a whole frame rate', () => {
-    showLive();
-    expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent(t('timeline.sourceExtent', { frames: SOURCE.extentFrames, fps: 24 }));
+  it('shows the source frames at a whole frame rate, named by the clip kind (inner#1709 design §6.7)', () => {
+    act(() => { setLocale('zh-CN'); });
+    try {
+      showLive();
+      expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent('视频共 1000 帧 · 24 fps');
+    } finally { act(() => { setLocale('en'); }); }
   });
 
   it('shows a fractional frame rate rounded to two decimals', () => {
@@ -426,9 +434,9 @@ describe('TimelineClipProperties names the source length and rate (inner#1708 vi
       ...base, settings: { ...base.settings, fps: ntsc },
       sources: { [SOURCE.id]: { ...SOURCE, timebase: ntsc } },
     };
-    renderWithTooltips(<TimelineClipProperties spaceId='space' document={document} clip={SELECTED} name='Clip' conflict={false}
+    renderWithTooltips(<TimelineClipProperties spaceId='space' document={document} clip={SELECTED} name='Clip'
       labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={vi.fn()} />);
-    expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent(t('timeline.sourceExtent', { frames: SOURCE.extentFrames, fps: 29.97 }));
+    expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent(t('timeline.sourceExtent', { kind: 'video', frames: SOURCE.extentFrames, fps: 29.97 }));
   });
 
   it('shows no source line when the source is missing', () => {
@@ -464,7 +472,7 @@ describe('TimelineClipProperties position and size (breatic#1410)', () => {
    */
   function showPlaced(selected: TimelineClip = PLACED, readOnly = false, atFrame = true): ReturnType<typeof vi.fn<(command: TimelineEditCommand) => void>> {
     const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
-    renderWithTooltips(<TimelineClipProperties spaceId='space' document={timeline([selected])} web={RESOLUTION} clip={selected} name='Clip' conflict={false}
+    renderWithTooltips(<TimelineClipProperties spaceId='space' document={timeline([selected])} web={RESOLUTION} clip={selected} name='Clip'
       labels={LABELS} readOnly={readOnly} placement={OFF} atFrame={atFrame} onCommit={onCommit} />);
     return onCommit;
   }
@@ -508,7 +516,7 @@ describe('TimelineClipProperties position and size (breatic#1410)', () => {
     const portrait = clip(cid(27), V2, 10, 14, { transform: { ...STORED, frameX: 0.25, frameY: -0.25 } });
     const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
     renderWithTooltips(<TimelineClipProperties spaceId='space' document={{ ...timeline([portrait]), settings: { width: 1080, height: 1920, fps: FPS } }} clip={portrait} name='Clip'
-      conflict={false} labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />);
+      labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />);
     expect(fieldText('timeline-clip-x')).toBe('270');
     expect(fieldText('timeline-clip-y')).toBe('-480');
     typeAndEnter('timeline-clip-x', '540');
@@ -523,7 +531,7 @@ describe('TimelineClipProperties position and size (breatic#1410)', () => {
       const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
       const start = clip(cid(28), V2, 10, 14, { transform: { ...STORED, frameX: 0, frameY: 0 } });
       const panel = (item: TimelineVideoClip): React.JSX.Element => <TimelineClipProperties key={item.id} spaceId='space' document={{ ...timeline([item]), settings: WIDE }} clip={item}
-        name='Clip' conflict={false} labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />;
+        name='Clip' labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />;
       const view = renderWithTooltips(panel(start));
       try {
         typeAndEnter('timeline-clip-x', String(x));
@@ -756,6 +764,217 @@ describe('TimelineClipProperties position and size (breatic#1410)', () => {
       showPlaced(uploadClip(cid(26), V2, 0), false, false);
       expect(screen.queryByTestId('timeline-clip-x')).toBe(null);
       expect(screen.queryByTestId('timeline-clip-off-frame')).toBe(null);
+    });
+  });
+});
+
+/**
+ * The properties of the new clip kinds (inner#1709 design §6.5, demo properties card). Field ids chosen here: the body
+ * `timeline-clip-text-body` (a multi-line field, maxLength 2000), the size `timeline-clip-text-size` (whole pixels of
+ * the current frame height, stored as a share of it), the volume `timeline-clip-gain` (a Slider, 0 to
+ * floor(TIMELINE_MAX_GAIN x 100) = 398 percent, committed once on release) and the mute switch `timeline-clip-mute`.
+ * Text commits are `set_text` with the whole `text`; sound commits are `set_audio` with `gain` and `mute`.
+ */
+describe('TimelineClipProperties for text, picture and sound clips (inner#1709 design §6.5)', () => {
+  const IMAGE_SOURCE = { id: '10000000-0000-4000-8000-0000000000a1', kind: 'image', assetId: '20000000-0000-4000-8000-0000000000a1', width: 1920, height: 1080 };
+  const AUDIO_SOURCE = { ...SOURCE, id: '10000000-0000-4000-8000-0000000000a2', kind: 'audio', assetId: '20000000-0000-4000-8000-0000000000a2', extentFrames: 336, durationSeconds: '14' };
+  const BASE = { trackId: V2, startFrame: 10, sourceInFrame: 0, durationFrames: 72, rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 } };
+  const TEXT = { ...BASE, id: cid(31), kind: 'text', text: { body: '镜头 1：开场', size: 0.06 } } as unknown as TimelineClip;
+  const IMAGE = { ...BASE, id: cid(32), kind: 'image', sourceId: IMAGE_SOURCE.id } as unknown as TimelineClip;
+  const AUDIO = { ...BASE, id: cid(33), kind: 'audio', sourceId: AUDIO_SOURCE.id, gain: 0.6 } as unknown as TimelineClip;
+  const VIDEO = clip(cid(34), V2, 10, 72, { gain: 1.5 });
+  const IMAGE_UPLOAD = { ...uploadClip(cid(35), V2, 10, 120), upload: { uploadId: 'b0000000-0000-4000-8000-000000000001', name: '镜头1-分镜图.png', kind: 'image', durationSeconds: null } } as unknown as TimelineClip;
+  const AUDIO_UPLOAD = { ...uploadClip(cid(36), V2, 10, 36), upload: { uploadId: 'b0000000-0000-4000-8000-000000000002', name: '音效-转场.wav', kind: 'audio', durationSeconds: 1.5 } } as unknown as TimelineClip;
+
+  /**
+   * Render the panel for one clip on a frame of the given size.
+   * @param selected - The clip.
+   * @param frame - The frame width and height.
+   * @returns The commit callback.
+   * @throws {Error} When rendering fails.
+   */
+  function showKind(selected: TimelineClip, frame = { width: 1920, height: 1080 }): ReturnType<typeof vi.fn<(command: TimelineEditCommand) => void>> {
+    const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
+    const document = {
+      schemaVersion: 3,
+      settings: { ...frame, fps: FPS },
+      tracks: { [MAIN]: { id: MAIN, order: 0 }, [V2]: { id: V2, order: 1 } },
+      clips: { [selected.id]: selected },
+      sources: { [SOURCE.id]: SOURCE, [IMAGE_SOURCE.id]: IMAGE_SOURCE, [AUDIO_SOURCE.id]: AUDIO_SOURCE },
+    } as unknown as TimelineDocumentV1;
+    renderWithTooltips(<TimelineClipProperties spaceId='space' document={document} clip={selected} name='Clip'
+      labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />);
+    return onCommit;
+  }
+
+  beforeEach(() => {
+    act(() => { setLocale('zh-CN'); });
+    vi.mocked(toast.warning).mockClear();
+    vi.mocked(toast.error).mockClear();
+  });
+  afterEach(() => { act(() => { setLocale('en'); }); });
+
+  describe('a text clip', () => {
+    it('shows the body in a multi-line field limited to 2000 characters and the size in pixels of the frame height, with no in-point', () => {
+      showKind(TEXT);
+      const body = screen.getByTestId('timeline-clip-text-body');
+      expect(body.tagName).toBe('TEXTAREA');
+      expect(body).toHaveValue('镜头 1：开场');
+      expect(body).toHaveAttribute('maxlength', '2000');
+      // 0.06 x 1080 = 64.8 px.
+      expect(screen.getByTestId('timeline-clip-text-size')).toHaveValue('65');
+      expect(screen.queryByTestId('timeline-clip-in')).toBe(null);
+      expect(screen.getByTestId('timeline-clip-duration')).toBeInTheDocument();
+      expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent('时长不限');
+      expect(screen.getByText('正文')).toBeInTheDocument();
+      expect(screen.getByText('字号（px）')).toBeInTheDocument();
+    });
+
+    it('shows the size against the current frame height on a 9:16 frame', () => {
+      showKind(TEXT, { width: 1080, height: 1920 });
+      // 0.06 x 1920 = 115.2 px.
+      expect(screen.getByTestId('timeline-clip-text-size')).toHaveValue('115');
+    });
+
+    it('commits an edited body on leaving the field as set_text with the stored size', () => {
+      const onCommit = showKind(TEXT);
+      typeAndBlur('timeline-clip-text-body', '新的正文\n第二行');
+      expect(onCommit).toHaveBeenCalledWith({ operation: 'set_text', parameters: { clipId: TEXT.id, text: { body: '新的正文\n第二行', size: 0.06 } }, placement: OFF });
+    });
+
+    it('cuts a pasted body of 2001 characters to 2000 before committing it', () => {
+      const onCommit = showKind(TEXT);
+      typeAndBlur('timeline-clip-text-body', 'a'.repeat(2001));
+      const command = onCommit.mock.calls[0]?.[0] as { parameters: { text: { body: string } } } | undefined;
+      expect(command?.parameters.text.body).toBe('a'.repeat(2000));
+    });
+
+    it.each([['emptied', ''], ['left with spaces only', '   \n ']])('restores the body and says it cannot be empty when it is %s, committing nothing', (_case, value) => {
+      const onCommit = showKind(TEXT);
+      typeAndBlur('timeline-clip-text-body', value);
+      expect(onCommit).not.toHaveBeenCalled();
+      expect(screen.getByTestId('timeline-clip-text-body')).toHaveValue('镜头 1：开场');
+      expect([...vi.mocked(toast.warning).mock.calls, ...vi.mocked(toast.error).mock.calls].map(([message]) => message)).toEqual(['正文不能为空。']);
+    });
+
+    it('commits a typed size as its share of the frame height', () => {
+      const onCommit = showKind(TEXT);
+      fireEvent.change(screen.getByTestId('timeline-clip-text-size'), { target: { value: '108' } });
+      fireEvent.keyDown(screen.getByTestId('timeline-clip-text-size'), { key: 'Enter' });
+      const command = onCommit.mock.calls[0]?.[0] as { operation: string; parameters: { clipId: string; text: { body: string; size: number } } } | undefined;
+      expect(command?.operation).toBe('set_text');
+      expect(command?.parameters.clipId).toBe(TEXT.id);
+      expect(command?.parameters.text.body).toBe('镜头 1：开场');
+      expect(command?.parameters.text.size).toBeCloseTo(0.1, 6);
+    });
+
+    it('commits the largest size, half the frame height, for a size above it', () => {
+      const onCommit = showKind(TEXT);
+      typeAndBlur('timeline-clip-text-size', '5000');
+      const command = onCommit.mock.calls[0]?.[0] as { parameters: { text: { size: number } } } | undefined;
+      expect(command?.parameters.text.size).toBeCloseTo(0.5, 6);
+    });
+
+    it('commits a size inside the smallest share, 0.01 of the frame height, for a size below it', () => {
+      const onCommit = showKind(TEXT);
+      typeAndBlur('timeline-clip-text-size', '1');
+      const command = onCommit.mock.calls[0]?.[0] as { parameters: { text: { size: number } } } | undefined;
+      expect(command?.parameters.text.size).toBeGreaterThanOrEqual(0.01);
+      // The smallest whole pixel at or above 0.01 x 1080 = 10.8 px is 11 px.
+      expect(command?.parameters.text.size).toBeLessThanOrEqual(11 / 1080);
+    });
+
+    it('has no volume or mute', () => {
+      showKind(TEXT);
+      expect(screen.queryByTestId('timeline-clip-gain')).toBe(null);
+      expect(screen.queryByTestId('timeline-clip-mute')).toBe(null);
+    });
+  });
+
+  describe('a picture clip', () => {
+    it('has no in-point, keeps position and size, and ends with an unbounded length', () => {
+      showKind(IMAGE);
+      expect(screen.queryByTestId('timeline-clip-in')).toBe(null);
+      expect(screen.getByTestId('timeline-clip-x')).toBeInTheDocument();
+      expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent('时长不限');
+      expect(screen.queryByTestId('timeline-clip-gain')).toBe(null);
+      expect(screen.queryByTestId('timeline-clip-text-body')).toBe(null);
+    });
+
+    it('commits any longer duration, a picture having no length of its own', () => {
+      const onCommit = showKind(IMAGE);
+      typeAndBlur('timeline-clip-duration', '100000');
+      expect(onCommit).toHaveBeenCalledWith({ operation: 'set_range', parameters: { clipId: IMAGE.id, startFrame: 10, sourceInFrame: 0, durationFrames: 100000 }, placement: OFF });
+      expect(screen.queryByTestId('timeline-clip-field-error')).toBe(null);
+    });
+  });
+
+  describe('a sound clip', () => {
+    it('shows the volume up to 398% and the mute switch, has no position and size, and names its length in frames', () => {
+      showKind(AUDIO);
+      const gain = within(screen.getByTestId('timeline-clip-gain')).getByRole('slider');
+      expect(gain).toHaveAttribute('aria-valuemax', '398');
+      expect(gain).toHaveAttribute('aria-valuemin', '0');
+      expect(gain).toHaveAttribute('aria-valuenow', '60');
+      expect(screen.getByText('60%')).toBeInTheDocument();
+      expect(screen.getByTestId('timeline-clip-mute')).toHaveAttribute('aria-checked', 'false');
+      expect(screen.getByText('音量')).toBeInTheDocument();
+      expect(screen.getByText('静音')).toBeInTheDocument();
+      expect(screen.queryByTestId('timeline-clip-x')).toBe(null);
+      expect(screen.getByTestId('timeline-clip-in')).toBeInTheDocument();
+      expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent('音频共 336 帧 · 24 fps');
+    });
+
+    it('refuses a duration past the end of the sound file', () => {
+      const onCommit = showKind(AUDIO);
+      typeAndBlur('timeline-clip-duration', '337');
+      expect(onCommit).not.toHaveBeenCalled();
+      expect(screen.getByTestId('timeline-clip-field-error')).toBeInTheDocument();
+    });
+
+    it('commits the volume once on release as set_audio with the stored mute', () => {
+      const onCommit = showKind(AUDIO);
+      const gain = within(screen.getByTestId('timeline-clip-gain')).getByRole('slider');
+      // Radix commits a keyboard step on the key itself; End moves to the maximum.
+      fireEvent.keyDown(gain, { key: 'End' });
+      expect(onCommit).toHaveBeenCalledTimes(1);
+      const command = onCommit.mock.calls[0]?.[0] as { operation: string; parameters: { clipId: string; gain: number; mute: boolean } } | undefined;
+      expect(command?.operation).toBe('set_audio');
+      expect(command?.parameters).toMatchObject({ clipId: AUDIO.id, mute: false });
+      expect(command?.parameters.gain).toBeCloseTo(3.98, 6);
+      // Inside the +12 dB ceiling.
+      expect(command?.parameters.gain).toBeLessThanOrEqual(10 ** (12 / 20));
+    });
+
+    it('commits mute as set_audio with the stored gain', () => {
+      const onCommit = showKind(AUDIO);
+      fireEvent.click(screen.getByTestId('timeline-clip-mute'));
+      expect(onCommit).toHaveBeenCalledWith({ operation: 'set_audio', parameters: { clipId: AUDIO.id, gain: 0.6, mute: true }, placement: OFF });
+    });
+  });
+
+  describe('a video clip', () => {
+    it('shows the volume and the mute switch under its duration, beside its position and size', () => {
+      showKind(VIDEO);
+      expect(within(screen.getByTestId('timeline-clip-gain')).getByRole('slider')).toHaveAttribute('aria-valuenow', '150');
+      expect(screen.getByTestId('timeline-clip-mute')).toBeInTheDocument();
+      expect(screen.getByTestId('timeline-clip-x')).toBeInTheDocument();
+      const duration = screen.getByTestId('timeline-clip-duration');
+      expect(duration.compareDocumentPosition(screen.getByTestId('timeline-clip-gain')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+  });
+
+  describe('an upload placeholder by the kind it becomes', () => {
+    it('has no in-point and an unbounded length for a picture', () => {
+      showKind(IMAGE_UPLOAD);
+      expect(screen.queryByTestId('timeline-clip-in')).toBe(null);
+      expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent('时长不限');
+    });
+
+    it('keeps the in-point for a sound', () => {
+      showKind(AUDIO_UPLOAD);
+      expect(screen.getByTestId('timeline-clip-in')).toBeInTheDocument();
+      expect(screen.queryByText('时长不限')).toBe(null);
     });
   });
 });

@@ -17,6 +17,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const HERE = process.cwd();
 const CONFIG = join(HERE, "wrangler.toml");
@@ -68,12 +69,36 @@ if (unnamed.length > 0) {
   process.exit(0);
 }
 
-// The web-animation font set is served as static assets; with `[assets]`
-// enabled, wrangler refuses to start until its directory exists.
-if (/^\s*\[assets\]/m.test(topLevel)) {
-  const fonts = spawnSync(process.execPath, [join(HERE, "scripts/web-animation-fonts.mjs")], { stdio: "inherit" });
-  if (fonts.status !== 0) process.exit(0);
+// The font set under /web-animation/fonts/ is static assets every Timeline
+// preview with text reads, web animation on or off (inner#1709), so `[assets]`
+// is required; a wrangler.toml without it would start a Worker that serves no
+// fonts, so this stops as above.
+if (!/^\s*\[assets\]/m.test(topLevel)) {
+  process.stdout.write(
+    [
+      "",
+      "  ingest Worker: wrangler.toml has no [assets], so it is not starting.",
+      "",
+      "  The Timeline preview reads its fonts from the Worker's static assets.",
+      "  Add these two lines at the top level of wrangler.toml (and the same",
+      "  under [env.production.assets] before the next deploy):",
+      "    [assets]",
+      '    directory = "./assets"',
+      "  (see packages/ingest/README.md).",
+      "",
+      "  Everything else in `pnpm dev` is unaffected.",
+      "",
+    ].join("\n"),
+  );
+  process.exit(0);
 }
+
+// wrangler refuses to start until the assets directory exists, so the font set
+// is laid out on every start, by the script beside this one.
+const fonts = spawnSync(process.execPath, [fileURLToPath(new URL("web-animation-fonts.mjs", import.meta.url))], {
+  stdio: "inherit",
+});
+if (fonts.status !== 0) process.exit(0);
 
 // miniflare records every span and log line of a local run in
 // .wrangler/state/v3/observability and never deletes any of it (its only

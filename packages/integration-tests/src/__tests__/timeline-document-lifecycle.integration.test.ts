@@ -120,8 +120,8 @@ describe("Timeline initialization in the real Yjs database", () => {
 
     const loaded = present(await yjsRepo.loadTimelineDocData(name, seed()));
     expect(readTimelineDocument(decode(loaded))).toEqual({
-      schemaVersion: 2, settings: SETTINGS,
-      tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
+      schemaVersion: 3, settings: SETTINGS,
+      tracks: { "visual-1": { id: "visual-1", order: 0 } },
       clips: {}, sources: {},
     });
     expect(Array.from(present(await yjsRepo.fetchDocData(name)))).toEqual(Array.from(loaded));
@@ -144,7 +144,7 @@ describe("Timeline initialization in the real Yjs database", () => {
   it("preserves unknown nonempty content without selecting new defaults", async () => {
     const name = own(timelineSpaceDocName(randomUUID(), randomUUID()));
     const unknown = decode();
-    unknown.getMap("timeline").set("schemaVersion", 3);
+    unknown.getMap("timeline").set("schemaVersion", 4);
     unknown.getMap("legacy").set("retained", "original data");
     const bytes = Y.encodeStateAsUpdate(unknown);
     await yjsRepo.seedInitialState(name, bytes);

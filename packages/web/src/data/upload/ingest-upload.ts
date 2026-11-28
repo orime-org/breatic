@@ -54,6 +54,9 @@ export type UploadTargetParams =
   | { projectId: string; studioId?: never; purpose?: 'project_cover' | 'scene_model' | 'scene_look' }
   | { studioId: string; projectId?: never; purpose: 'studio_avatar' };
 
+/** The Space types whose documents hold upload placeholders collab writes the ending into (inner#1709). */
+export type SpaceUploadTarget = 'document' | 'timeline';
+
 /**
  * Where an upload lands and what it is for.
  *
@@ -66,8 +69,10 @@ export type UploadContext = UploadTargetParams & {
   nodeId?: string;
   /** The space that node or Document block lives in. */
   spaceId?: string;
-  /** The Document body block the bytes land in, by its `uploadId`: the server announces the ending and collab writes the block (breatic#1574). */
+  /** The Space placeholder the bytes land in, by its `uploadId`: the server announces the ending and collab writes the placeholder (breatic#1574, inner#1709). */
   uploadId?: string;
+  /** The Space type whose document holds that placeholder; named together with `uploadId`. */
+  uploadTarget?: SpaceUploadTarget;
   /** `mini_tool` for a mini-tool product. */
   source?: 'mini_tool';
   /** The mini-tool's name when `source` says so. */

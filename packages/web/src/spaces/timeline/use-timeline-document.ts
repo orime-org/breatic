@@ -4,16 +4,16 @@
 import * as React from 'react';
 import type * as Y from 'yjs';
 import { isTimelineSchemaVersion, type TimelineDocumentV1 } from '@breatic/shared';
-import { readTimelineContent, type TimelineDamagedRecords } from '@web/data/yjs/timeline-document';
+import { readTimelineContent } from '@web/data/yjs/timeline-document';
 
-/** The current supported content or the format error reported by its reader. */
+/**
+ * The current supported content or the format error reported by its reader. Records that cannot be read are left out
+ * and never shown (inner#1709).
+ */
 export interface TimelineDocumentState {
   document: TimelineDocumentV1 | null;
-  damaged: TimelineDamagedRecords;
   error: Error | null;
 }
-
-const NONE: TimelineDamagedRecords = { clips: [] };
 
 /**
  * Read a supported version before binding its collection handles.
@@ -23,16 +23,15 @@ const NONE: TimelineDamagedRecords = { clips: [] };
  * @throws {never} Never.
  */
 function readState(doc: Y.Doc, enabled: boolean): TimelineDocumentState {
-  if (!enabled) return { document: null, damaged: NONE, error: null };
+  if (!enabled) return { document: null, error: null };
   try {
     // Checked before reading: reading opens the record roots, which an unsupported document must keep as stored.
     if (!doc.share.has('timeline') || !isTimelineSchemaVersion(doc.getMap('timeline').get('schemaVersion'))) {
       throw new Error('Unsupported Timeline content');
     }
-    const { document, damaged } = readTimelineContent(doc);
-    return { document, damaged: damaged.clips.length === 0 ? NONE : damaged, error: null };
+    return { document: readTimelineContent(doc).document, error: null };
   } catch (error) {
-    return { document: null, damaged: NONE, error: error instanceof Error ? error : new Error('Invalid Timeline content') };
+    return { document: null, error: error instanceof Error ? error : new Error('Invalid Timeline content') };
   }
 }
 

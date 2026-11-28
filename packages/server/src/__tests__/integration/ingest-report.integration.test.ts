@@ -399,7 +399,7 @@ describe("a Document body upload (breatic#1574)", () => {
   it("announces processing when the bytes are handed over and the result when they land", async () => {
     const seed = await seedEditor();
     const uploadId = crypto.randomUUID();
-    const key = await mintTicket(seed, { upload_id: uploadId });
+    const key = await mintTicket(seed, { upload_id: uploadId, upload_target: "document" });
 
     await report(completed(key));
 
@@ -412,7 +412,7 @@ describe("a Document body upload (breatic#1574)", () => {
   it("announces the failure with its cause when the Worker could not finish", async () => {
     const seed = await seedEditor();
     const uploadId = crypto.randomUUID();
-    const key = await mintTicket(seed, { upload_id: uploadId });
+    const key = await mintTicket(seed, { upload_id: uploadId, upload_target: "document" });
 
     await report({ storage_key: key, outcome: "aborted" });
 
@@ -436,7 +436,7 @@ describe("a Document body upload (breatic#1574)", () => {
       headers: { "content-type": "application/json", cookie: seed.cookie },
       body: JSON.stringify({
         filename: "again.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
-        size: 4096, client_hash: sha, upload_id: uploadId,
+        size: 4096, client_hash: sha, upload_id: uploadId, upload_target: "document",
       }),
     });
     expect(res.status).toBe(200);
@@ -450,7 +450,7 @@ describe("a Document body upload (breatic#1574)", () => {
   it("fails the finish when its result could not reach the block, and a rerun lands it", async () => {
     const seed = await seedEditor();
     const uploadId = crypto.randomUUID();
-    const key = await mintTicket(seed, { upload_id: uploadId });
+    const key = await mintTicket(seed, { upload_id: uploadId, upload_target: "document" });
     const body = completed(key);
 
     const refused = refuseDocumentEvent("completed");
@@ -473,7 +473,7 @@ describe("a Document body upload (breatic#1574)", () => {
   it("still takes the bytes when the wait could not be shown", async () => {
     const seed = await seedEditor();
     const uploadId = crypto.randomUUID();
-    const key = await mintTicket(seed, { upload_id: uploadId });
+    const key = await mintTicket(seed, { upload_id: uploadId, upload_target: "document" });
 
     const refused = refuseDocumentEvent("processing");
     try {
@@ -497,7 +497,7 @@ describe("a Document body upload (breatic#1574)", () => {
 
     const res = await askTicket(seed.cookie, {
       filename: "again.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
-      size: 4096, client_hash: sha, upload_id: uploadId,
+      size: 4096, client_hash: sha, upload_id: uploadId, upload_target: "document",
     });
     expect(res.status).toBe(200);
 
@@ -516,7 +516,7 @@ describe("a Document body upload (breatic#1574)", () => {
     try {
       res = await askTicket(seed.cookie, {
         filename: "again.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
-        size: 4096, client_hash: sha, upload_id: crypto.randomUUID(),
+        size: 4096, client_hash: sha, upload_id: crypto.randomUUID(), upload_target: "document",
       });
     } finally {
       refused.mockRestore();
@@ -534,7 +534,7 @@ describe("a Document body upload (breatic#1574)", () => {
     const seed = await seedEditor();
     const res = await askTicket(seed.cookie, {
       filename: "x.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
-      size: 4096, client_hash: crypto.randomBytes(32).toString("hex"), upload_id: crypto.randomUUID(), ...over,
+      size: 4096, client_hash: crypto.randomBytes(32).toString("hex"), upload_id: crypto.randomUUID(), upload_target: "document", ...over,
     });
     expect(res.status).toBe(422);
   });
@@ -543,7 +543,7 @@ describe("a Document body upload (breatic#1574)", () => {
     const seed = await seedEditor();
     const res = await askTicket(seed.cookie, {
       filename: "x.png", content_type: "image/png", studio_id: seed.studioId, purpose: "studio_avatar",
-      size: 4096, client_hash: crypto.randomBytes(32).toString("hex"), upload_id: crypto.randomUUID(),
+      size: 4096, client_hash: crypto.randomBytes(32).toString("hex"), upload_id: crypto.randomUUID(), upload_target: "document",
     });
     expect(res.status).toBe(422);
   });
@@ -556,8 +556,142 @@ describe("a Document body upload (breatic#1574)", () => {
       body: JSON.stringify({
         filename: "x.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
         size: 4096, client_hash: crypto.randomBytes(32).toString("hex"),
-        upload_id: crypto.randomUUID(), node_id: crypto.randomUUID(),
+        upload_id: crypto.randomUUID(), upload_target: "document", node_id: crypto.randomUUID(),
       }),
+    });
+    expect(res.status).toBe(422);
+  });
+});
+
+/** Every stream event of `type` on `docName`, oldest first. */
+async function spaceEventsFor(type: string, docName: string): Promise<Record<string, unknown>[]> {
+  const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+  return raw
+    .map(([, fields]) => {
+      const idx = fields.indexOf("payload");
+      return idx === -1 ? null : (JSON.parse(fields[idx + 1]!) as Record<string, unknown>);
+    })
+    .filter((e): e is Record<string, unknown> => e !== null && e.type === type && e.docName === docName);
+}
+
+describe("a Timeline upload clip's upload (inner#1709 design §4.1, §4.2)", () => {
+  /**
+   * The Timeline and Document documents of a seeded Space.
+   * @param seed - The seeded editor.
+   * @returns Both document names.
+   */
+  function docsOf(seed: Awaited<ReturnType<typeof seedEditor>>): { timeline: string; document: string } {
+    return {
+      timeline: `project-${seed.projectId}/timeline-${seed.spaceId}`,
+      document: `project-${seed.projectId}/document-${seed.spaceId}`,
+    };
+  }
+
+  it("records on the grant that the upload lands in a Timeline clip", async () => {
+    const seed = await seedEditor();
+    const uploadId = crypto.randomUUID();
+    const key = await mintTicket(seed, { upload_id: uploadId, upload_target: "timeline" });
+
+    const grants = await sql<{ space_upload_id: string | null; space_upload_target: string | null }[]>`
+      SELECT space_upload_id, space_upload_target FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants).toEqual([{ space_upload_id: uploadId, space_upload_target: "timeline" }]);
+  });
+
+  it("announces processing and the registered asset to the Timeline's document, and nothing to a Document", async () => {
+    const seed = await seedEditor();
+    const uploadId = crypto.randomUUID();
+    const key = await mintTicket(seed, { upload_id: uploadId, upload_target: "timeline" });
+
+    await report(completed(key, { width: 8, height: 6 }));
+
+    // The clip receives the registered address and media facts (inner#2171).
+    const [asset] = await sql<{ file_url: string; mime_type: string }[]>`SELECT file_url, mime_type FROM studio_assets WHERE storage_key = ${key}`;
+    const { timeline, document } = docsOf(seed);
+    expect((await spaceEventsFor("timeline-upload", timeline)).filter((e) => e.uploadId === uploadId)).toEqual([
+      { type: "timeline-upload", docName: timeline, uploadId, state: "processing" },
+      {
+        type: "timeline-upload", docName: timeline, uploadId, state: "completed",
+        result: { kind: "image", url: asset!.file_url, coverUrl: null, mimeType: asset!.mime_type, durationSeconds: null, width: 8, height: 6 },
+      },
+    ]);
+    expect(await spaceEventsFor("document-upload", document)).toEqual([]);
+    expect(await spaceEventsFor("document-upload", timeline)).toEqual([]);
+  });
+
+  it("announces the failure with its cause to the Timeline's document when the Worker could not finish", async () => {
+    const seed = await seedEditor();
+    const uploadId = crypto.randomUUID();
+    const key = await mintTicket(seed, { upload_id: uploadId, upload_target: "timeline" });
+
+    await report({ storage_key: key, outcome: "aborted" });
+
+    const grants = await sql<{ failure_reason: string | null }[]>`
+      SELECT failure_reason FROM upload_grants WHERE storage_key = ${key}
+    `;
+    const events = (await spaceEventsFor("timeline-upload", docsOf(seed).timeline)).filter((e) => e.uploadId === uploadId);
+    expect(events.at(-1)).toMatchObject({ state: "failed", reason: readTaskFailure(grants[0]!.failure_reason).reason });
+  });
+
+  it("announces a dedup hit's asset to the Timeline's document at the ticket, with no upload", async () => {
+    const seed = await seedEditor();
+    const sha = crypto.randomBytes(32).toString("hex");
+    const first = await mintTicket(seed);
+    await report(completed(first, { sha256: sha, width: 8, height: 6 }));
+    const [stored] = await sql<{ file_url: string; mime_type: string }[]>`SELECT file_url, mime_type FROM studio_assets WHERE storage_key = ${first}`;
+    const uploadId = crypto.randomUUID();
+
+    const res = await askTicket(seed.cookie, {
+      filename: "again.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
+      size: 4096, client_hash: sha, upload_id: uploadId, upload_target: "timeline",
+    });
+    expect(res.status).toBe(200);
+
+    const { timeline, document } = docsOf(seed);
+    expect((await spaceEventsFor("timeline-upload", timeline)).filter((e) => e.uploadId === uploadId)).toEqual([{
+      type: "timeline-upload", docName: timeline, uploadId, state: "completed",
+      result: { kind: "image", url: stored!.file_url, coverUrl: null, mimeType: stored!.mime_type, durationSeconds: null, width: 8, height: 6 },
+    }]);
+    expect((await spaceEventsFor("document-upload", document)).filter((e) => e.uploadId === uploadId)).toEqual([]);
+  });
+
+  it("fails the clip at the ticket when the copy the studio holds is not a video, a picture or a sound", async () => {
+    const seed = await seedEditor();
+    const sha = crypto.randomBytes(32).toString("hex");
+    await report(completed(await mintTicket(seed), { sha256: sha, content_type: "text/plain" }));
+    const uploadId = crypto.randomUUID();
+
+    const res = await askTicket(seed.cookie, {
+      filename: "again.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
+      size: 4096, client_hash: sha, upload_id: uploadId, upload_target: "timeline",
+    });
+    expect(res.status).toBe(200);
+
+    expect((await spaceEventsFor("timeline-upload", docsOf(seed).timeline)).filter((e) => e.uploadId === uploadId))
+      .toEqual([expect.objectContaining({ state: "failed", reason: "unsupported_type" })]);
+  });
+
+  it.each([
+    ["an upload target without an upload id", { upload_target: "timeline" }],
+    ["an upload id without an upload target", { upload_id: crypto.randomUUID() }],
+    ["an upload target that names no Space placeholder", { upload_id: crypto.randomUUID(), upload_target: "canvas" }],
+    ["a Timeline upload with no Space", { upload_id: crypto.randomUUID(), upload_target: "timeline", space_id: undefined }],
+    ["a Timeline upload together with a node", { upload_id: crypto.randomUUID(), upload_target: "timeline", node_id: crypto.randomUUID() }],
+    ["a Timeline upload for a purpose", { upload_id: crypto.randomUUID(), upload_target: "timeline", purpose: "project_cover" }],
+  ])("refuses %s", async (_label, over) => {
+    const seed = await seedEditor();
+    const res = await askTicket(seed.cookie, {
+      filename: "x.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
+      size: 4096, client_hash: crypto.randomBytes(32).toString("hex"), ...over,
+    });
+    expect(res.status).toBe(422);
+  });
+
+  it("refuses an upload target on a studio avatar", async () => {
+    const seed = await seedEditor();
+    const res = await askTicket(seed.cookie, {
+      filename: "x.png", content_type: "image/png", studio_id: seed.studioId, purpose: "studio_avatar",
+      size: 4096, client_hash: crypto.randomBytes(32).toString("hex"), upload_id: crypto.randomUUID(), upload_target: "timeline",
     });
     expect(res.status).toBe(422);
   });

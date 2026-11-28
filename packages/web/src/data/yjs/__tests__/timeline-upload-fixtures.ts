@@ -8,9 +8,8 @@
  */
 
 import * as Y from 'yjs';
-import type { TimelineUploadClip } from '@breatic/shared';
+import type { ProjectRegisteredAsset, TimelineUploadClip } from '@breatic/shared';
 
-import type { TimelineRegisteredVideo } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
 /** The upload every placeholder below belongs to unless a test names another. */
@@ -23,8 +22,10 @@ export const UPLOAD_SECONDS = 2.5;
 export const UPLOAD_FRAMES = 60;
 /** The asset the upload registers as. */
 export const ASSET_ID = '20000000-0000-4000-8000-0000000000a1';
-/** The address the registered upload is stored at. */
-export const VIDEO_URL = 'https://cdn.example/beach.mp4';
+/** Where each kind of registered upload is stored, and its cover when it is a video (inner#2171). */
+export const MEDIA_URL = { video: 'https://cdn.example/beach.mp4', image: 'https://cdn.example/beach.png', audio: 'https://cdn.example/beach.mp3' } as const;
+export const COVER_URL = 'https://cdn.example/beach.jpg';
+const MEDIA_TYPE = { video: 'video/mp4', image: 'image/png', audio: 'audio/mpeg' } as const;
 
 /**
  * A placeholder clip of an upload.
@@ -43,7 +44,7 @@ export function uploadClip(
     id,
     trackId,
     kind: 'upload',
-    upload: { uploadId: UPLOAD_ID, name: UPLOAD_NAME, durationSeconds: UPLOAD_SECONDS },
+    upload: { uploadId: UPLOAD_ID, name: UPLOAD_NAME, kind: 'video', durationSeconds: UPLOAD_SECONDS },
     startFrame,
     sourceInFrame: 0,
     durationFrames,
@@ -72,21 +73,48 @@ export function addUpload(clip: TimelineUploadClip, placement: TimelineEditPlace
 }
 
 /**
- * The registered video an upload's own result carries once it registers.
+ * The `timeline-upload` event collab applies when the upload registers (inner#1709 design §4.2).
  * @param durationSeconds - The registered duration; null when the server could not read one.
- * @param fields - Overrides such as `mimeType`.
- * @returns The registered video.
+ * @param kind - What the registered asset is.
+ * @param uploadId - The upload.
+ * @returns The completed event.
  * @throws {never} Never.
  */
-export function registeredVideo(durationSeconds: number | null, fields: Partial<TimelineRegisteredVideo> = {}): TimelineRegisteredVideo {
+export function completedUpload(durationSeconds: number | null, kind: 'video' | 'image' | 'audio' = 'video', uploadId = UPLOAD_ID): {
+  type: 'timeline-upload'; docName: string; uploadId: string; state: 'completed';
+  result: {
+    kind: 'video' | 'image' | 'audio'; url: string; coverUrl: string | null; mimeType: string; durationSeconds: number | null; width: number | null; height: number | null;
+  };
+} {
   return {
-    url: VIDEO_URL,
+    type: 'timeline-upload', docName: 'project-p/timeline', uploadId, state: 'completed',
+    result: {
+      kind, url: MEDIA_URL[kind], coverUrl: kind === 'video' ? COVER_URL : null, mimeType: MEDIA_TYPE[kind],
+      durationSeconds: kind === 'image' ? null : durationSeconds, width: kind === 'audio' ? null : 1920, height: kind === 'audio' ? null : 1080,
+    },
+  };
+}
+
+/**
+ * The registered upload as the Project media list holds it.
+ * @param durationSeconds - The registered duration; null when the server could not read one.
+ * @param fields - Overrides such as `kind`.
+ * @returns The asset.
+ * @throws {never} Never.
+ */
+export function registeredVideo(durationSeconds: number | null, fields: Partial<ProjectRegisteredAsset> = {}): ProjectRegisteredAsset {
+  return {
+    assetId: ASSET_ID,
+    projectReferenceId: '20000000-0000-4000-8000-0000000000b1',
+    displayName: UPLOAD_NAME,
+    kind: 'video',
+    fileUrl: 'https://cdn.example/beach.mp4',
     coverUrl: null,
-    name: UPLOAD_NAME,
-    mimeType: 'video/mp4',
     width: 1920,
     height: 1080,
     durationSeconds,
+    mimeType: 'video/mp4',
+    sizeBytes: 1024,
     ...fields,
   };
 }

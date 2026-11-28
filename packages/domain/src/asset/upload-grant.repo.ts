@@ -31,6 +31,9 @@ import { z } from "zod";
  */
 export type GrantAssetSource = StudioAssetEntity["source"] | "transfer";
 
+/** The Space type whose document holds an upload's placeholder (inner#1709). */
+export type SpaceUploadTarget = "document" | "timeline";
+
 /** The 3D object part a picture upload is for (inner#1693 design 6.3). */
 export interface SceneLookTarget {
   objectId: string;
@@ -68,10 +71,12 @@ export interface UploadGrant {
   failureReason: string | null;
   /** How long the browser has to start the upload. */
   expiresAt: Date;
-  /** Node these bytes land on. Null for an upload with no node: a focus crop, or a Document body block (`documentUploadId`). */
+  /** Node these bytes land on. Null for an upload with no node: a focus crop, or a Space placeholder (`spaceUploadId`). */
   nodeId: string | null;
-  /** The Document body block these bytes land in, by its `uploadId`. */
-  documentUploadId: string | null;
+  /** The Space placeholder these bytes land in, by its `uploadId`: a Document body block or a Timeline upload clip. */
+  spaceUploadId: string | null;
+  /** Which Space type holds that placeholder; null exactly when `spaceUploadId` is. */
+  spaceUploadTarget: SpaceUploadTarget | null;
   /** The focus image these bytes become, in the pool of the node it names (#1580). */
   focusImage: GrantFocusImage | null;
   projectId: string | null;
@@ -143,7 +148,8 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     failureReason: row.failureReason,
     expiresAt: row.expiresAt,
     nodeId: row.nodeId,
-    documentUploadId: row.documentUploadId,
+    spaceUploadId: row.spaceUploadId,
+    spaceUploadTarget: row.spaceUploadTarget,
     focusImage: readFocusImage(row.focusImage),
     projectId: row.projectId,
     spaceId: row.spaceId,
@@ -175,10 +181,11 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  * @param input.expiresAt - When the ticket stops being usable.
  * @param input.context - Where these bytes are going and what started them.
  * @param input.context.nodeId - Node the bytes land on, when there is one.
- * @param input.context.documentUploadId - The Document body block the bytes land in, when there is one.
+ * @param input.context.spaceUploadId - The Space placeholder the bytes land in, when there is one.
+ * @param input.context.spaceUploadTarget - The Space type holding that placeholder, given with it.
  * @param input.context.focusImage - The focus image the bytes become, when they are a focus crop.
  * @param input.context.projectId - Project that node belongs to.
- * @param input.context.spaceId - The Space holding that node, or the Document holding the block `documentUploadId` names.
+ * @param input.context.spaceId - The Space holding that node, or the Space holding the placeholder `spaceUploadId` names.
  * @param input.context.source - What started this upload.
  * @param input.context.toolName - Mini-tool that produced the bytes, if any.
  * @param input.context.derived - True when the bytes came out of another asset.
@@ -202,7 +209,8 @@ export async function issueGrant(input: {
   expiresAt: Date;
   context: {
     nodeId?: string | null;
-    documentUploadId?: string | null;
+    spaceUploadId?: string | null;
+    spaceUploadTarget?: SpaceUploadTarget | null;
     focusImage?: GrantFocusImage | null;
     projectId?: string | null;
     spaceId?: string | null;
@@ -225,7 +233,8 @@ export async function issueGrant(input: {
       declaredSize: input.declaredSize,
       expiresAt: input.expiresAt,
       nodeId: input.context.nodeId ?? null,
-      documentUploadId: input.context.documentUploadId ?? null,
+      spaceUploadId: input.context.spaceUploadId ?? null,
+      spaceUploadTarget: input.context.spaceUploadTarget ?? null,
       focusImage: input.context.focusImage ?? null,
       projectId: input.context.projectId ?? null,
       spaceId: input.context.spaceId ?? null,
@@ -254,7 +263,7 @@ export type FinalizeRefusal = "no_grant" | "in_flight" | "already_registered";
  * finish that follows decides off it whether to read the media now (#299).
  */
 export type FinalizeClaim =
-  | ({ granted: true; assetSource: GrantAssetSource | null } & Pick<UploadGrant, "projectId" | "spaceId" | "documentUploadId">)
+  | ({ granted: true; assetSource: GrantAssetSource | null } & Pick<UploadGrant, "projectId" | "spaceId" | "spaceUploadId" | "spaceUploadTarget">)
   | { granted: false; reason: FinalizeRefusal };
 
 /**
@@ -309,7 +318,8 @@ export async function claimFinalize(params: {
       assetSource: uploadGrants.assetSource,
       projectId: uploadGrants.projectId,
       spaceId: uploadGrants.spaceId,
-      documentUploadId: uploadGrants.documentUploadId,
+      spaceUploadId: uploadGrants.spaceUploadId,
+      spaceUploadTarget: uploadGrants.spaceUploadTarget,
     });
   if (won.length === 1) {
     const row = won[0]!;
@@ -318,7 +328,8 @@ export async function claimFinalize(params: {
       assetSource: (row.assetSource ?? null) as GrantAssetSource | null,
       projectId: row.projectId,
       spaceId: row.spaceId,
-      documentUploadId: row.documentUploadId,
+      spaceUploadId: row.spaceUploadId,
+      spaceUploadTarget: row.spaceUploadTarget,
     };
   }
 

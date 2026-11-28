@@ -5461,64 +5461,51 @@
     "loading": "Loading Timeline…",
     "unavailable": "Timeline is unavailable.",
     "incompatible": "This Timeline content cannot be opened.",
-    "empty": "Add a video to start your Timeline.",
-    "video": "Video",
-    "conflict": "Conflict",
-    "conflictHelp": "Conflicting clips don't play. Select one to fix it.",
-    "conflictList": "Conflicts",
-    "noConflicts": "No conflicts",
-    "conflictReason": {
-      "overlap": "Overlaps another clip",
-      "missing_track": "Its track was removed",
-      "invalid_range": "Outside its video",
-      "incompatible_track": "On a track of another kind",
-      "damaged": "This clip can no longer be read",
-      "missing_source": "Its video is missing",
-      "source_unresolved": "Its web animation is unavailable"
-    },
-    "mediaUnavailable": "This video is unavailable.",
+    "empty": "Add media or text to start your Timeline.",
+    "video": "{kind, select, video {Video} image {Image} audio {Audio} text {Text} other {Video}}",
     "retry": "Retry",
     "play": "Play",
     "pause": "Pause",
     "seek": "Preview frame",
+    "frameRatio": "Aspect ratio",
     "tracks": "Tracks",
     "addMedia": "Add media",
     "selectClip": "Select a clip to view its properties.",
     "clipFrames": "Start {start} · Duration {duration} frames",
-    "sourceExtent": "Video {frames, plural, one {# frame} other {# frames}} · {fps, number} fps",
+    "sourceExtent": "{kind, select, image {Any length} text {Any length} audio {Audio {frames, plural, one {# frame} other {# frames}} · {fps, number} fps} other {Video {frames, plural, one {# frame} other {# frames}} · {fps, number} fps}}",
     "startFrame": "Start frame",
     "cancel": "Cancel",
     "transport": {
       "waiting": "Buffering…"
     },
     "material": {
-      "description": "Choose a video and confirm its position.",
-      "project": "Project videos",
+      "description": "Choose media and confirm its position.",
+      "project": "Project media",
       "local": "Local upload",
       "duration": "{seconds} seconds",
       "durationPending": "Duration pending",
-      "loading": "Loading Project videos…",
-      "listError": "Project videos could not be loaded.",
-      "empty": "This Project has no videos yet.",
+      "loading": "Loading Project {kind, select, image {images} audio {audio} other {videos}}…",
+      "listError": "Project {kind, select, image {images} audio {audio} other {videos}} could not be loaded.",
+      "empty": "This Project has no {kind, select, image {images} audio {audio} other {videos}} yet.",
       "more": "Load more",
-      "chooseFile": "Choose video",
-      "fileEmpty": "Choose a local video file.",
+      "chooseFile": "Choose {kind, select, video {video} image {image} audio {audio} text {text} other {video}}",
+      "fileEmpty": "Choose a local {kind, select, video {video} image {image} audio {audio} text {text} other {video}} file.",
       "confirm": "Add to Timeline",
       "insertAfter": "Inserts after {name}",
-      "insertFirst": "Inserts at the start of the main track"
+      "insertFirst": "Inserts at the start of the main track",
+      "size": "{width} × {height}"
     },
     "errors": {
-      "missing_source": "This clip's video is missing. Delete the clip first.",
-      "covers_missing_source": "A clip in the way has lost its video. Delete that clip first.",
+      "missing_source": "This clip's {kind, select, video {video} image {image} audio {audio} text {text} other {media}} is missing. Delete the clip first.",
       "readonly": "Editing is unavailable for your current role.",
-      "source_unavailable": "This video is unavailable. Choose another or retry.",
-      "metadata_unavailable": "Video duration is unavailable. Retry or choose another video.",
-      "invalid_range": "Enter a frame range inside the video.",
+      "source_unavailable": "This {kind, select, video {video} image {image} audio {audio} text {text} other {video}} is unavailable. Choose another or retry.",
+      "metadata_unavailable": "The {kind, select, video {video} image {image} audio {audio} text {text} other {video}} duration is unavailable. Retry or choose another {kind, select, video {video} image {image} audio {audio} text {text} other {video}}.",
+      "invalid_range": "Enter a frame range inside the media.",
       "notNumber": "Enter a number.",
       "scaleRange": "Enter {min} to {max}.",
       "target_missing": "The target has changed. Check the position and retry.",
       "clip_removed": "This clip was removed by another member.",
-      "permission_changed": "Editing permission changed. Confirm again to add this video.",
+      "permission_changed": "Editing permission changed. Confirm again to add this {kind, select, video {video} image {image} audio {audio} text {text} other {video}}.",
       "track_missing": "The target track was removed. Choose another track.",
       "id_taken": "This item already exists. Try again.",
       "main_track": "The main track cannot be deleted.",
@@ -5528,7 +5515,7 @@
       "source_unresolved": "This web animation is not ready yet. Try again shortly."
     },
     "mainTrack": "Main track",
-    "track": "Visual {index}",
+    "track": "Track {index}",
     "edit": {
       "undo": "Undo",
       "redo": "Redo",
@@ -5544,7 +5531,7 @@
       "track": "Track",
       "inPoint": "In point (frames)",
       "duration": "Duration (frames)",
-      "newTrack": "New visual track",
+      "newTrack": "New track",
       "newTrackZone": "Drop here for a new track",
       "trackRemoved": "Track removed",
       "deleteTrack": "Delete track",
@@ -5553,7 +5540,7 @@
       "selectFirst": "Select a clip first.",
       "magnetStartHint": "Main track magnet is on. Drag to reorder.",
       "splitOutside": "Move the playhead inside the selected clip to split it.",
-      "lowestTrack": "This clip is already on the bottom visual track.",
+      "lowestTrack": "This clip is already on the bottom track.",
       "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above.",
       "transform": "Position and size",
       "positionX": "X (px)",
@@ -5562,7 +5549,9 @@
       "scaleY": "Height scale (%)",
       "rotation": "Rotation (°)",
       "lockRatio": "Lock ratio",
-      "offFrame": "This clip is not at the current frame."
+      "offFrame": "This clip is not at the current frame.",
+      "addText": "Add text",
+      "more": "More"
     },
     "webAnimation": {
       "copy": "Web animation copy",
@@ -5636,13 +5625,28 @@
       "uploading": "Uploading",
       "progress": "Uploading {progress}%",
       "failed": "Upload failed",
-      "waiting": "Uploaded, waiting for edit access",
       "unfinished": "Unfinished",
-      "preview": "{track}: {state, select, failed {video upload failed, not shown} unfinished {video unfinished, not shown} other {video uploading…}}"
+      "preview": "{track}: {kind, select, video {video} image {image} audio {audio} text {text} other {video}} {state, select, failed {upload failed, not shown} unfinished {unfinished, not shown} processing {processing…} other {uploading…}}",
+      "processing": "Processing",
+      "removeAndReadd": "Delete it and add it again."
     },
     "preview": {
       "playBlocked": "The browser blocked playback with sound. Press play to start.",
-      "videoUnavailable": "{track}: video unavailable"
+      "fontFailed": "{track}: text fonts failed to load",
+      "media": "{track}: {text}"
+    },
+    "media": {
+      "readFailed": "{kind, select, video {Video} image {Image} audio {Audio} text {Text} other {Video}} could not be read"
+    },
+    "text": {
+      "default": "Default text",
+      "body": "Text",
+      "size": "Size (px)",
+      "bodyEmpty": "The text cannot be empty."
+    },
+    "audio": {
+      "gain": "Volume",
+      "mute": "Mute"
     }
   },
   "desktop": {

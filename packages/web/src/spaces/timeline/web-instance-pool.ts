@@ -37,8 +37,8 @@ export interface WebInstancePool {
 
 /** What one allocation reads. */
 export interface WebInstanceAllocationInput {
+  /** The page's view document (inner#1709): only clips that can be shown, each at the length it plays. */
   document: TimelineDocumentV1;
-  readyClipIds: ReadonlySet<string>;
   frame: number;
   /** The premount lead in Timeline frames; 0 premounts nothing. */
   premountFrames: number;
@@ -64,7 +64,7 @@ interface Want { clip: TimelineWebAnimationClip; source: string; role: 'visible'
  * @throws {never} Never.
  */
 function webCopiesAt(input: WebInstanceAllocationInput, frame: number): Array<{ clip: TimelineWebAnimationClip; source: string }> {
-  return visibleTimelineClipsAt(input.document, input.readyClipIds, frame).flatMap((clip) => {
+  return visibleTimelineClipsAt(input.document, frame).flatMap((clip) => {
     if (clip.kind !== 'web-animation') return [];
     const source = input.sourceOf(clip);
     return source === null ? [] : [{ clip, source }];
@@ -84,7 +84,7 @@ function wantsOf(input: WebInstanceAllocationInput): Want[] {
   const end = input.frame + input.premountFrames + 1;
   let at = input.frame;
   while (input.premountFrames > 0) {
-    const next = nextTimelinePlaybackBoundary(input.document, input.readyClipIds, at, end);
+    const next = nextTimelinePlaybackBoundary(input.document, at, end);
     if (next >= end || next <= at) break;
     for (const { clip, source } of webCopiesAt(input, next)) {
       if (seen.has(clip.id)) continue;

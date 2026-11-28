@@ -223,9 +223,12 @@ class_name = "WebReaderContainer"
 [env.production.exports.WebReaderContainer]
 type = "durable-object"
 storage = "sqlite"
+
+[env.production.assets]
+directory = "./assets"
 ```
 
-`compatibility_flags` 必须有：缺了 `nodejs_compat`，Worker 加载失败（`No such module "node:async_hooks"`）；`enable_request_signal` 让 Agent 的请求结束时网页读取跟着停下。上面每个容器类也都必须有：缺了 `MEDIA`、`MINI_TOOL_STD1`、`MINI_TOOL_STD4`、`LONG_MEDIA`、`WEB_READER` 任何一个绑定，Worker 对每个请求都回 500 并写出缺的名字。在加这些行之前建的配置，下次部署前要补上。`max_instances` 是每个类同时运行的实例上限，同时使用的人多就调大；`LongMediaContainer` 除外，它保持 `config/understand.yaml` 里 `container_max_instances` 的值。不需要配置错误上报；没有 `SENTRY_DSN` 时 Worker 什么都不上报。
+`compatibility_flags` 必须有：缺了 `nodejs_compat`，Worker 加载失败（`No such module "node:async_hooks"`）；`enable_request_signal` 让 Agent 的请求结束时网页读取跟着停下。上面每个容器类也都必须有：缺了 `MEDIA`、`MINI_TOOL_STD1`、`MINI_TOOL_STD4`、`LONG_MEDIA`、`WEB_READER` 任何一个绑定，Worker 对每个请求都回 500 并写出缺的名字。在加这些行之前建的配置，下次部署前要补上。`max_instances` 是每个类同时运行的实例上限，同时使用的人多就调大；`LongMediaContainer` 除外，它保持 `config/understand.yaml` 里 `container_max_instances` 的值。`[env.production.assets]` 也必须有：它在 `/web-animation/fonts/` 下提供每个带文字的 Timeline 预览都要读的字体集，不论是否开启网页动画；`deploy:worker` 部署前先把字体集放进 `assets/`。在加这一段之前建的配置，下次部署前要补上，并且先带着它发布 ingest Worker，再发布 web。不需要配置错误上报；没有 `SENTRY_DSN` 时 Worker 什么都不上报。
 
 同一 Cloudflare 账户安装多套实例时，为每套使用不同的 production `name`、bucket 和密钥；不要覆盖已有 Worker。正式配置没有 `[dev].port`、`remote=true` 或 `.dev.vars`。
 

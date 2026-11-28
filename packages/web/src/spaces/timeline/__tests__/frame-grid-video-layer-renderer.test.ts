@@ -11,7 +11,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TimelineDocumentV1, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
 import type { VideoPresentationSource, VideoRendererCallbacks } from '@web/spaces/canvas/video-presentation/types';
-import { createVideoLayerController, type TimelineVideoLayer } from '@web/spaces/timeline/video-layer-controller';
+import { corsUrl } from '@web/lib/cors-url';
+import { createMediaLayerController, type TimelineMediaLayer } from '@web/spaces/timeline/media-layer-controller';
 import { presentedBundle } from '@web/test-utils/video-presentation';
 import type * as RendererModule from '@web/spaces/canvas/video-presentation/create-video-renderer';
 
@@ -47,7 +48,7 @@ function version(versionId: string): VideoPresentationSource {
  * @param presentation - Its selected version, or null.
  * @returns The layer.
  */
-function layer(presentation: VideoPresentationSource | null): TimelineVideoLayer {
+function layer(presentation: VideoPresentationSource | null): TimelineMediaLayer {
   return { clipId: CLIP.id, fileUrl: ORIGINAL, presentation, coverUrl: null };
 }
 
@@ -55,9 +56,9 @@ function layer(presentation: VideoPresentationSource | null): TimelineVideoLayer
  * A controller whose elements are plain videos.
  * @returns The controller and its change spy.
  */
-function controllerOf(): { controller: ReturnType<typeof createVideoLayerController>; onChange: ReturnType<typeof vi.fn> } {
+function controllerOf(): { controller: ReturnType<typeof createMediaLayerController>; onChange: ReturnType<typeof vi.fn> } {
   const onChange = vi.fn();
-  return { onChange, controller: createVideoLayerController({ document: () => DOCUMENT, onChange, createMedia: () => document.createElement('video') }) };
+  return { onChange, controller: createMediaLayerController({ document: () => DOCUMENT, onChange, createMedia: () => document.createElement('video') }) };
 }
 
 beforeEach(() => { driver.made = []; vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined); });
@@ -101,7 +102,8 @@ describe('a Timeline layer playing a selected version (frames-split §7.14 Ts)',
     controller.sync([layer(null)]);
     expect(driver.made).toHaveLength(0);
     expect(controller.surface(CLIP.id)).toBe(controller.element(CLIP.id));
-    expect(controller.element(CLIP.id)!.getAttribute('src')).toBe(ORIGINAL);
+    // The original plays in CORS mode, so the preview's audio graph can read its sound (inner#1709 design §5.2).
+    expect(controller.element(CLIP.id)!.getAttribute('src')).toBe(corsUrl(ORIGINAL));
     expect(controller.restartRenderer(CLIP.id)).toBe(false);
   });
 });

@@ -13,6 +13,7 @@
  * it was written.
  */
 
+import type { TimelineFontFace } from "@shared/timeline/font-face.js";
 import { durationToFrames, type TimelineRate } from "@shared/timeline/time.js";
 import { WEB_ANIMATION_RUNTIME } from "@shared/timeline/web-animation-runtime.js";
 
@@ -24,16 +25,6 @@ export const WEB_ANIMATION_FONT_FAMILIES = ["Noto Sans SC", "Noto Serif SC", "In
 
 /** One family of the font set. */
 export type WebAnimationFontFamily = (typeof WEB_ANIMATION_FONT_FAMILIES)[number];
-
-/** One woff2 slice of a family, as the font build lists it. */
-export interface WebAnimationFontFace {
-  family: string;
-  /** The file name without `.woff2`. */
-  file: string;
-  unicodeRange: string;
-  /** The variable weight range, `100 900` when not given. */
-  weight?: string;
-}
 
 /** What a source's run fixes about its result. */
 export interface WebAnimationTarget {
@@ -132,7 +123,7 @@ function inFontSet(family: string): boolean {
  * @returns The stylesheet.
  * @throws {RangeError} When a face names a family outside the set.
  */
-export function buildFontSetStylesheet(version: number, faces: WebAnimationFontFace[]): string {
+export function buildFontSetStylesheet(version: number, faces: readonly TimelineFontFace[]): string {
   return faces.map((face) => {
     if (!(WEB_ANIMATION_FONT_FAMILIES as readonly string[]).includes(face.family)) {
       throw new RangeError(`Font family ${face.family} is not in the font set`);

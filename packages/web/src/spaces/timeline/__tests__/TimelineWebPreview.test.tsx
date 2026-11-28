@@ -61,6 +61,8 @@ const LIMITS = {
   defaults: { width: 1920, height: 1080, fps: FPS },
   assets: { pageSize: 50, pageMax: 100 },
   webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 50 },
+  media: { imageDurationSeconds: 5, textDurationSeconds: 5, textSize: 0.06 },
+  text: { fontBaseUrl: 'https://ingest.test/web-animation/fonts/v1/' },
 };
 
 beforeEach(() => {

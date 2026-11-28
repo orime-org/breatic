@@ -501,9 +501,10 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         }
       }
 
-      // Stored Timeline clips become frame offsets and the document version 2
-      // (#1502), at the same point and on the same terms as the tables above;
-      // until it succeeds the editor reads pixel clips as frame offsets.
+      // A stored Timeline is brought to the current version (frame offsets,
+      // tracks without a kind, placeholders that name their kind) at the same
+      // point and on the same terms as the tables above; until it succeeds the
+      // editor reads the old records the same way.
       if (parsed?.kind === "timeline") {
         try {
           const converted = await convertStoredTimelineTransformsOnLoad({

@@ -5461,64 +5461,51 @@
     "loading": "Timeline を読み込み中…",
     "unavailable": "Timeline を利用できません。",
     "incompatible": "この Timeline の内容を開けません。",
-    "empty": "動画を追加して Timeline の編集を始めましょう。",
-    "video": "動画",
-    "conflict": "競合",
-    "conflictHelp": "競合しているクリップは再生されません。クリップを選択して修正してください。",
-    "conflictList": "競合",
-    "noConflicts": "競合はありません",
-    "conflictReason": {
-      "overlap": "他のクリップと重複しています",
-      "missing_track": "トラックが削除されました",
-      "invalid_range": "動画の範囲外です",
-      "incompatible_track": "種類の異なるトラックにあります",
-      "damaged": "このクリップは読み込めなくなりました",
-      "missing_source": "動画が見つかりません",
-      "source_unresolved": "ウェブアニメーションを利用できません"
-    },
-    "mediaUnavailable": "この動画を利用できません。",
+    "empty": "素材かテキストを追加して Timeline の編集を始めましょう。",
+    "video": "{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}",
     "retry": "再試行",
     "play": "再生",
     "pause": "一時停止",
     "seek": "プレビューフレーム",
+    "frameRatio": "アスペクト比",
     "tracks": "トラック",
     "addMedia": "素材を追加",
     "selectClip": "クリップを選択してプロパティを表示します。",
     "clipFrames": "開始 {start} · 長さ {duration} フレーム",
-    "sourceExtent": "動画 {frames} フレーム · {fps, number} fps",
+    "sourceExtent": "{kind, select, image {長さの制限なし} text {長さの制限なし} audio {音声 {frames} フレーム · {fps, number} fps} other {動画 {frames} フレーム · {fps, number} fps}}",
     "startFrame": "開始フレーム",
     "cancel": "キャンセル",
     "transport": {
       "waiting": "バッファリング中…"
     },
     "material": {
-      "description": "動画を選択して追加位置を確認してください。",
-      "project": "Project の動画",
+      "description": "素材を選択して追加位置を確認してください。",
+      "project": "Project の素材",
       "local": "ローカルからアップロード",
       "duration": "{seconds} 秒",
       "durationPending": "長さを取得待ち",
-      "loading": "Project の動画を読み込み中…",
-      "listError": "Project の動画を読み込めませんでした。",
-      "empty": "この Project にはまだ動画がありません。",
+      "loading": "Project の{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}を読み込み中…",
+      "listError": "Project の{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}を読み込めませんでした。",
+      "empty": "この Project にはまだ{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}がありません。",
       "more": "さらに読み込む",
-      "chooseFile": "動画を選択",
-      "fileEmpty": "ローカルの動画ファイルを選択してください。",
+      "chooseFile": "{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}を選択",
+      "fileEmpty": "ローカルの{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}ファイルを選択してください。",
       "confirm": "Timeline に追加",
       "insertAfter": "{name} の後に挿入",
-      "insertFirst": "メイントラックの先頭に挿入"
+      "insertFirst": "メイントラックの先頭に挿入",
+      "size": "{width} × {height}"
     },
     "errors": {
-      "missing_source": "クリップの動画が見つかりません。先にクリップを削除してください。",
-      "covers_missing_source": "この位置にあるクリップの動画が見つかりません。先にそのクリップを削除してください。",
+      "missing_source": "クリップの{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {素材}}が見つかりません。先にクリップを削除してください。",
       "readonly": "現在の役割では編集できません。",
-      "source_unavailable": "この動画を利用できません。再試行するか別の動画を選択してください。",
-      "metadata_unavailable": "動画の長さを取得できません。再試行するか別の動画を選択してください。",
-      "invalid_range": "動画の範囲内のフレームを入力してください。",
+      "source_unavailable": "この{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}を利用できません。再試行するか別の{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}を選択してください。",
+      "metadata_unavailable": "{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}の長さを取得できません。再試行するか別の{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}を選択してください。",
+      "invalid_range": "素材の範囲内のフレームを入力してください。",
       "notNumber": "数値を入力してください。",
       "scaleRange": "{min}〜{max} を入力してください。",
       "target_missing": "追加先が変更されました。位置を確認して再試行してください。",
       "clip_removed": "このクリップは他のメンバーによって削除されました。",
-      "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。",
+      "permission_changed": "編集権限が変更されました。{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}の追加をもう一度確認してください。",
       "track_missing": "対象のトラックは削除されました。別のトラックを選択してください。",
       "id_taken": "この項目はすでに存在します。もう一度お試しください。",
       "main_track": "メイントラックは削除できません。",
@@ -5528,7 +5515,7 @@
       "source_unresolved": "ウェブアニメーションはまだ準備できていません。しばらくしてから再試行してください。"
     },
     "mainTrack": "メイントラック",
-    "track": "映像 {index}",
+    "track": "トラック {index}",
     "edit": {
       "undo": "元に戻す",
       "redo": "やり直す",
@@ -5544,7 +5531,7 @@
       "track": "トラック",
       "inPoint": "イン点（フレーム）",
       "duration": "長さ（フレーム）",
-      "newTrack": "新しい映像トラック",
+      "newTrack": "新しいトラック",
       "newTrackZone": "ここにドロップして新しいトラックを作成",
       "trackRemoved": "トラックは削除されました",
       "deleteTrack": "トラックを削除",
@@ -5553,7 +5540,7 @@
       "selectFirst": "先にクリップを選択してください。",
       "magnetStartHint": "メイントラックのマグネットがオンです。ドラッグで順序を変更します。",
       "splitOutside": "分割するには再生ヘッドを選択中のクリップ内に移動してください。",
-      "lowestTrack": "このクリップはすでに一番下の映像トラックにあります。",
+      "lowestTrack": "このクリップはすでに一番下のトラックにあります。",
       "bumped": "連動クリップ {count, plural, other {# 件}}を上のトラックに移動しました。",
       "transform": "位置とサイズ",
       "positionX": "X（px）",
@@ -5562,7 +5549,9 @@
       "scaleY": "高さの拡大率（%）",
       "rotation": "回転（°）",
       "lockRatio": "比率を固定",
-      "offFrame": "このクリップは現在のフレームにありません。"
+      "offFrame": "このクリップは現在のフレームにありません。",
+      "addText": "テキストを追加",
+      "more": "その他"
     },
     "webAnimation": {
       "copy": "ウェブアニメーションのコピー",
@@ -5636,13 +5625,28 @@
       "uploading": "アップロード中",
       "progress": "アップロード中 {progress}%",
       "failed": "アップロードに失敗しました",
-      "waiting": "アップロード済み、編集権限を待っています",
       "unfinished": "未完了",
-      "preview": "{track}：{state, select, failed {動画のアップロードに失敗、表示しません} unfinished {動画は未完了、表示しません} other {動画をアップロード中…}}"
+      "preview": "{track}：{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}{state, select, failed {のアップロードに失敗、表示しません} unfinished {は未完了、表示しません} processing {を処理中…} other {をアップロード中…}}",
+      "processing": "処理中",
+      "removeAndReadd": "削除してもう一度追加してください。"
     },
     "preview": {
       "playBlocked": "ブラウザが音声付きの再生をブロックしました。再生を押して開始してください。",
-      "videoUnavailable": "{track}：動画を利用できません"
+      "fontFailed": "{track}：テキストのフォントを読み込めませんでした",
+      "media": "{track}：{text}"
+    },
+    "media": {
+      "readFailed": "{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}を読み取れませんでした"
+    },
+    "text": {
+      "default": "テキスト",
+      "body": "本文",
+      "size": "文字サイズ（px）",
+      "bodyEmpty": "本文を空にすることはできません。"
+    },
+    "audio": {
+      "gain": "音量",
+      "mute": "ミュート"
     }
   },
   "desktop": {

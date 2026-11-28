@@ -3228,10 +3228,18 @@ export const uploadGrants = pgTable(
      * this would reopen the key to the very write it exists to stop.
      */
     finalizingUploadId: text("finalizing_upload_id"),
-    /** Node these bytes land on. Absent for an upload with no node: a focus crop, or a Document body block (`documentUploadId`). */
+    /** Node these bytes land on. Absent for an upload with no node: a focus crop, or a Space placeholder (`spaceUploadId`). */
     nodeId: uuid("node_id"),
-    /** The Document body block these bytes land in, by its `uploadId` (breatic#1574). */
-    documentUploadId: text("document_upload_id"),
+    /**
+     * The Space placeholder these bytes land in, by its `uploadId`: a Document body block (breatic#1574) or a
+     * Timeline upload clip (inner#1709). 0138 renamed it from `document_upload_id`.
+     */
+    spaceUploadId: text("space_upload_id"),
+    /**
+     * Which Space type holds that placeholder, `document` or `timeline`; null exactly when `spaceUploadId` is
+     * (0138 checks both, so a `check()` here would be a second copy nothing compares).
+     */
+    spaceUploadTarget: text("space_upload_target").$type<"document" | "timeline">(),
     /** A focus crop's place in its node's pool: the Space, the node and the image but for its address (#1580). */
     focusImage: jsonb("focus_image"),
     /**

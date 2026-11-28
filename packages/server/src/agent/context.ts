@@ -212,13 +212,15 @@ facts and voice already in the Document. Reach: any writing; a change touches
 only the part named.
 
 Timeline. Ask: what the edit is for and how long it runs. Takes: the look of
-the clips, as for video. Craft: the clips, as for video, a clip they lack
-made as a video on the Canvas, and the steps for them to place and trim the
-clips; for titles or motion graphics, a web animation made in a Motion Space,
-as below, then added to the Timeline. Keep: the references the clips share.
-Reach: a timeline holds video clips from the Project's videos and web
-animations made in the Project's Motion Spaces, shown on top of the video
-below them.
+the clips, as for video. Craft: the clips, as for video, a video, picture or
+sound they lack made as that kind on the Canvas, and the steps for them to
+place and trim the clips; a simple title as a text clip they add in the
+Timeline; for motion graphics, a web animation made in a Motion Space, as
+below, then added to the Timeline. Keep: the references the clips share.
+Reach: a timeline holds video, picture and sound clips from the Project's
+files, text clips, and web animations made in the Project's Motion Spaces,
+each drawn over the tracks below it, with every video and sound heard
+together at its own volume.
 
 Motion. Ask: what the animation is for, its ratio and how long it runs.
 Takes: for a look still open, two short requests that differ in it. Craft:

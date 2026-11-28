@@ -34,12 +34,11 @@ const CLIP: TimelineVideoClip = {
   rate: { num: 1, den: 1 }, gain: 1, mute: false,
   transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
-/** No damaged records. */
-const NONE = { clips: [] };
 const EMPTY: TimelineDocumentV1 = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   settings: SETTINGS,
-  tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
+  // Tracks carry no kind from version 3 (inner#1709 design §2.1).
+  tracks: { 'visual-1': { id: 'visual-1', order: 0 } } as unknown as TimelineDocumentV1['tracks'],
   clips: {}, sources: {},
 };
 /** Magnet off: a lone clip moved on the main track keeps the requested frame. */
@@ -76,7 +75,7 @@ function seededDoc(): Y.Doc {
  * @throws {Error} When the test edit is refused.
  */
 function addVideo(doc: Y.Doc): void {
-  expect(applyTimelineEdit(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: FREE }, 'local-test').ok).toBe(true);
+  expect(applyTimelineEdit(doc, { operation: 'add_media', parameters: { source: SOURCE, clip: CLIP }, placement: FREE }, 'local-test').ok).toBe(true);
 }
 
 /**
@@ -100,7 +99,7 @@ describe('useTimelineDocument content ownership', () => {
     const doc = makeDoc();
     const before = Y.encodeStateAsUpdate(doc);
     const { result } = renderHook(() => useTimelineDocument(doc, false));
-    expect(result.current).toEqual({ document: null, damaged: NONE, error: null });
+    expect(result.current).toEqual({ document: null, error: null });
     expect([...doc.share.keys()]).toEqual([]);
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
@@ -108,7 +107,7 @@ describe('useTimelineDocument content ownership', () => {
   it('returns no projection for a disabled document that already holds content', () => {
     const doc = seededDoc();
     const { result } = renderHook(() => useTimelineDocument(doc, false));
-    expect(result.current).toEqual({ document: null, damaged: NONE, error: null });
+    expect(result.current).toEqual({ document: null, error: null });
   });
 
   it('reads the persisted server seed without writing collaborative content', () => {
@@ -118,7 +117,7 @@ describe('useTimelineDocument content ownership', () => {
     const observedUpdate = vi.fn();
     client.on('update', observedUpdate);
     const { result } = renderHook(() => useTimelineDocument(client, true));
-    expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
+    expect(result.current).toEqual({ document: EMPTY, error: null });
     expect(Y.encodeStateAsUpdate(client)).toEqual(bytes);
     expect(observedUpdate).toHaveBeenCalledTimes(0);
   });
@@ -128,9 +127,9 @@ describe('useTimelineDocument content ownership', () => {
     const client = makeDoc();
     const { result, rerender } = renderHook(({ enabled }) => useTimelineDocument(client, enabled), { initialProps: { enabled: false } });
     act(() => Y.applyUpdate(client, Y.encodeStateAsUpdate(server), 'provider'));
-    expect(result.current).toEqual({ document: null, damaged: NONE, error: null });
+    expect(result.current).toEqual({ document: null, error: null });
     rerender({ enabled: true });
-    expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
+    expect(result.current).toEqual({ document: EMPTY, error: null });
   });
 
   it('reports an enabled empty document and preserves its absent roots', () => {
@@ -143,7 +142,7 @@ describe('useTimelineDocument content ownership', () => {
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
-  it.each([0, 3, '1', '2', null])('preserves unknown version %s and its existing root set', (version) => {
+  it.each([0, 4, '1', '2', '3', null])('preserves unknown version %s and its existing root set', (version) => {
     const doc = makeDoc();
     doc.getMap('timeline').set('schemaVersion', version);
     const before = Y.encodeStateAsUpdate(doc);
@@ -171,7 +170,7 @@ describe('useTimelineDocument content ownership', () => {
     const { result } = renderHook(() => useTimelineDocument(client, true));
     expect(result.current.error).toBeInstanceOf(Error);
     act(() => Y.applyUpdate(client, Y.encodeStateAsUpdate(server), 'provider'));
-    expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
+    expect(result.current).toEqual({ document: EMPTY, error: null });
   });
 
   it('publishes the source and clip from a local atomic addition together', () => {
@@ -181,13 +180,12 @@ describe('useTimelineDocument content ownership', () => {
     act(() => addVideo(doc));
     expect(result.current).toEqual({
       document: { ...EMPTY, sources: { [SOURCE.id]: SOURCE }, clips: { [CLIP.id]: CLIP } },
-      damaged: NONE,
       error: null,
     });
     expect(initial).toEqual(EMPTY);
   });
 
-  it('leaves a clip record missing required fields out of the projection and lists it as damaged', () => {
+  it('leaves a clip record missing required fields out of the projection, listing nothing to the page (inner#1709 design §3.5)', () => {
     const doc = seededDoc();
     addVideo(doc);
     const damagedId = '30000000-0000-4000-8000-0000000000dd';
@@ -199,7 +197,6 @@ describe('useTimelineDocument content ownership', () => {
     const { result } = renderHook(() => useTimelineDocument(doc, true));
     expect(result.current).toEqual({
       document: { ...EMPTY, sources: { [SOURCE.id]: SOURCE }, clips: { [CLIP.id]: CLIP } },
-      damaged: { clips: [damagedId] },
       error: null,
     });
   });
@@ -212,7 +209,7 @@ describe('useTimelineDocument content ownership', () => {
       record.set('order', 3);
     }, 'provider');
     const { result } = renderHook(() => useTimelineDocument(doc, true));
-    expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
+    expect(result.current).toEqual({ document: EMPTY, error: null });
   });
 
   it.each([
@@ -226,7 +223,6 @@ describe('useTimelineDocument content ownership', () => {
     const { result } = renderHook(() => useTimelineDocument(doc, true));
     expect(result.current).toEqual({
       document: { ...EMPTY, sources: { [SOURCE.id]: SOURCE }, clips: { [CLIP.id]: CLIP } },
-      damaged: NONE,
       error: null,
     });
   });
@@ -242,7 +238,6 @@ describe('useTimelineDocument content ownership', () => {
     act(() => Y.applyUpdate(client, Y.encodeStateAsUpdate(peer, vector), 'remote-provider'));
     expect(result.current).toEqual({
       document: { ...EMPTY, sources: { [SOURCE.id]: SOURCE }, clips: { [CLIP.id]: CLIP } },
-      damaged: NONE,
       error: null,
     });
   });
@@ -263,11 +258,11 @@ describe('useTimelineDocument content ownership', () => {
     expect(result.current.error).toBe(null);
   });
 
-  it('reads the version-2 seed (breatic#1502 design §5)', () => {
+  it('reads the version-3 seed (inner#1709 design §2.1)', () => {
     const doc = seededDoc();
-    expect(doc.getMap('timeline').get('schemaVersion')).toBe(2);
+    expect(doc.getMap('timeline').get('schemaVersion')).toBe(3);
     const { result } = renderHook(() => useTimelineDocument(doc, true));
-    expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
+    expect(result.current).toEqual({ document: EMPTY, error: null });
   });
 
   it('reads a version-1 document and projects its pixel-format clip as frame fractions of the stored settings, writing nothing (breatic#1502 design §5)', () => {
@@ -291,8 +286,8 @@ describe('useTimelineDocument content ownership', () => {
   it('clears an existing projection when a later update makes its schema invalid', () => {
     const doc = seededDoc();
     const { result } = renderHook(() => useTimelineDocument(doc, true));
-    expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
-    act(() => doc.getMap('timeline').set('schemaVersion', 3));
+    expect(result.current).toEqual({ document: EMPTY, error: null });
+    act(() => doc.getMap('timeline').set('schemaVersion', 4));
     const before = Y.encodeStateAsUpdate(doc);
     expect(result.current.document).toBe(null);
     expect(result.current.error).toBeInstanceOf(Error);
@@ -305,9 +300,9 @@ describe('useTimelineDocument subscription lifecycle', () => {
     const doc = seededDoc();
     const { result, rerender } = renderHook(({ enabled }) => useTimelineDocument(doc, enabled), { initialProps: { enabled: true } });
     rerender({ enabled: false });
-    expect(result.current).toEqual({ document: null, damaged: NONE, error: null });
+    expect(result.current).toEqual({ document: null, error: null });
     act(() => addVideo(doc));
-    expect(result.current).toEqual({ document: null, damaged: NONE, error: null });
+    expect(result.current).toEqual({ document: null, error: null });
     rerender({ enabled: true });
     expect(result.current.document?.clips[CLIP.id]).toEqual(CLIP);
     expect(result.current.error).toBe(null);
@@ -320,9 +315,9 @@ describe('useTimelineDocument subscription lifecycle', () => {
     const { result, rerender } = renderHook(({ doc }) => useTimelineDocument(doc, true), { initialProps: { doc: first } });
     expect(result.current.document?.clips[CLIP.id]).toEqual(CLIP);
     rerender({ doc: second });
-    expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
-    act(() => first.getMap('timeline').set('schemaVersion', 3));
-    expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
+    expect(result.current).toEqual({ document: EMPTY, error: null });
+    act(() => first.getMap('timeline').set('schemaVersion', 4));
+    expect(result.current).toEqual({ document: EMPTY, error: null });
     act(() => addVideo(second));
     expect(result.current.document?.clips[CLIP.id]).toEqual(CLIP);
   });
@@ -365,7 +360,7 @@ describe('useTimelineDocument subscription lifecycle', () => {
     expect(subscriptions).toHaveLength(1);
     expect(releases).toHaveLength(subscriptions.length);
     for (const handler of subscriptions) expect(releases).toContain(handler);
-    expect(result.current).toEqual({ document: null, damaged: NONE, error: null });
+    expect(result.current).toEqual({ document: null, error: null });
     expect(doc.isDestroyed).toBe(false);
   });
 

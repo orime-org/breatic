@@ -18,7 +18,7 @@ import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import {
-  addProjectTimelineVideo, moveTimelineClip, openTimeline, selectTimelineClip, timelineVideoOf, uploadTimelineVideo,
+  addProjectTimelineVideo, moveTimelineClip, openTimeline, selectTimelineClip, timelineLayerOf, timelineVideoOf, uploadTimelineVideo,
   watchTimelineErrors, withTimelinePeer,
 } from '../helpers/timeline-media';
 
@@ -459,7 +459,7 @@ test('two video tracks, the upper one scaled down, play together within two fram
     const uploaded = await uploadTimelineVideo(page, smokeProjectId());
     errors.mediaUrls.add(uploaded.asset.fileUrl);
     const upper = await addProjectTimelineVideo(page, uploaded.asset.assetId);
-    await moveTimelineClip(page, upper, 0, uploaded.durationFrames, 'New visual track');
+    await moveTimelineClip(page, upper, 0, uploaded.durationFrames, 'New track');
     const outlet = visibleSpace(page);
     const lower = timelineVideoOf(page, uploaded.clipId);
     const above = timelineVideoOf(page, upper);
@@ -471,8 +471,8 @@ test('two video tracks, the upper one scaled down, play together within two fram
     // Both are in the frame: the upper one half-size on top, the lower one around it.
     await expect(lower).toBeVisible();
     await expect(above).toBeVisible();
-    await expect(lower).toHaveCSS('z-index', '1');
-    await expect(above).toHaveCSS('z-index', '2');
+    await expect(timelineLayerOf(page, uploaded.clipId)).toHaveCSS('z-index', '1');
+    await expect(timelineLayerOf(page, upper)).toHaveCSS('z-index', '2');
     await expect.poll(async () => Math.abs((await boxOf(above)).width - (await boxOf(lower)).width / 2)).toBeLessThanOrEqual(PX);
 
     await outlet.getByTestId('timeline-play').click();

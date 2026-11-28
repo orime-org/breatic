@@ -17,7 +17,7 @@
 import { accountActivityRepo } from "@breatic/core";
 import { AppError, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
 import {
-  announceDocumentUploadAsset,
+  announceSpaceUploadAsset,
   announceFocusImage,
   announceFocusImageUploading,
   assetRepo,
@@ -30,6 +30,7 @@ import {
   UploadOpenFailed,
   uploadTicketService,
   type SceneLookTarget,
+  type SpaceUploadTarget,
 } from "@breatic/domain";
 import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type FocusImageTicket, type NodeTaskAction } from "@breatic/shared";
 
@@ -47,8 +48,10 @@ export interface TicketItem {
   client_hash: string;
   node_id?: string | undefined;
   space_id?: string | undefined;
-  /** The Document body block the bytes land in, by its `uploadId` (breatic#1574). */
+  /** The Space placeholder the bytes land in, by its `uploadId`: a Document body block or a Timeline upload clip. */
   upload_id?: string | undefined;
+  /** Which Space type holds that placeholder; present exactly when `upload_id` is (inner#1709). */
+  upload_target?: SpaceUploadTarget | undefined;
   source?: "mini_tool" | undefined;
   tool_name?: string | undefined;
   derived?: boolean | undefined;
@@ -306,6 +309,7 @@ async function prepareUpload(
   if (dedupHit) {
     if (recordUserAction) await accountActivityRepo.recordActivity({ userId, projectId: projectId ?? null, kind: "project_action" });
     logger.info({ hash: item.client_hash, userId, studioId, projectId }, "upload_ticket_dedup_hit");
+    const coverUrl = await assetRepo.findCoverUrlOf({ id: dedupHit.assetId, kind: dedupHit.kind });
     // No bytes move, but the node now shows something it did not show before:
     // a task row is opened and settled in the same pass, pointing at the
     // node's history row for this content (written now, or the one the node
@@ -331,12 +335,16 @@ async function prepareUpload(
         projectId, spaceId: item.space_id, target: sceneLook, picture: dedupHit.fileUrl, userId, uploadKey: crypto.randomUUID(),
       });
     }
-    // A Document block receives a hit the way a node does: the server announces the asset and collab writes the
-    // block, and a lost announcement fails the request.
-    if (projectId !== undefined && item.space_id !== undefined && item.upload_id !== undefined) {
-      await announceDocumentUploadAsset(
-        { projectId, spaceId: item.space_id, uploadId: item.upload_id },
-        { kind: dedupHit.kind, fileUrl: dedupHit.fileUrl, width: dedupHit.width, height: dedupHit.height },
+    // A Space placeholder receives a hit the way a node does: the server announces the asset and collab writes the
+    // placeholder, and a lost announcement fails the request.
+    if (projectId !== undefined && item.space_id !== undefined && item.upload_id !== undefined && item.upload_target !== undefined) {
+      await announceSpaceUploadAsset(
+        { target: item.upload_target, projectId, spaceId: item.space_id, uploadId: item.upload_id },
+        {
+          id: dedupHit.assetId, kind: dedupHit.kind, fileUrl: dedupHit.fileUrl, mimeType: dedupHit.mimeType,
+          width: dedupHit.width, height: dedupHit.height, durationSeconds: dedupHit.durationSeconds,
+        },
+        coverUrl,
       );
     }
     // A focus crop already in the studio goes straight to its pool; a lost announcement fails the request.
@@ -355,7 +363,6 @@ async function prepareUpload(
       });
       await publishSpaceTasksQuietly(projectId, item.space_id);
     }
-    const coverUrl = await assetRepo.findCoverUrlOf({ id: dedupHit.assetId, kind: dedupHit.kind });
     return {
       kind: "alreadyExists",
       assetId: dedupHit.assetId,
@@ -398,7 +405,7 @@ async function prepareUpload(
       expiresAt: new Date(expiresAt),
       context: {
         nodeId: item.node_id ?? null,
-        ...(item.upload_id !== undefined && { documentUploadId: item.upload_id }),
+        ...(item.upload_id !== undefined && { spaceUploadId: item.upload_id, spaceUploadTarget: item.upload_target ?? null }),
         ...(item.focusImage !== undefined && { focusImage: focusTargetOf(scope, item)?.focusImage ?? null }),
         spaceId: item.space_id ?? null,
         source: item.source ?? null,

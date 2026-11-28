@@ -193,7 +193,8 @@ describe("old-format documents (inner#2171 design §3, acceptance 6)", () => {
 
   it("keeps the format versions", () => {
     expect(SCENE_FORMAT_VERSION).toBe(2);
-    expect([...TIMELINE_SCHEMA_VERSIONS]).toEqual([1, 2]);
+    // inner#1709 adds version 3 (tracks without kind, mixed media); the address change itself added none.
+    expect([...TIMELINE_SCHEMA_VERSIONS]).toEqual([1, 2, 3]);
   });
 });
 

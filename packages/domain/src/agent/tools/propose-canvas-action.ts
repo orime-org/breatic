@@ -744,7 +744,7 @@ export function makeProposeCanvasAction(
     "The answer says what running each " +
     "generation costs at the params you sent, and the total; say it in your reply. " +
     "A picked take is brought to full quality by an i2i generation with that take " +
-    "as its material. Clips for a timeline are made here, as video on a canvas. " +
+    "as its material. Clips for a timeline are made here, as a video, picture or sound on a canvas. " +
     "Say in your reply, in numbered " +
     `steps written from what ${GET_PRODUCT_GUIDE} says in section "Proposal cards", what they do once it ` +
     "is placed -- what to put in, what to pick, what to press. " +

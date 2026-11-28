@@ -165,7 +165,7 @@ export async function placeCopy(page: Page, executionId: string, prompt: string)
   await expect.poll(async () => (await timelineClipIds(page)).length).toBe(before.length + 1);
   const added = (await timelineClipIds(page)).filter((id) => !before.includes(id));
   expect(added).toHaveLength(1);
-  // A copy resolves its source before it is ready; until then it may be listed among the conflicts.
+  // A copy resolves its source before it is ready.
   await expect(visibleSpace(page).getByTestId(`timeline-clip-${added[0]}`)).toHaveAttribute('data-state', 'ready', { timeout: 30_000 });
   return added[0];
 }

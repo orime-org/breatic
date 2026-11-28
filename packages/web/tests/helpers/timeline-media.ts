@@ -47,10 +47,12 @@ export function watchTimelineErrors(page: Page): TimelineErrors {
     const explicitDisconnect = observed.offline
       && url.includes('/data/yjs/collab-failure-report.ts')
       && /^\[collab\] collab disconnect(?: \(close (?:1000|1005|1006)\))?(?: |$)/.test(text);
-    const knownNetworkTarget = observed.mediaUrls.has(url) || sockets.has(url)
+    const knownNetworkTarget = observed.mediaUrls.has(url) || observed.mediaUrls.has(url.replace(/[?&]cors=1$/, '')) || sockets.has(url)
       || (url.startsWith(new URL(page.url()).origin) && new URL(url).pathname.startsWith('/api/'));
     const offlineNetwork = observed.offline && knownNetworkTarget && text.includes('net::ERR_INTERNET_DISCONNECTED');
-    if (!explicitDisconnect && !offlineNetwork) observed.unexpected.push(`console: ${text} (${url})`);
+    // The Agent panel beside the Space reports a sync it could not send while the network is down.
+    const offlineChatSync = observed.offline && url.endsWith('/stores/chat-live.ts') && text.startsWith('[chat] a sync did not land ApiException: Network Error');
+    if (!explicitDisconnect && !offlineNetwork && !offlineChatSync) observed.unexpected.push(`console: ${text} (${url})`);
   });
   return observed;
 }
@@ -75,14 +77,19 @@ export async function timelineClipIds(page: Page): Promise<string[]> {
 }
 
 /**
- * Select a placement through its track or, for overlapping placements, its conflict row.
+ * Select a placement through its track: a click, or, when another clip on the same track covers it, the keyboard focus
+ * that reaches it the same way (there is no conflict list since inner#1709 design §3.5).
  * @throws {Error} When the placement is missing or its properties never appear.
  */
 export async function selectTimelineClip(page: Page, clipId: string): Promise<void> {
-  const outlet = visibleSpace(page);
-  const conflict = outlet.getByTestId(`timeline-conflict-${clipId}`);
-  const button = await conflict.count() > 0 ? conflict : outlet.getByTestId(`timeline-clip-${clipId}`);
-  await button.click();
+  const button = visibleSpace(page).getByTestId(`timeline-clip-${clipId}`);
+  await button.scrollIntoViewIfNeeded();
+  const covered = await button.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest('[data-testid^="timeline-clip-"]') !== element;
+  });
+  if (covered) await button.focus();
+  else await button.click();
   await expect(button).toHaveAttribute('aria-pressed', 'true');
 }
 
@@ -106,7 +113,7 @@ export async function expectTimelineStart(page: Page, clipId: string, start: num
 
 /**
  * Move a placement through its properties: optionally to another track by its visible name
- * ('New visual track' creates one), then to a start frame typed into the start field.
+ * ('New track' creates one), then to a start frame typed into the start field.
  * @throws {Error} When the real edit is refused or does not reach the properties view.
  */
 export async function moveTimelineClip(page: Page, clipId: string, start: number, duration: number, track?: string): Promise<void> {
@@ -116,7 +123,7 @@ export async function moveTimelineClip(page: Page, clipId: string, start: number
     await outlet.getByTestId('timeline-clip-track').click();
     await page.getByRole('option', { name: track, exact: true }).click();
     await expect(page.getByRole('listbox')).toHaveCount(0);
-    if (track === 'New visual track') await expect(outlet.getByTestId('timeline-clip-track')).not.toHaveText(/Main track/);
+    if (track === 'New track') await expect(outlet.getByTestId('timeline-clip-track')).not.toHaveText(/Main track/);
     else await expect(outlet.getByTestId('timeline-clip-track')).toHaveText(track);
   }
   const field = outlet.getByTestId('timeline-clip-start');
@@ -136,13 +143,39 @@ export function timelineVideoOf(page: Page, clipId: string): Locator {
 }
 
 /**
+ * What a video placement places in the frame, stacked and positioned: its element, or the renderer host holding a
+ * selected version's picture with the element inside it.
+ * @throws {never} Never.
+ */
+export function timelineLayerOf(page: Page, clipId: string): Locator {
+  return visibleSpace(page).getByTestId('timeline-video-layers').locator(`:scope > [data-clip-id="${clipId}"]`);
+}
+
+/**
+ * The stored address a preview video element plays from: its src without the CORS marker the element adds (inner#1709
+ * design §5.2), or, for a selected version's playback file, the original it is derived from (`videoPresentationWorkKeyFor`
+ * names it by the source key, a dot and a job id starting `video-presentation:`).
+ * @throws {TypeError} When the src is not an absolute URL.
+ */
+export function storedVideoAddress(src: string): string {
+  const url = new URL(src);
+  url.searchParams.delete('cors');
+  const at = url.href.indexOf('.video-presentation:');
+  return at < 0 ? url.href : url.href.slice(0, at);
+}
+
+/**
  * Wait for the registered source to load and decode through the placement's real native video element.
  * @throws {Error} When authorized media cannot produce a decoded frame.
  */
 export async function expectTimelineVideoReady(page: Page, clipId: string, fileUrl: string): Promise<void> {
   const video = timelineVideoOf(page, clipId);
-  await expect(video).toHaveAttribute('src', fileUrl);
+  // The original in CORS mode, or, once a version of it is selected, that version's playback file (frames-split §7.14).
   expect(new URL(fileUrl).protocol).toMatch(/^https?:$/);
+  await expect.poll(async () => {
+    const src = await video.getAttribute('src');
+    return src === null ? null : storedVideoAddress(src);
+  }).toBe(fileUrl);
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => ({
     decoded: element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && element.videoWidth > 0,
     error: element.error?.code ?? null,
@@ -240,8 +273,9 @@ export async function uploadTimelineVideo(page: Page, projectId: string, fixture
   }
   await expect(dialog).toHaveCount(0, { timeout: 60_000 });
   const [clipId] = await timelineClipIds(page);
-  const fileUrl = await timelineVideoOf(page, clipId).getAttribute('src');
-  if (fileUrl === null) throw new Error('The registered placement has no video address');
+  const src = await timelineVideoOf(page, clipId).getAttribute('src');
+  if (src === null) throw new Error('The registered placement has no video address');
+  const fileUrl = storedVideoAddress(src);
   const asset = await projectVideoByUrl(page, projectId, fileUrl);
   expect(asset.kind).toBe('video');
   expect(asset.assetId).toMatch(/^[0-9a-f-]{36}$/);
@@ -251,8 +285,12 @@ export async function uploadTimelineVideo(page: Page, projectId: string, fixture
   expect(Number.isSafeInteger(durationFrames)).toBe(true);
   expect(durationFrames).toBeGreaterThan(0);
   await expectTimelineVideoReady(page, clipId, asset.fileUrl);
-  const durationSeconds = await timelineVideoOf(page, clipId).evaluate((element: HTMLVideoElement) => element.duration);
-  expect(durationSeconds).toBeGreaterThan(0);
+  // A version selected just after the original decoded replaces the element, which then reads its metadata again.
+  let durationSeconds = Number.NaN;
+  await expect.poll(async () => {
+    durationSeconds = await timelineVideoOf(page, clipId).evaluate((element: HTMLVideoElement) => element.duration);
+    return durationSeconds > 0;
+  }, { timeout: 60_000 }).toBe(true);
   return { asset, clipId, durationFrames, durationSeconds, fps };
 }
 

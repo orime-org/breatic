@@ -14,11 +14,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
 import { TimelineClipSchema, TimelineVideoClipSchema, type TimelineClip, type TimelineVideoSource } from '@breatic/shared';
-import { readTimelineContent } from '@breatic/shared/space-content';
-import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
-import { applyTimelineEdit, convertTimelineUpload, readTimelineDocument } from '@web/data/yjs/timeline-document';
+import { applyTimelineUpload, readTimelineContent } from '@breatic/shared/space-content';
+import { EMPTY_TIMELINE_WEB_RESOLUTION, arrangeTimelineClips } from '@web/data/yjs/timeline-arrangement';
+import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
-import { UPLOAD_ID, addUpload, clipRecords, registeredVideo, uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
+import { addUpload, clipRecords, completedUpload, uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
 
 import { _resetForTests, destroyDoc, docName, getDoc } from '@web/data/yjs/manager';
 import { evictTimelineEditSession, getTimelineEditSession, type TimelineEditSession } from '@web/data/yjs/timeline-edit-session';
@@ -189,7 +189,7 @@ describe('Timeline edit session undo steps', () => {
     const { mine, session } = pair();
     const fresh: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000077', url: 'https://cdn.example/assets/fresh-77.mp4' };
     const added = clip(cid(40), 'v2', 200, 30, { sourceId: fresh.id });
-    expect(session.edit({ operation: 'add_video', parameters: { source: fresh, clip: added }, placement: OFF }).ok).toBe(true);
+    expect(session.edit({ operation: 'add_media', parameters: { source: fresh, clip: added }, placement: OFF }).ok).toBe(true);
     session.undo();
     const after = readTimelineDocument(mine);
     expect(after.clips[added.id]).toBe(undefined);
@@ -201,8 +201,8 @@ describe('Timeline edit session undo steps', () => {
     const fresh: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000078', url: 'https://cdn.example/assets/fresh-78.mp4' };
     const first = clip(cid(41), 'v2', 200, 30, { sourceId: fresh.id });
     const second = clip(cid(42), 'v2', 300, 30, { sourceId: fresh.id });
-    expect(session.edit({ operation: 'add_video', parameters: { source: fresh, clip: first }, placement: OFF }).ok).toBe(true);
-    expect(session.edit({ operation: 'add_video', parameters: { source: fresh, clip: second }, placement: OFF }).ok).toBe(true);
+    expect(session.edit({ operation: 'add_media', parameters: { source: fresh, clip: first }, placement: OFF }).ok).toBe(true);
+    expect(session.edit({ operation: 'add_media', parameters: { source: fresh, clip: second }, placement: OFF }).ok).toBe(true);
     session.undo();
     expect(readTimelineDocument(mine).clips[second.id]).toBe(undefined);
     expect(readTimelineDocument(mine).sources[fresh.id]).toEqual(fresh);
@@ -282,7 +282,7 @@ describe('Timeline edit session selection', () => {
   it('clears the selection when my undo removes the selected clip', () => {
     const { session } = pair();
     const added = clip(cid(41), 'v2', 300, 10);
-    session.edit({ operation: 'add_video', parameters: { source: SOURCE, clip: added }, placement: OFF });
+    session.edit({ operation: 'add_media', parameters: { source: SOURCE, clip: added }, placement: OFF });
     session.select(added.id);
     session.undo();
     expect(session.getSnapshot().selectedClipId).toBe(null);
@@ -465,7 +465,7 @@ describe('Timeline edit session undo and redo against a concurrent peer (inner#1
 
   it.each(CASES)('redoes a complete clip after the peer edited it before seeing my undo (seeded by me $seededByMe, I receive first $mineFirst)', ({ seededByMe, mineFirst }) => {
     const { mine, peer, session } = apart([clip(A, MAIN, 0, 48)], seededByMe);
-    const added: TimelineEditCommand = { operation: 'add_video', parameters: { source: SOURCE, clip: clip(ADDED, 'v2', 200, 48) }, placement: OFF };
+    const added: TimelineEditCommand = { operation: 'add_media', parameters: { source: SOURCE, clip: clip(ADDED, 'v2', 200, 48) }, placement: OFF };
     expect(session.edit(added).ok).toBe(true);
     sync(mine, peer, mineFirst);
     session.undo();
@@ -478,7 +478,7 @@ describe('Timeline edit session undo and redo against a concurrent peer (inner#1
   });
 
   const addedOn = (startFrame: number): TimelineEditCommand => ({
-    operation: 'add_video', parameters: { source: SOURCE, clip: clip(ADDED, 'v2', startFrame, 48) }, placement: OFF,
+    operation: 'add_media', parameters: { source: SOURCE, clip: clip(ADDED, 'v2', startFrame, 48) }, placement: OFF,
   });
 
   it.each(CASES)('redoes a complete addition after a no-op move that followed it (G1, seeded by me $seededByMe, I receive first $mineFirst)', ({ seededByMe, mineFirst }) => {
@@ -697,7 +697,7 @@ describe('Timeline edit session undoes and redoes sources with their clips (inne
     expect(sessionB.edit(remove(YS)).ok).toBe(true);
     expect(holdsS(b), 'the peer sweeps S with its last clip').toBe(false);
     exchange(a, b);
-    expect(sessionA.edit({ operation: 'add_video', parameters: { source: S, clip: clip(ADDED, 'v2', 300, 20, { sourceId: S.id }) }, placement: OFF }).ok).toBe(true);
+    expect(sessionA.edit({ operation: 'add_media', parameters: { source: S, clip: clip(ADDED, 'v2', 300, 20, { sourceId: S.id }) }, placement: OFF }).ok).toBe(true);
     exchange(a, b);
     sessionB.undo();
     exchange(a, b);
@@ -747,7 +747,7 @@ describe('Timeline edit session undoes and redoes sources with their clips (inne
     sessionA.undo();
     exchange(a, b);
     sessionA.redo();
-    expect(sessionB.edit({ operation: 'add_video', parameters: { source: S, clip: clip(ADDED, 'v2', 300, 20, { sourceId: S.id }) }, placement: OFF }).ok).toBe(true);
+    expect(sessionB.edit({ operation: 'add_media', parameters: { source: S, clip: clip(ADDED, 'v2', 300, 20, { sourceId: S.id }) }, placement: OFF }).ok).toBe(true);
     exchange(a, b);
     for (const doc of [a, b]) expectResolved(doc, [ADDED], [XS]);
     expectStacks(sessionA, true, false);
@@ -1189,8 +1189,8 @@ describe('Timeline edit session with a source stored in an unexpected form (inne
     await flush();
     expect(mine.getMap('sources').has(ODD_SOURCE)).toBe(false);
     expect(mine.getMap('sources').get(SHORT_SOURCE.id)).toEqual(SHORT_SOURCE);
-    const reasons = resolveTimelineArrangement(readTimelineDocument(mine)).conflicts.find((item) => item.clipId === C2)?.reasons.map((reason) => reason.code);
-    expect(reasons).toContain('missing_source');
+    // The clip whose source is gone is out of the view (inner#1709 design §3.5).
+    expect(arrangeTimelineClips(readTimelineDocument(mine), EMPTY_TIMELINE_WEB_RESOLUTION)[C2]).toBeUndefined();
   });
 
   it('never writes or throws from a viewer session (d)', async () => {
@@ -1474,7 +1474,7 @@ describe('Timeline edit session set_transform with a concurrent peer (breatic#14
     const PLACEHOLDER = cid(31);
     expect(session.edit(addUpload(uploadClip(PLACEHOLDER, 'v2', 100), OFF))).toMatchObject({ ok: true });
     expect(session.edit(setTransform(PLACEHOLDER, SHIFTED))).toMatchObject({ ok: true });
-    convertTimelineUpload(mine, UPLOAD_ID, registeredVideo(5));
+    applyTimelineUpload(mine, completedUpload(5));
     for (const doc of [mine, peer]) {
       expect(readTimelineDocument(doc).clips[PLACEHOLDER]).toMatchObject({ kind: 'video', trackId: 'v2', startFrame: 100, transform: SHIFTED });
     }

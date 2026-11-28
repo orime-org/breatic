@@ -5,13 +5,13 @@
  * Valid Timeline fixtures for every web Timeline test (inner#1708): documents, edits, layers, the edit session,
  * gestures and the Space body.
  *
- * Every document is passed through `TimelineDocumentV1Schema`, so a fixture with a
+ * Every clip and source is passed through its schema, so a fixture with a
  * bad uuid or a source whose `durationSeconds` does not conform to `extentFrames`
  * fails here with a schema error instead of masquerading as an edit refusal.
  */
 
 import * as Y from 'yjs';
-import { TimelineDocumentV1Schema } from '@breatic/shared';
+import { TIMELINE_SCHEMA_VERSIONS, TimelineClipSchema, TimelineVideoSourceSchema } from '@breatic/shared';
 import type {
   TimelineClip, TimelineDocumentV1, TimelineRate, TimelineTrack, TimelineVideoClip, TimelineVideoSource,
 } from '@breatic/shared';
@@ -117,34 +117,37 @@ export function clip(
 }
 
 /**
- * The source id of a video clip; the fixtures here build only video clips.
+ * The source id a clip names: a video, picture or sound (inner#1709 design §2.3).
  * @param item - The clip, if any.
- * @returns Its source id, or undefined for no clip or another kind.
+ * @returns Its source id, or undefined for no clip or a kind that names none.
  * @throws {never} Never.
  */
 export function sourceIdOf(item: TimelineClip | undefined): string | undefined {
-  return item?.kind === 'video' ? item.sourceId : undefined;
+  const id = (item as { sourceId?: unknown } | undefined)?.sourceId;
+  return typeof id === 'string' ? id : undefined;
 }
 
 /**
- * A visual track.
+ * A track: an id and an order, with no kind (inner#1709 design §3.1).
  * @param id - The track id.
  * @param order - Its stacking order.
  * @returns The track.
  * @throws {never} Never.
  */
 export function track(id: string, order: number): TimelineTrack {
-  return { id, kind: 'visual', order };
+  return { id, order } as TimelineTrack;
 }
 
 export const MAIN_AND_V2 = [track(MAIN, 0), track(V2, 1)];
 
 /**
- * Build a schema-checked Timeline document.
+ * Build a Timeline document of the newest version, each clip and source checked by its own schema. Tracks are not
+ * schema-checked: they are `{ id, order }` from version 3 (inner#1709 design §2.1), which the version 2 track schema
+ * does not take.
  * @param clips - The clips to place.
  * @param tracks - The tracks, main and v2 by default.
  * @param sources - The sources, `SOURCE` by default.
- * @returns The parsed document.
+ * @returns The document.
  * @throws {Error} When the fixture itself is invalid.
  */
 export function timeline(
@@ -152,13 +155,13 @@ export function timeline(
   tracks: readonly TimelineTrack[] = MAIN_AND_V2,
   sources: readonly TimelineVideoSource[] = [SOURCE],
 ): TimelineDocumentV1 {
-  return TimelineDocumentV1Schema.parse({
-    schemaVersion: 2,
-    settings: SETTINGS,
-    tracks: Object.fromEntries(tracks.map((item) => [item.id, item])),
-    clips: Object.fromEntries(clips.map((item) => [item.id, item])),
-    sources: Object.fromEntries(sources.map((item) => [item.id, item])),
-  });
+  return {
+    schemaVersion: TIMELINE_SCHEMA_VERSIONS[TIMELINE_SCHEMA_VERSIONS.length - 1] ?? 1,
+    settings: structuredClone(SETTINGS),
+    tracks: Object.fromEntries(tracks.map((item) => [item.id, structuredClone(item)])),
+    clips: Object.fromEntries(clips.map((item) => [item.id, TimelineClipSchema.parse(item)])),
+    sources: Object.fromEntries(sources.map((item) => [item.id, TimelineVideoSourceSchema.parse(item)])),
+  } as TimelineDocumentV1;
 }
 
 /**
@@ -196,7 +199,8 @@ export function referenceOverflow(item: TimelineClip, source: TimelineVideoSourc
 export function totalOverflow(document: TimelineDocumentV1): number {
   return Object.values(document.clips).reduce((sum, item) => {
     const source = document.sources[sourceIdOf(item) ?? ''];
-    return source === undefined ? sum : sum + referenceOverflow(item, source);
+    // The property suites seed only video sources.
+    return source === undefined ? sum : sum + referenceOverflow(item, source as TimelineVideoSource);
   }, 0);
 }
 

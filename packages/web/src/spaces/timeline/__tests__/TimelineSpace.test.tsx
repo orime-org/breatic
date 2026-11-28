@@ -18,7 +18,7 @@ import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
-import { UploadFailedError, uploadMedia, type StoredUpload } from '@web/data/upload/media-upload';
+import { UploadFailedError, handOffSpaceMedia } from '@web/data/upload/media-upload';
 import type * as MediaUploadModule from '@web/data/upload/media-upload';
 import { clearAllDocSizes } from '@web/data/yjs/doc-size';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
@@ -34,7 +34,6 @@ import { useFollowStore } from '@web/stores/follow';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useTimelineEditPrefsStore } from '@web/stores/timeline-edit-prefs';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
-import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 import { gesture, moveableMock, resetMoveableMock } from '@web/spaces/timeline/__tests__/helpers/moveable-mock';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
@@ -48,6 +47,7 @@ vi.mock('react-moveable', async () => (await import('@web/spaces/timeline/__test
 vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof MediaUploadModule>()),
   uploadMedia: vi.fn(),
+  handOffSpaceMedia: vi.fn(),
 }));
 
 const PROJECT = '60000000-0000-4000-8000-000000000001';
@@ -60,11 +60,6 @@ const ASSET: ProjectRegisteredAsset = {
   fileUrl: 'https://cdn.example/registered-launch.mp4',
   coverUrl: 'https://cdn.example/registered-launch.jpg',
   width: 1280, height: 720, durationSeconds: 2, mimeType: 'video/mp4', sizeBytes: 8192,
-};
-const LOCAL_ASSET: ProjectRegisteredAsset = {
-  ...ASSET, assetId: '20000000-0000-4000-8000-000000000002',
-  projectReferenceId: '50000000-0000-4000-8000-000000000002',
-  displayName: 'Local video.mp4', fileUrl: 'https://cdn.example/registered-local.mp4',
 };
 const SOURCE: TimelineVideoSource = {
   id: '10000000-0000-4000-8000-000000000001', kind: 'video', url: ASSET.fileUrl, coverUrl: ASSET.coverUrl,
@@ -199,43 +194,12 @@ function seedLayout(clips: TimelineVideoClip[], tracks: TimelineTrack[] = [track
 }
 
 /**
- * Merge two independently accepted placements at the same start frame of sub track v2.
- * @returns The second placement's identity in the manager-owned document.
- * @throws {Error} When an independent placement cannot be accepted.
- */
-function seedConflictingClips(): string {
-  const doc = seedLayout([]);
-  const peer = new Y.Doc();
-  const secondId = '30000000-0000-4000-8000-000000000002';
-  try {
-    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
-    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: { ...CLIP, trackId: 'v2' } }, placement: OFF });
-    write(peer, { operation: 'add_video', parameters: { source: SOURCE, clip: { ...CLIP, id: secondId, trackId: 'v2' } }, placement: OFF });
-    Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer), 'provider');
-    return secondId;
-  } finally { peer.destroy(); }
-}
-
-/**
  * Store the signed-in editor's magnet switch before the Space renders.
  * @param on - Whether main-track magnet is on.
  * @throws {never} Never.
  */
 function magnet(on: boolean): void {
   writeUserPreference(ME, { timelineMagnet: on });
-}
-
-/**
- * The smallest element holding the selected clip's start and duration fields: the properties area.
- * @returns The properties container.
- * @throws {Error} When no clip is selected.
- */
-function properties(): HTMLElement {
-  const start = screen.getByTestId('timeline-clip-start');
-  let node: HTMLElement | null = start.parentElement;
-  while (node !== null && node.querySelector('[data-testid="timeline-clip-duration"]') === null) node = node.parentElement;
-  if (node === null) throw new Error('No properties area');
-  return node;
 }
 
 /**
@@ -303,18 +267,6 @@ function previewVideo(clipId: string): HTMLVideoElement {
 }
 
 /**
- * Read the canonical result shape returned by the existing uploader.
- * @returns The registered local video's upload outcome.
- * @throws {never} Never.
- */
-function stored(): StoredUpload {
-  return {
-    fileUrl: LOCAL_ASSET.fileUrl, assetId: LOCAL_ASSET.assetId, kind: LOCAL_ASSET.kind, width: LOCAL_ASSET.width, height: LOCAL_ASSET.height,
-    coverUrl: LOCAL_ASSET.coverUrl, durationSeconds: LOCAL_ASSET.durationSeconds, mimeType: LOCAL_ASSET.mimeType, sizeBytes: LOCAL_ASSET.sizeBytes,
-  };
-}
-
-/**
  * Capture actual video elements at the DOM boundary used for metadata decoding.
  * @returns The created elements, including the ordinary preview element.
  * @throws {Error} When the DOM cannot construct an element.
@@ -345,7 +297,7 @@ async function confirmLocal(startFrame = 0): Promise<File> {
   fireEvent.change(screen.getByTestId('timeline-file-input'), { target: { files: [file] } });
   fireEvent.change(screen.getByTestId('timeline-start-frame'), { target: { value: String(startFrame) } });
   fireEvent.click(screen.getByTestId('timeline-confirm-material'));
-  await waitFor(() => expect(uploadMedia).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(handOffSpaceMedia).toHaveBeenCalledTimes(1));
   return file;
 }
 
@@ -362,8 +314,10 @@ beforeEach(() => {
     defaults: SETTINGS, assets: { pageSize: 50, pageMax: 100 },
     webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000 },
     preview: TIMELINE_PREVIEW_DEFAULTS,
+    media: { imageDurationSeconds: 5, textDurationSeconds: 5, textSize: 0.06 },
+    text: { fontBaseUrl: 'https://ingest.test/web-animation/fonts/v1/' },
   });
-  vi.mocked(uploadMedia).mockReset().mockResolvedValue(stored());
+  vi.mocked(handOffSpaceMedia).mockReset().mockResolvedValue();
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
@@ -378,30 +332,6 @@ afterEach(() => {
 });
 
 describe('TimelineSpace content and permissions', () => {
-  it('keeps the selected conflicting placement distinct after focus moves to its editor', async () => {
-    const secondId = seedConflictingClips();
-    showTimeline();
-    const first = await screen.findByTestId('timeline-conflict-' + CLIP.id);
-    const second = screen.getByTestId('timeline-conflict-' + secondId);
-    for (const [selected, other] of [[first, second], [second, first]]) {
-      fireEvent.click(selected);
-      expect(selected).toHaveClass('border-active-border', 'bg-status-error-bg');
-      expect(selected).not.toHaveClass('border-status-error-border');
-      expect(other).toHaveClass('border-status-error-border', 'bg-status-error-bg');
-      expect(other).not.toHaveClass('border-active-border');
-      screen.getByTestId('timeline-clip-start').focus();
-      expect(selected).toHaveClass('border-active-border');
-    }
-  });
-  it('shows a short conflict status in selected properties and retains the full instruction above', async () => {
-    seedConflictingClips();
-    showTimeline();
-    fireEvent.click(await screen.findByTestId('timeline-conflict-' + CLIP.id));
-    const area = within(properties());
-    expect(area.getByText(t('timeline.conflict'), { exact: true })).toBeVisible();
-    expect(area.queryByText(t('timeline.conflictHelp'))).toBe(null);
-    expect(screen.getAllByText(t('timeline.conflictHelp')).length).toBeGreaterThan(0);
-  });
   it('waits for the first content sync even when a local document object exists', () => {
     seedContent();
     showTimeline({ ...CONNECTED, synced: false, hasEverSynced: false, status: 'connecting', writeAccess: 'unknown' });
@@ -425,7 +355,8 @@ describe('TimelineSpace content and permissions', () => {
     expect([...currentDoc().share.keys()]).toEqual([]);
   });
   it('reports an incompatible version while retaining its stored data', () => {
-    currentDoc().getMap('timeline').set('schemaVersion', 3);
+    // Version 3 is read since inner#1709 (design §2.1); a later version is not.
+    currentDoc().getMap('timeline').set('schemaVersion', 4);
     const before = Y.encodeStateAsUpdate(currentDoc());
     showTimeline();
     expect(screen.getByTestId('timeline-space-error')).toBeInTheDocument();
@@ -444,14 +375,14 @@ describe('TimelineSpace content and permissions', () => {
   });
   it('retains existing clips during a disconnected period after the first sync', async () => {
     const doc = seedContent();
-    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    write(doc, { operation: 'add_media', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
     showTimeline({ ...CONNECTED, synced: false, status: 'disconnected' });
     expect(await screen.findByTestId('timeline-clip-' + CLIP.id)).toBeInTheDocument();
     expect(screen.queryByTestId('timeline-space-loading')).toBe(null);
   });
   it('shows a Viewer the shared clip and refuses material creation', async () => {
     const doc = seedContent();
-    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    write(doc, { operation: 'add_media', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
     const before = Y.encodeStateAsUpdate(doc);
     showTimeline({ ...CONNECTED, writeAccess: 'denied' }, true);
     expect(await screen.findByTestId('timeline-clip-' + CLIP.id)).toBeInTheDocument();
@@ -467,7 +398,7 @@ describe('TimelineSpace content and permissions', () => {
       Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
       showTimeline();
       const vector = Y.encodeStateVector(doc);
-      write(peer, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+      write(peer, { operation: 'add_media', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
       act(() => Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer, vector), 'remote-provider'));
       expect(await screen.findByTestId('timeline-clip-' + CLIP.id)).toBeInTheDocument();
       expect(layout().clips[CLIP.id]).toEqual(CLIP);
@@ -569,7 +500,7 @@ describe('TimelineSpace registered-video placement', () => {
   });
   it('inserts before an existing main clip instead of refusing the overlapping frame', async () => {
     const doc = seedContent();
-    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    write(doc, { operation: 'add_media', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
     showTimeline();
     await openMaterial();
     fireEvent.click(await screen.findByTestId('timeline-project-video-' + ASSET.assetId));
@@ -645,7 +576,7 @@ describe('TimelineSpace browser metadata boundary', () => {
     showTimeline();
     await addProjectVideo();
     expect(Object.values(layout().clips)[0]?.durationFrames).toBe(48);
-    expect(Object.values(layout().sources)[0]?.durationOrigin).toBe('registered');
+    expect(Object.values(layout().sources)[0]).toMatchObject({ kind: 'video', durationOrigin: 'registered' });
     expect(videos.filter((video) => video.preload === 'metadata')).toEqual([]);
   });
 
@@ -723,40 +654,26 @@ describe('TimelineSpace local uploads in the background', () => {
   });
 
   it('places a confirmed local video at once as a placeholder, closes the dialog and uploads it to this Space', async () => {
-    const answer = deferred<StoredUpload>();
-    vi.mocked(uploadMedia).mockReturnValueOnce(answer.promise);
+    vi.mocked(handOffSpaceMedia).mockReturnValueOnce(deferred<void>().promise);
     seedContent();
     showTimeline();
     const file = await confirmLocal(72);
     await waitFor(() => expect(screen.queryByRole('dialog')).toBe(null));
-    expect(onlyClip()).toMatchObject({ kind: 'upload', trackId: MAIN, startFrame: 72, durationFrames: 48, upload: { name: 'Local video.mp4', durationSeconds: 2 } });
-    expect(vi.mocked(uploadMedia).mock.calls[0]?.slice(0, 2)).toEqual([file, { projectId: PROJECT, spaceId: SPACE }]);
+    expect(onlyClip()).toMatchObject({ kind: 'upload', trackId: MAIN, startFrame: 72, durationFrames: 48, upload: { name: 'Local video.mp4', kind: 'video', durationSeconds: 2 } });
+    const [sent, context] = vi.mocked(handOffSpaceMedia).mock.calls[0] ?? [];
+    expect(sent).toBe(file);
+    // The page names the placeholder and the Timeline as where collab lands the result (inner#1709 design §4.1).
+    expect(context).toMatchObject({ projectId: PROJECT, spaceId: SPACE, uploadId: (onlyClip() as { upload: { uploadId: string } }).upload.uploadId });
+    expect(Object.values(context ?? {})).toContain('timeline');
     await waitFor(() => expect(useSpaceOperationsStore.getState().hasOperations(SPACE)).toBe(true));
     expect(screen.getByTestId(`timeline-clip-${onlyClip().id}`)).toHaveAttribute('data-state', 'uploading');
-  });
-
-  it('turns the placeholder into the registered video while the Space is hidden, without an undo step', async () => {
-    const answer = deferred<StoredUpload>();
-    vi.mocked(uploadMedia).mockReturnValueOnce(answer.promise);
-    seedContent();
-    const { view, client } = showTimeline(CONNECTED, false, 'visible');
-    await confirmLocal(72);
-    const { id } = onlyClip();
-    view.rerender(<React.Activity mode='hidden'>{surface(client)}</React.Activity>);
-    await act(async () => answer.resolve(stored()));
-    await waitFor(() => expect(onlyClip().kind).toBe('video'));
-    expect(onlyClip()).toMatchObject({ id, trackId: MAIN, startFrame: 72, durationFrames: 48 });
-    expect(layout().sources[sourceIdOf(onlyClip()) ?? '']?.url).toBe(LOCAL_ASSET.fileUrl);
-    await waitFor(() => expect(useSpaceOperationsStore.getState().hasOperations(SPACE)).toBe(false));
-    view.rerender(<React.Activity mode='visible'>{surface(client)}</React.Activity>);
-    expect(await screen.findByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-kind', 'video');
   });
 
   it('lands a main-track placeholder at its insertion point with the magnet on', async () => {
     magnet(true);
     const doc = seedContent();
-    act(() => { write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON }); });
-    vi.mocked(uploadMedia).mockReturnValueOnce(deferred<StoredUpload>().promise);
+    act(() => { write(doc, { operation: 'add_media', parameters: { source: SOURCE, clip: CLIP }, placement: ON }); });
+    vi.mocked(handOffSpaceMedia).mockReturnValueOnce(deferred<void>().promise);
     showTimeline();
     await confirmLocal(72);
     const placeholder = Object.values(layout().clips).find((clip) => clip.kind === 'upload');
@@ -772,30 +689,34 @@ describe('TimelineSpace local uploads in the background', () => {
     fireEvent.click(screen.getByTestId('timeline-material-local'));
     fireEvent.change(screen.getByTestId('timeline-file-input'), { target: { files: [new File(['x'], 'broken.mp4', { type: 'video/mp4' })] } });
     fireEvent.click(screen.getByTestId('timeline-confirm-material'));
-    expect(await screen.findByTestId('timeline-material-error')).toHaveTextContent(t('timeline.errors.metadata_unavailable'));
+    expect(await screen.findByTestId('timeline-material-error')).toHaveTextContent(t('timeline.errors.metadata_unavailable', { kind: 'video' }));
     expect(Object.keys(layout().clips)).toEqual([]);
-    expect(uploadMedia).not.toHaveBeenCalled();
+    expect(handOffSpaceMedia).not.toHaveBeenCalled();
   });
 
   it('keeps a failed placeholder and lets its uploader retry the same file', async () => {
-    vi.mocked(uploadMedia).mockRejectedValueOnce(new UploadFailedError('transfer')).mockReturnValueOnce(deferred<StoredUpload>().promise);
+    vi.mocked(handOffSpaceMedia).mockRejectedValueOnce(new UploadFailedError('transfer')).mockReturnValueOnce(deferred<void>().promise);
     seedContent();
     showTimeline();
     const file = await confirmLocal();
     const { id } = onlyClip();
     await waitFor(() => expect(screen.getByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-state', 'failed'));
     // The preview draws nothing for the placeholder at the playhead and notes it by track (design §4.3).
-    const note = (state: string): string => t('timeline.upload.preview', { track: t('timeline.mainTrack'), state });
+    const note = (state: string): string => t('timeline.upload.preview', { track: t('timeline.mainTrack'), state, kind: 'video' });
     expect(screen.getByTestId(`timeline-preview-note-${id}`)).toHaveTextContent(note('failed'));
     fireEvent.click(screen.getByTestId(`timeline-clip-${id}`));
     fireEvent.click(await screen.findByTestId('timeline-upload-retry'));
-    await waitFor(() => expect(vi.mocked(uploadMedia).mock.calls.map(([sent]) => sent)).toEqual([file, file]));
+    await waitFor(() => expect(vi.mocked(handOffSpaceMedia).mock.calls.map(([sent]) => sent)).toEqual([file, file]));
+    // A retry runs under a new upload id written onto the placeholder (inner#1709 design §4.4).
+    const [first, second] = vi.mocked(handOffSpaceMedia).mock.calls.map(([, context]) => (context as { uploadId: string }).uploadId);
+    expect(second).not.toBe(first);
+    expect((onlyClip() as { upload: { uploadId: string } }).upload.uploadId).toBe(second);
     await waitFor(() => expect(screen.getByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-state', 'uploading'));
     expect(screen.getByTestId(`timeline-preview-note-${id}`)).toHaveTextContent(note('uploading'));
   });
 
   it('offers no retry when sending the same file again cannot help', async () => {
-    vi.mocked(uploadMedia).mockRejectedValueOnce(new UploadFailedError('tooLarge'));
+    vi.mocked(handOffSpaceMedia).mockRejectedValueOnce(new UploadFailedError('tooLarge'));
     seedContent();
     showTimeline();
     await confirmLocal();
@@ -808,7 +729,7 @@ describe('TimelineSpace local uploads in the background', () => {
 
   it('draws an uploading placeholder as a dashed card slot and its uploader\'s progress as a bar (visual #2, #3)', async () => {
     let report: ((share: number) => void) | undefined;
-    vi.mocked(uploadMedia).mockImplementationOnce((_file, _context, onProgress) => { report = onProgress; return deferred<StoredUpload>().promise; });
+    vi.mocked(handOffSpaceMedia).mockImplementationOnce((_file, _context, onProgress) => { report = onProgress; return deferred<void>().promise; });
     seedContent();
     showTimeline();
     await confirmLocal();
@@ -826,7 +747,7 @@ describe('TimelineSpace local uploads in the background', () => {
   it('draws a placeholder nobody uploads any more as a dashed muted slot (visual #1)', () => {
     const doc = seedContent();
     const { sourceId: _sourceId, ...placement } = CLIP;
-    act(() => { write(doc, { operation: 'add_upload', parameters: { clip: { ...placement, kind: 'upload', upload: { uploadId: '40000000-0000-4000-8000-000000000001', name: 'left.mp4', durationSeconds: 2 } } }, placement: OFF }); });
+    act(() => { write(doc, { operation: 'add_upload', parameters: { clip: { ...placement, kind: 'upload', upload: { uploadId: '40000000-0000-4000-8000-000000000001', name: 'left.mp4', kind: 'video', durationSeconds: 2 } } } as unknown as Extract<TimelineEditCommand, { operation: 'add_upload' }>['parameters'], placement: OFF }); });
     showTimeline();
     const clip = screen.getByTestId(`timeline-clip-${CLIP.id}`);
     expect(clip).toHaveAttribute('data-state', 'unfinished');
@@ -834,8 +755,8 @@ describe('TimelineSpace local uploads in the background', () => {
     expect(clip.className).not.toContain('palette-blue');
   });
 
-  it('keeps a failed placeholder\'s track line short and names the reason in its properties (visual #4)', async () => {
-    vi.mocked(uploadMedia).mockRejectedValueOnce(new UploadFailedError('tooLarge'));
+  it('keeps a failed placeholder\'s track line short and names the reason in its properties in the Document\'s words (visual #4; inner#1709 design §4.5)', async () => {
+    vi.mocked(handOffSpaceMedia).mockRejectedValueOnce(new UploadFailedError('tooLarge'));
     seedContent();
     showTimeline();
     await confirmLocal();
@@ -845,7 +766,20 @@ describe('TimelineSpace local uploads in the background', () => {
     expect(clip).toHaveTextContent(t('timeline.upload.failed'));
     expect(clip).not.toHaveTextContent('exceeds');
     fireEvent.click(clip);
-    expect(await screen.findByTestId('timeline-clip-upload')).toHaveTextContent('Local video.mp4');
+    expect(await screen.findByTestId('timeline-clip-upload')).toHaveTextContent(t('spaces.document.media.failure.tooLarge'));
+  });
+
+  it('shows processing once the bytes are handed off, and leaves the placeholder for collab to land (inner#1709 design §4.5 row 4)', async () => {
+    const handed = deferred<void>();
+    vi.mocked(handOffSpaceMedia).mockReturnValueOnce(handed.promise);
+    seedContent();
+    showTimeline();
+    await confirmLocal();
+    const { id } = onlyClip();
+    await act(async () => { handed.resolve(); });
+    await waitFor(() => expect(screen.getByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-state', 'processing'));
+    expect(onlyClip().kind).toBe('upload');
+    await waitFor(() => expect(useSpaceOperationsStore.getState().hasOperations(SPACE)).toBe(false));
   });
 });
 
@@ -865,8 +799,8 @@ describe('TimelineSpace collaborative overlap correction', () => {
       const seed = Y.encodeStateAsUpdate(doc);
       Y.applyUpdate(first, seed);
       Y.applyUpdate(second, seed);
-      write(first, { operation: 'add_video', parameters: { source: SOURCE, clip: { ...CLIP, trackId: 'v2' } }, placement: OFF });
-      write(second, { operation: 'add_video', parameters: { source: otherSource, clip: otherClip }, placement: OFF });
+      write(first, { operation: 'add_media', parameters: { source: SOURCE, clip: { ...CLIP, trackId: 'v2' } }, placement: OFF });
+      write(second, { operation: 'add_media', parameters: { source: otherSource, clip: otherClip }, placement: OFF });
       Y.applyUpdate(doc, Y.encodeStateAsUpdate(first), 'first-peer');
       Y.applyUpdate(doc, Y.encodeStateAsUpdate(second), 'second-peer');
       return { otherClip, otherSource };
@@ -877,14 +811,15 @@ describe('TimelineSpace collaborative overlap correction', () => {
     const { otherClip, otherSource } = mergeOverlapOnSubTrack();
     showTimeline();
     expect(await screen.findByTestId('timeline-clip-' + CLIP.id)).toBeInTheDocument();
-    expect(screen.getByTestId('timeline-conflict-' + otherClip.id)).toBeInTheDocument();
+    // No conflicts section any more (inner#1709 design §3.5): both clips stay on the track.
+    expect(screen.getByTestId('timeline-clip-' + otherClip.id)).toBeInTheDocument();
+    expect(screen.queryByTestId('timeline-conflicts')).toBe(null);
     fireEvent.click(screen.getByTestId('timeline-clip-' + otherClip.id));
     commitField('timeline-clip-start', '48');
     await waitFor(() => expect(layout().clips[otherClip.id]?.startFrame).toBe(48));
     expect(layout().clips[CLIP.id]).toEqual({ ...CLIP, trackId: 'v2' });
     expect(Object.values(layout().clips)).toHaveLength(2);
     expect(layout().sources[otherSource.id]).toEqual(otherSource);
-    await waitFor(() => expect(screen.queryByTestId('timeline-conflict-' + otherClip.id)).toBe(null));
   });
 
   it('resolves the overlap by deleting one of the clips', async () => {
@@ -894,7 +829,7 @@ describe('TimelineSpace collaborative overlap correction', () => {
     fireEvent.click(screen.getByTestId('timeline-delete'));
     await waitFor(() => expect(layout().clips[otherClip.id]).toBe(undefined));
     expect(layout().clips[CLIP.id]).toEqual({ ...CLIP, trackId: 'v2' });
-    expect(screen.queryByTestId('timeline-conflict-' + CLIP.id)).toBe(null);
+    expect(screen.getByTestId('timeline-clip-' + CLIP.id)).toBeInTheDocument();
   });
 
   it('shows the start frame of a clip on the magnetic main track as text with the drag hint', async () => {
@@ -946,6 +881,17 @@ describe('TimelineSpace tracks', () => {
     expect(screen.queryByTestId('timeline-delete-track-v2')).toBe(null);
     expect(screen.queryByTestId('timeline-delete-track-' + MAIN)).toBe(null);
     expect(screen.queryByTestId('timeline-track-v3')).toBe(null);
+  });
+
+  it('draws the empty track delete control as an icon named on hover, so the header keeps room for the track name', async () => {
+    const user = userEvent.setup();
+    seedLayout([clipAt(X, MAIN, 0, 24)]);
+    showTimeline();
+    const remove = await screen.findByTestId('timeline-delete-track-v2');
+    expect(remove).toHaveTextContent(/^$/);
+    expect(remove).toHaveAttribute('aria-label', t('timeline.edit.deleteTrack'));
+    await user.hover(remove);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(t('timeline.edit.deleteTrack'));
   });
 
   it('draws every overlapping video in the preview, stacked by track with the upper layer on top (breatic#1410 §6.1)', async () => {
@@ -1015,6 +961,214 @@ describe('TimelineSpace toolbar', () => {
     seedLayout([]);
     showTimeline();
     expect(await screen.findByTestId('timeline-zoom')).toBeInTheDocument();
+  });
+});
+
+describe('TimelineSpace toolbar that does not fit (inner#1709)', () => {
+  const ENTRY = 40;
+  const MORE = 32;
+
+  /**
+   * Give the toolbar `room` pixels of content width, each of its controls ENTRY pixels and More MORE pixels.
+   * @param room - The toolbar's content width.
+   * @throws {never} Never.
+   */
+  function sizeToolbar(room: number): void {
+    vi.stubGlobal('ResizeObserver', class {
+      readonly #callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) { this.#callback = callback; }
+      observe(target: Element): void {
+        if (target.getAttribute('role') === 'toolbar') this.#callback([{ target, contentRect: { width: room } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    });
+    const original = Element.prototype.getBoundingClientRect;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this.hasAttribute('data-toolbar-entry')) return { width: ENTRY } as DOMRect;
+      if (this.hasAttribute('data-toolbar-more')) return { width: MORE } as DOMRect;
+      return original.call(this);
+    });
+  }
+
+  /**
+   * The test hooks of the controls a surface shows, in order.
+   * @param surface - The toolbar or the More menu.
+   * @returns Their test ids.
+   * @throws {never} Never.
+   */
+  function hooksIn(surface: HTMLElement): string[] {
+    return [...surface.querySelectorAll('[data-testid]')].map((node) => node.getAttribute('data-testid')!);
+  }
+
+  it('keeps one row and moves the rightmost controls behind More, in toolbar order with their groups', async () => {
+    sizeToolbar(6 * ENTRY + MORE);
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    const toolbar = await screen.findByRole('toolbar', { name: t('timeline.tracks') });
+    expect(hooksIn(toolbar)).toEqual(['timeline-add-media', 'timeline-add-web-animation', 'timeline-add-text', 'timeline-undo', 'timeline-redo', 'timeline-split', 'timeline-more']);
+    expect(within(toolbar).getByTestId('timeline-more')).toHaveAccessibleName(t('timeline.edit.more'));
+    await userEvent.click(within(toolbar).getByTestId('timeline-more'));
+    const menu = await screen.findByRole('menu');
+    expect(hooksIn(menu)).toEqual(['timeline-duplicate-item', 'timeline-delete-item', 'timeline-toggle-magnet-item', 'timeline-toggle-snap-item', 'timeline-toggle-linkage-item', 'timeline-zoom']);
+    expect(within(menu).getAllByRole('separator')).toHaveLength(2);
+    expect(within(menu).getByTestId('timeline-delete-item')).toHaveTextContent(t('timeline.edit.delete'));
+  });
+
+  it('shows the switches as checked rows and changes them from the menu', async () => {
+    sizeToolbar(2 * ENTRY + MORE);
+    seedLayout([]);
+    showTimeline();
+    await userEvent.click(await screen.findByTestId('timeline-more'));
+    const snap = await screen.findByTestId('timeline-toggle-snap-item');
+    expect(snap).toHaveAttribute('aria-checked', 'true');
+    await userEvent.click(snap);
+    expect(JSON.parse(window.localStorage.getItem('breatic.userPreferences') ?? '{}')[ME]?.timelineSnap).toBe(false);
+    await userEvent.click(screen.getByTestId('timeline-more'));
+    expect(await screen.findByTestId('timeline-toggle-snap-item')).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('disables undo in the menu while the history is empty and explains clip actions without a selection', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 0, 24)]);
+    const before = Y.encodeStateAsUpdate(doc);
+    sizeToolbar(2 * ENTRY + MORE);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + X);
+    await userEvent.click(screen.getByTestId('timeline-more'));
+    expect(await screen.findByTestId('timeline-undo-item')).toHaveAttribute('aria-disabled', 'true');
+    vi.mocked(toast.warning).mockClear();
+    await userEvent.click(screen.getByTestId('timeline-delete-item'));
+    expect(vi.mocked(toast.warning).mock.calls.map(([message]) => message)).toEqual([t('timeline.edit.selectFirst')]);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('shows every control on the toolbar and keeps More out of reach when the row fits', async () => {
+    sizeToolbar(10_000);
+    seedLayout([]);
+    showTimeline();
+    const toolbar = await screen.findByRole('toolbar', { name: t('timeline.tracks') });
+    expect(hooksIn(toolbar).filter((hook) => hook !== 'timeline-more')).toEqual(['timeline-add-media', 'timeline-add-web-animation', 'timeline-add-text', 'timeline-undo', 'timeline-redo',
+      'timeline-split', 'timeline-duplicate', 'timeline-delete', 'timeline-toggle-magnet', 'timeline-toggle-snap', 'timeline-toggle-linkage', 'timeline-zoom']);
+    expect(toolbar.querySelector('[data-toolbar-more]')).toHaveAttribute('inert');
+  });
+});
+
+describe('TimelineSpace transport row that does not fit (inner#1709)', () => {
+  /**
+   * A part's width from what it shows when it is measured, so a part still showing its wider content is measured wide.
+   * The six forms then measure 389, 299, 253, 173, 98 and 56 (jsdom has no gaps).
+   * @param part - Which part.
+   * @param text - Its text content.
+   * @returns Its width.
+   * @throws {never} Never.
+   */
+  function partWidth(part: string, text: string): number {
+    if (part === 'play') return text === '' ? 28 : 74;
+    if (part === 'time') return text.includes('/') ? 155 : 75;
+    return text.includes('×') ? 160 : text === '' ? 28 : 70;
+  }
+  let resize: ((width: number) => void) | null = null;
+
+  /**
+   * Give the control row `room` pixels of content width, and its parts the widths `partWidth` gives for what they show.
+   * @param room - The row's content width.
+   * @throws {never} Never.
+   */
+  function sizeTransport(room: number): void {
+    vi.stubGlobal('ResizeObserver', class {
+      readonly #callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) { this.#callback = callback; }
+      observe(target: Element): void {
+        if (target.getAttribute('data-testid') !== 'timeline-transport') return;
+        resize = (width) => act(() => this.#callback([{ target, contentRect: { width } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver));
+        resize(room);
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    });
+    const original = Element.prototype.getBoundingClientRect;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const part = this.getAttribute('data-transport-part');
+      if (part !== null) return { width: partWidth(part, this.textContent ?? '') } as DOMRect;
+      return original.call(this);
+    });
+  }
+
+  afterEach(() => { resize = null; });
+
+  it('shows the full row when it fits, the seek bar in a row of its own', async () => {
+    sizeTransport(389);
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    const row = await screen.findByTestId('timeline-transport');
+    expect(screen.getByTestId('timeline-play')).toHaveTextContent(t('timeline.play'));
+    expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(position(0, 24));
+    expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent('16:9 · 1920×1080');
+    expect(row).not.toContainElement(screen.getByRole('slider', { name: t('timeline.seek') }));
+  });
+
+  it('drops the size from the ratio, then the Play name into a tooltip, then the total from the time, then the time, then the ratio\'s text', async () => {
+    sizeTransport(388);
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    await waitFor(() => expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^16:9$/));
+    expect(screen.getByTestId('timeline-play')).toHaveTextContent(t('timeline.play'));
+    resize!(298);
+    await waitFor(() => expect(screen.getByTestId('timeline-play')).toHaveTextContent(/^$/));
+    expect(screen.getByTestId('timeline-play')).toHaveAccessibleName(t('timeline.play'));
+    expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(position(0, 24));
+    resize!(252);
+    await waitFor(() => expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(/^00:00:00:00$/));
+    resize!(172);
+    await waitFor(() => expect(screen.queryByTestId('timeline-timecode')).toBeNull());
+    expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^16:9$/);
+    resize!(97);
+    await waitFor(() => expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^$/));
+    resize!(10);
+    expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^$/);
+    expect(screen.getByTestId('timeline-play')).toBeInTheDocument();
+  });
+
+  it('names the icon-only ratio control and its preset on hover, and still opens the list of presets', async () => {
+    sizeTransport(56);
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    const ratio = await screen.findByTestId('timeline-frame-ratio');
+    await waitFor(() => expect(ratio).toHaveTextContent(/^$/));
+    await userEvent.hover(ratio);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(`${t('timeline.frameRatio')} · 16:9`);
+    await userEvent.click(ratio);
+    expect(await screen.findByRole('option', { name: '9:16 · 1080×1920' })).toBeInTheDocument();
+  });
+
+  it('names the icon-only Play button on hover', async () => {
+    sizeTransport(253);
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    await waitFor(() => expect(screen.getByTestId('timeline-play')).toHaveTextContent(/^$/));
+    await userEvent.hover(screen.getByTestId('timeline-play'));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(t('timeline.play'));
+  });
+
+  it('brings the parts back in the reverse order as the row widens', async () => {
+    sizeTransport(50);
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    await waitFor(() => expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^$/));
+    expect(screen.queryByTestId('timeline-timecode')).toBeNull();
+    resize!(98);
+    await waitFor(() => expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^16:9$/));
+    expect(screen.queryByTestId('timeline-timecode')).toBeNull();
+    resize!(173);
+    await waitFor(() => expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(/^00:00:00:00$/));
+    resize!(253);
+    await waitFor(() => expect(screen.getByTestId('timeline-timecode')).toHaveTextContent(position(0, 24)));
+    expect(screen.getByTestId('timeline-play')).toHaveTextContent(/^$/);
+    resize!(299);
+    await waitFor(() => expect(screen.getByTestId('timeline-play')).toHaveTextContent(t('timeline.play')));
+    expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent(/^16:9$/);
+    resize!(389);
+    await waitFor(() => expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent('16:9 · 1920×1080'));
   });
 });
 
@@ -1163,7 +1317,7 @@ describe('TimelineSpace clip actions', () => {
     await waitFor(() => expect(Object.keys(layout().tracks)).toHaveLength(3));
     const moved = layout().clips[X];
     expect(moved?.startFrame).toBe(10);
-    expect(layout().tracks[moved?.trackId ?? '']).toMatchObject({ kind: 'visual', order: 2 });
+    expect(layout().tracks[moved?.trackId ?? '']).toEqual({ id: expect.any(String), order: 2 });
   });
 
   it('toggles snapping with N', async () => {
@@ -1231,19 +1385,21 @@ describe('TimelineSpace properties', () => {
     await user.click(await screen.findByRole('option', { name: t('timeline.edit.newTrack') }));
     await waitFor(() => expect(Object.keys(layout().tracks)).toHaveLength(3));
     const created = layout().clips[X]?.trackId ?? '';
-    expect(layout().tracks[created]).toMatchObject({ kind: 'visual', order: 2 });
+    expect(layout().tracks[created]).toEqual({ id: created, order: 2 });
     expect(layout().clips[X]?.startFrame).toBe(10);
     await user.click(screen.getByTestId('timeline-clip-track'));
     await user.click(await screen.findByRole('option', { name: t('timeline.mainTrack') }));
     await waitFor(() => expect(layout().clips[X]?.trackId).toBe(MAIN));
   });
 
-  it('names a removed track in the track select', async () => {
+  it('clears the properties when a peer removes the selected clip\'s track, the clip being no longer shown (inner#1709 design §3.5)', async () => {
     const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
     showTimeline();
     fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
     act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
-    await waitFor(() => expect(screen.getByTestId('timeline-clip-track')).toHaveTextContent(t('timeline.edit.trackRemoved')));
+    await waitFor(() => expect(screen.getByText(t('timeline.selectClip'))).toBeInTheDocument());
+    expect(screen.queryByTestId('timeline-clip-' + X)).toBe(null);
+    expect(screen.queryByTestId('timeline-clip-start')).toBe(null);
   });
 
   it('clears the properties when a peer deletes the selected clip', async () => {
@@ -1340,7 +1496,7 @@ describe('TimelineSpace add dialog targets', () => {
     await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(2));
     const added = Object.values(layout().clips).find((item) => item.id !== CLIP.id);
     expect(added?.startFrame).toBe(12);
-    expect(layout().tracks[added?.trackId ?? '']).toMatchObject({ kind: 'visual', order: 2 });
+    expect(layout().tracks[added?.trackId ?? '']).toEqual({ id: expect.any(String), order: 2 });
     expect(layout().clips[CLIP.id]?.startFrame).toBe(0);
   });
 
@@ -1668,8 +1824,6 @@ describe('TimelineSpace zoom and ruler for long content (inner#1708 G4, R1)', ()
 });
 
 describe('TimelineSpace round-four review fixes (inner#1708 F1c, F2, F3, F4, F5)', () => {
-  const DAMAGED = '30000000-0000-4000-8000-0000000000dd';
-
   /**
    * End a pointer drag and wait out the 50 ms in which dnd-kit swallows clicks, which would reach the next case.
    * @param clientX - The release position.
@@ -1684,91 +1838,20 @@ describe('TimelineSpace round-four review fixes (inner#1708 F1c, F2, F3, F4, F5)
   // A case that fails mid-drag leaves dnd-kit's document listeners active; end any drag before the next case.
   afterEach(async () => { await release(0); });
 
-  /**
-   * Write a clip record that misses most of its fields, as an interrupted collaborative write can leave it.
-   * @param doc - The content document.
-   * @throws {Error} When Yjs cannot attach the map.
-   */
-  function damageClip(doc: Y.Doc): void {
-    doc.transact(() => {
-      const record = new Y.Map<unknown>();
-      doc.getMap('clips').set(DAMAGED, record);
-      record.set('startFrame', 5);
-    }, 'provider');
-  }
-
-  it('opens a Timeline holding a damaged clip record and lets an Editor delete the record (F1c)', async () => {
-    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
-    damageClip(doc);
-    showTimeline();
-    expect(await screen.findByTestId('timeline-clip-' + X)).toBeInTheDocument();
-    const row = screen.getByTestId('timeline-conflict-' + DAMAGED);
-    expect(row).toHaveTextContent(t('timeline.conflictReason.damaged'));
-    fireEvent.click(screen.getByTestId('timeline-damaged-delete-' + DAMAGED));
-    await waitFor(() => expect(currentDoc().getMap('clips').has(DAMAGED)).toBe(false));
-    expect(screen.queryByTestId('timeline-conflict-' + DAMAGED)).toBe(null);
-    expect(layout().clips[X]).toMatchObject({ startFrame: 10, durationFrames: 14 });
-  });
-
-  it('shows a Viewer the damaged record without a delete button (F1c)', async () => {
-    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
-    damageClip(doc);
-    showTimeline({ ...CONNECTED, writeAccess: 'denied' }, true);
-    expect(await screen.findByTestId('timeline-clip-' + X)).toBeInTheDocument();
-    expect(screen.getByTestId('timeline-conflict-' + DAMAGED)).toHaveTextContent(t('timeline.conflictReason.damaged'));
-    expect(screen.queryByTestId('timeline-damaged-delete-' + DAMAGED)).toBe(null);
-  });
-
-  it('names a removed track as the reason a clip conflicts (F2)', async () => {
-    const doc = seedLayout([clipAt(X, 'v2', 0, 14)]);
-    showTimeline();
-    await screen.findByTestId('timeline-clip-' + X);
-    act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
-    await waitFor(() => expect(screen.getByTestId('timeline-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.missing_track')));
-  });
-
-  it('names an overlap as the reason both merged clips conflict (F2)', async () => {
-    const secondId = seedConflictingClips();
-    const { view } = showTimeline();
-    for (const id of [CLIP.id, secondId]) {
-      expect(await screen.findByTestId('timeline-reason-' + id)).toHaveTextContent(t('timeline.conflictReason.overlap'));
-    }
-    // Specs count conflict rows by this prefix, so the reason must not match it.
-    const rows = [...view.container.querySelectorAll('[data-testid^="timeline-conflict-"]')].map((element) => element.getAttribute('data-testid'));
-    expect(rows.sort()).toEqual([`timeline-conflict-${CLIP.id}`, `timeline-conflict-${secondId}`].sort());
-  });
-
-  it('names a range outside the video as the reason a clip conflicts (F2)', async () => {
-    seedLayout([clipAt(X, 'v2', 0, 14, { sourceInFrame: 40 })]);
-    showTimeline();
-    expect(await screen.findByTestId('timeline-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.invalid_range'));
-  });
-
-  it('names an incompatible track as the reason a clip conflicts (F2)', async () => {
-    seedLayout([clipAt(X, 'a1', 0, 14)], [track(MAIN, 0), track('v2', 1), { id: 'a1', kind: 'audio', order: 2 }]);
-    showTimeline();
-    expect(await screen.findByTestId('timeline-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.incompatible_track'));
-  });
-
-  it('explains how to resolve conflicts including changing the track (F2, P2)', () => {
-    expect(t('timeline.conflictHelp')).toBe('Conflicting clips don\'t play. Select one to fix it.');
-  });
-
-  it.each(['damaged', 'overlap', 'missing_track', 'invalid_range', 'incompatible_track', 'missing_source'])('has a %s reason in all five locales (F1c, F2, M3)', (code) => {
+  it('names sub tracks as plain tracks, no longer by the visual layer, in every locale (F3; inner#1709 design §3.1)', async () => {
+    const former: Record<string, string> = { en: 'Visual {index}', 'zh-CN': '画面 {index}', 'zh-TW': '畫面 {index}', ja: '映像 {index}', ko: '영상 {index}' };
     for (const [tag, catalog] of LOCALE_CATALOGS) {
-      const sentence = readPath(catalog, `timeline.conflictReason.${code}`);
-      expect(typeof sentence, `${tag} timeline.conflictReason.${code}`).toBe('string');
-      expect(String(sentence).trim()).not.toBe('');
+      const name = String(readPath(catalog, 'timeline.track'));
+      expect(name, tag).toContain('{index}');
+      expect(name, tag).not.toBe(former[tag]);
     }
-  });
-
-  it('names sub tracks by the visual layer in every locale (F3)', async () => {
-    const expected: Record<string, string> = { en: 'Visual {index}', 'zh-CN': '画面 {index}', 'zh-TW': '畫面 {index}', ja: '映像 {index}', ko: '영상 {index}' };
-    for (const [tag, catalog] of LOCALE_CATALOGS) expect(readPath(catalog, 'timeline.track'), tag).toBe(expected[tag]);
+    expect(readPath(LOCALE_CATALOGS.find(([tag]) => tag === 'zh-CN')![1], 'timeline.track')).toBe('轨道 {index}');
+    expect(readPath(LOCALE_CATALOGS.find(([tag]) => tag === 'zh-CN')![1], 'timeline.edit.newTrack')).toBe('新建轨道');
+    expect(readPath(LOCALE_CATALOGS.find(([tag]) => tag === 'zh-CN')![1], 'timeline.edit.lowestTrack')).toBe('该片段已在最下面的轨道。');
     seedLayout([clipAt(X, 'v2', 0, 14)]);
     showTimeline();
     await screen.findByTestId('timeline-clip-' + X);
-    expect(within(screen.getByTestId('timeline-track-v2')).getByText('Visual 2')).toBeInTheDocument();
+    expect(within(screen.getByTestId('timeline-track-v2')).getByText(t('timeline.track', { index: 2 }))).toBeInTheDocument();
   });
 
   it('cancels a drag when the window loses focus (F4)', async () => {
@@ -1883,26 +1966,7 @@ describe('TimelineSpace heals dangling sources only for an Editor (inner#1708 H1
 describe('TimelineSpace clips whose source is missing (inner#1708 M2, M3)', () => {
   const MISSING_SOURCE = '10000000-0000-4000-8000-0000000000ff';
 
-  it('says the missing video in every locale', () => {
-    const expected: Record<string, string> = {
-      en: 'Its video is missing', 'zh-CN': '所用视频已丢失', 'zh-TW': '所用影片已遺失', ja: '動画が見つかりません', ko: '동영상을 찾을 수 없습니다',
-    };
-    for (const [tag, catalog] of LOCALE_CATALOGS) expect(readPath(catalog, 'timeline.conflictReason.missing_source'), tag).toBe(expected[tag]);
-  });
-
-  it('lists the clip as a conflict naming the missing video, and an Editor can select and delete it', async () => {
-    seedLayout([clipAt(CLIP.id, MAIN, 0, 48), clipAt(X, 'v2', 10, 14, { sourceId: MISSING_SOURCE })]);
-    showTimeline();
-    const row = await screen.findByTestId('timeline-conflict-' + X);
-    expect(screen.getByTestId('timeline-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.missing_source'));
-    fireEvent.click(row);
-    expect(row).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(screen.getByTestId('timeline-delete'));
-    await waitFor(() => expect(layout().clips[X]).toBe(undefined));
-    expect(screen.queryByTestId('timeline-conflict-' + X)).toBe(null);
-  });
-
-  it('previews the clip below over its frames instead of failing', async () => {
+  it('neither shows nor previews a clip whose source record is missing, and previews the clip below over its frames (inner#1709 design §3.5)', async () => {
     seedLayout([clipAt(CLIP.id, MAIN, 0, 48), clipAt(X, 'v2', 10, 14, { sourceId: MISSING_SOURCE })]);
     showTimeline();
     await screen.findByTestId('timeline-clip-' + CLIP.id);
@@ -1914,130 +1978,12 @@ describe('TimelineSpace clips whose source is missing (inner#1708 M2, M3)', () =
     await waitFor(() => previewVideo(CLIP.id));
     expect(screen.getByTestId('timeline-preview').querySelector(`video[data-clip-id="${X}"]`)).toBe(null);
     expect(screen.getByTestId('timeline-preview').hasAttribute('data-active-clip-id')).toBe(false);
-    // The track and the conflict list name the clip whose video is gone; the preview says nothing about it.
-    expect(within(screen.getByTestId('timeline-preview')).queryByText(t('timeline.mediaUnavailable'))).toBe(null);
-  });
-});
-
-describe('TimelineSpace refuses moving a clip whose video is missing (inner#1708 P2)', () => {
-  const MISSING_SOURCE = '10000000-0000-4000-8000-0000000000ff';
-
-  it('says what to do in every locale', () => {
-    const errors: Record<string, string> = {
-      en: 'This clip\'s video is missing. Delete the clip first.',
-      'zh-CN': '片段所用视频已丢失，请先删除该片段。',
-      'zh-TW': '片段所用影片已遺失，請先刪除該片段。',
-      ja: 'クリップの動画が見つかりません。先にクリップを削除してください。',
-      ko: '클립의 동영상을 찾을 수 없습니다. 먼저 클립을 삭제하세요.',
-    };
-    const help: Record<string, string> = {
-      en: 'Conflicting clips don\'t play. Select one to fix it.',
-      'zh-CN': '冲突的片段不会播放，选择片段进行修改。',
-      'zh-TW': '衝突的片段不會播放，選取片段進行修改。',
-      ja: '競合しているクリップは再生されません。クリップを選択して修正してください。',
-      ko: '충돌한 클립은 재생되지 않습니다. 클립을 선택해 수정하세요.',
-    };
-    for (const [tag, catalog] of LOCALE_CATALOGS) {
-      expect(readPath(catalog, 'timeline.errors.missing_source'), tag).toBe(errors[tag]);
-      expect(readPath(catalog, 'timeline.conflictHelp'), tag).toBe(help[tag]);
-    }
-  });
-
-  it('warns with the missing-video message when a nudge would move it', async () => {
-    const doc = seedLayout([clipAt(X, 'v2', 10, 14, { sourceId: MISSING_SOURCE })]);
-    showTimeline();
-    const clip = await screen.findByTestId('timeline-clip-' + X);
-    fireEvent.click(clip);
-    const before = Y.encodeStateAsUpdate(doc);
-    press(clip, 'ArrowRight');
-    await waitFor(() => expect(vi.mocked(toast.warning).mock.calls.map(([message]) => message)).toContain('This clip\'s video is missing. Delete the clip first.'));
-    expect(t('timeline.errors.missing_source')).toBe('This clip\'s video is missing. Delete the clip first.');
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
-  it('warns with the missing-video message when a drag would move it', async () => {
-    writeUserPreference(ME, { timelineSnap: false });
-    const doc = seedLayout([clipAt(X, 'v2', 10, 14, { sourceId: MISSING_SOURCE })]);
-    showTimeline();
-    const clip = await screen.findByTestId('timeline-clip-' + X);
-    fireEvent.click(clip);
-    const before = Y.encodeStateAsUpdate(doc);
-    pointer(clip, 'pointerDown', 0);
-    pointer(document, 'pointerMove', 10);
-    pointer(document, 'pointerMove', 40);
-    pointer(document, 'pointerUp', 40);
-    await waitFor(() => expect(vi.mocked(toast.warning).mock.calls.map(([message]) => message)).toContain('This clip\'s video is missing. Delete the clip first.'));
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+    expect(screen.queryByTestId('timeline-clip-' + X)).toBe(null);
+    expect(screen.queryByTestId('timeline-preview-note-' + X)).toBe(null);
   });
 });
 
 describe('TimelineSpace round-nine review fixes (inner#1708 R1, R2, R3, R4)', () => {
-  const MISSING_SOURCE = '10000000-0000-4000-8000-0000000000ff';
-  const COVERS = 'A clip in the way has lost its video. Delete that clip first.';
-
-  /**
-   * The warning toasts shown so far.
-   * @returns Their messages.
-   * @throws {never} Never.
-   */
-  function warnings(): unknown[] {
-    return vi.mocked(toast.warning).mock.calls.map(([message]) => message);
-  }
-
-  it('says a clip in the way lost its video in every locale (R3)', () => {
-    const expected: Record<string, string> = {
-      en: COVERS,
-      'zh-CN': '此处有片段的视频已丢失，请先删除那个片段。',
-      'zh-TW': '此處有片段的影片已遺失，請先刪除那個片段。',
-      ja: 'この位置にあるクリップの動画が見つかりません。先にそのクリップを削除してください。',
-      ko: '이 위치에 있는 클립의 동영상을 찾을 수 없습니다. 먼저 그 클립을 삭제하세요.',
-    };
-    for (const [tag, catalog] of LOCALE_CATALOGS) expect(readPath(catalog, 'timeline.errors.covers_missing_source'), tag).toBe(expected[tag]);
-  });
-
-  it('passes an in-point typed for a clip without its video to the planner, which refuses it with the missing-video toast (R1)', async () => {
-    const doc = seedLayout([clipAt(X, 'v2', 10, 14, { sourceInFrame: 4, sourceId: MISSING_SOURCE })]);
-    showTimeline();
-    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
-    const before = Y.encodeStateAsUpdate(doc);
-    commitField('timeline-clip-in', '2');
-    await waitFor(() => expect(warnings()).toContain(t('timeline.errors.missing_source')));
-    expect(screen.queryByTestId('timeline-clip-field-error')).toBe(null);
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
-  it('warns that a clip in the way lost its video when a drag would trim its head (R2)', async () => {
-    writeUserPreference(ME, { timelineSnap: false });
-    const A = '30000000-0000-4000-8000-000000000071';
-    const doc = seedLayout([clipAt(X, 'v2', 10, 14, { sourceId: MISSING_SOURCE }), clipAt(A, 'v2', 60, 10)]);
-    showTimeline();
-    const clip = await screen.findByTestId('timeline-clip-' + A);
-    fireEvent.click(clip);
-    const before = Y.encodeStateAsUpdate(doc);
-    // -110 px at 2 px per frame moves A from 60 to 5, over X's head at 10.
-    pointer(clip, 'pointerDown', 0);
-    pointer(document, 'pointerMove', -10);
-    pointer(document, 'pointerMove', -110);
-    pointer(document, 'pointerUp', -110);
-    await waitFor(() => expect(warnings()).toContain(COVERS));
-    expect(t('timeline.errors.covers_missing_source')).toBe(COVERS);
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
-  });
-
-  it('shows the add dialog error when the new clip would trim the head of a clip without its video (R2)', async () => {
-    seedLayout([clipAt(X, 'v2', 20, 100, { sourceId: MISSING_SOURCE })]);
-    showTimeline();
-    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
-    const dialog = await openMaterial();
-    expect(within(dialog).getByTestId('timeline-material-track')).toHaveTextContent(t('timeline.track', { index: 2 }));
-    fireEvent.click(await screen.findByTestId('timeline-project-video-' + ASSET.assetId));
-    fireEvent.change(screen.getByTestId('timeline-start-frame'), { target: { value: '0' } });
-    fireEvent.click(screen.getByTestId('timeline-confirm-material'));
-    await waitFor(() => expect(within(dialog).getByTestId('timeline-material-error')).toHaveTextContent(COVERS));
-    expect(Object.keys(layout().clips)).toEqual([X]);
-  });
 
   it.each([''])('hides the main-track insert hint for the start %j (R4)', async (text) => {
     seedLayout([clipAt(CLIP.id, MAIN, 0, 48)]);
@@ -2063,48 +2009,6 @@ describe('TimelineSpace round-nine review fixes (inner#1708 R1, R2, R3, R4)', ()
 });
 
 describe('TimelineSpace round-ten review fixes (inner#1708 S1, S2, S3, Q1)', () => {
-  const MISSING_SOURCE = '10000000-0000-4000-8000-0000000000ff';
-
-  /**
-   * The warning toasts shown so far.
-   * @returns Their messages.
-   * @throws {never} Never.
-   */
-  function warnings(): unknown[] {
-    return vi.mocked(toast.warning).mock.calls.map(([message]) => message);
-  }
-
-  it('warns with the missing-video message when trimming a clip without its video (S1)', async () => {
-    writeUserPreference(ME, { timelineSnap: false });
-    const doc = seedLayout([clipAt(X, 'v2', 10, 20, { sourceInFrame: 5, sourceId: MISSING_SOURCE })]);
-    showTimeline();
-    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
-    const handle = screen.getByTestId('timeline-trim-end-' + X);
-    const before = Y.encodeStateAsUpdate(doc);
-    // 6 px at 2 px per frame lengthens the clip by three frames.
-    pointer(handle, 'pointerDown', 0);
-    pointer(document, 'pointerMove', 4);
-    pointer(document, 'pointerMove', 6);
-    pointer(document, 'pointerUp', 6);
-    await waitFor(() => expect(warnings()).toContain(t('timeline.errors.missing_source')));
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
-  });
-
-  it.each([['Alt+ArrowDown', 'ArrowDown'], ['Alt+ArrowUp', 'ArrowUp']] as const)('warns that the track is missing on %s for a clip on a removed track (S2)', async (_name, key) => {
-    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
-    showTimeline();
-    await screen.findByTestId('timeline-clip-' + X);
-    act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
-    const row = await screen.findByTestId('timeline-conflict-' + X);
-    fireEvent.click(row);
-    const before = Y.encodeStateAsUpdate(doc);
-    press(row, key, { altKey: true });
-    await waitFor(() => expect(warnings()).toContain(t('timeline.errors.track_missing')));
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(layout().clips[X]).toMatchObject({ trackId: 'v2', startFrame: 10 });
-  });
-
   it('keeps a held arrow key from joining an unrelated earlier edit (S3)', async () => {
     const OTHER = '30000000-0000-4000-8000-000000000081';
     seedLayout([clipAt(X, 'v2', 0, 20), clipAt(OTHER, 'v2', 100, 20)]);
@@ -2418,41 +2322,7 @@ describe('TimelineSpace keeps keyboard focus on the moved clip (inner#1708 G1)',
   });
 });
 
-describe('TimelineSpace lists a clip record stored under another key as damaged (inner#1708 Q1)', () => {
-  it('shows it with a delete control that removes the record', async () => {
-    const KEY = '30000000-0000-4000-8000-0000000000e1';
-    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
-    doc.transact(() => {
-      const record = new Y.Map<unknown>();
-      doc.getMap('clips').set(KEY, record);
-      for (const [name, value] of Object.entries(clipAt(Y2, 'v2', 60, 10))) record.set(name, value);
-    }, 'provider');
-    showTimeline();
-    const row = await screen.findByTestId('timeline-conflict-' + KEY);
-    expect(row).toHaveTextContent(t('timeline.conflictReason.damaged'));
-    expect(screen.queryByTestId('timeline-clip-' + Y2)).toBe(null);
-    fireEvent.click(screen.getByTestId('timeline-damaged-delete-' + KEY));
-    await waitFor(() => expect(currentDoc().getMap('clips').has(KEY)).toBe(false));
-    expect(layout().clips[X]).toMatchObject({ startFrame: 10 });
-  });
-});
-
 describe('TimelineSpace hands focus to its root when a focused control leaves the page (inner#1708 F1)', () => {
-  const MISFILED = '30000000-0000-4000-8000-0000000000f1';
-
-  /**
-   * Store a damaged clip record a peer wrote.
-   * @param doc - The content document.
-   * @throws {Error} When Yjs cannot attach the map.
-   */
-  function damaged(doc: Y.Doc): void {
-    doc.transact(() => {
-      const record = new Y.Map<unknown>();
-      doc.getMap('clips').set(MISFILED, record);
-      record.set('startFrame', 5);
-    }, 'provider');
-  }
-
   /**
    * The Timeline root.
    * @returns Its element.
@@ -2473,46 +2343,17 @@ describe('TimelineSpace hands focus to its root when a focused control leaves th
     await waitFor(() => expect(document.activeElement).toBe(root()));
   });
 
-  it('moves focus to the root when Delete on a focused conflict row removes its clip (b)', async () => {
-    const user = userEvent.setup();
-    const doc = seedLayout([clipAt(X, 'v2', 0, 14)]);
-    showTimeline();
-    await screen.findByTestId('timeline-clip-' + X);
-    act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
-    const row = await screen.findByTestId('timeline-conflict-' + X);
-    await user.click(row);
-    expect(document.activeElement).toBe(row);
-    await user.keyboard('{Delete}');
-    await waitFor(() => expect(layout().clips[X]).toBe(undefined));
-    expect(screen.queryByTestId('timeline-conflict-' + X)).toBe(null);
-    await waitFor(() => expect(document.activeElement).toBe(root()));
-  });
-
-  it('moves focus to the root when the delete control of a damaged row activated by keyboard removes the row (c)', async () => {
-    const user = userEvent.setup();
-    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
-    damaged(doc);
-    showTimeline();
-    const remove = await screen.findByTestId('timeline-damaged-delete-' + MISFILED);
-    act(() => remove.focus());
-    await user.keyboard('{Enter}');
-    await waitFor(() => expect(currentDoc().getMap('clips').has(MISFILED)).toBe(false));
-    expect(screen.queryByTestId('timeline-conflict-' + MISFILED)).toBe(null);
-    await waitFor(() => expect(document.activeElement).toBe(root()));
-  });
-
   it('leaves focus on a control outside the Timeline when the Timeline control focused before is removed', async () => {
-    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
-    damaged(doc);
+    const doc = seedLayout([clipAt(X, MAIN, 0, 24)]);
     showTimeline();
-    const remove = await screen.findByTestId('timeline-damaged-delete-' + MISFILED);
+    const remove = await screen.findByTestId('timeline-delete-track-v2');
     act(() => remove.focus());
     const outside = document.createElement('button');
     document.body.append(outside);
     try {
       act(() => outside.focus());
-      act(() => { doc.transact(() => doc.getMap('clips').delete(MISFILED), 'provider'); });
-      await waitFor(() => expect(screen.queryByTestId('timeline-conflict-' + MISFILED)).toBe(null));
+      act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
+      await waitFor(() => expect(screen.queryByTestId('timeline-delete-track-v2')).toBe(null));
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(document.activeElement).toBe(outside);
     } finally { outside.remove(); }
@@ -2520,46 +2361,12 @@ describe('TimelineSpace hands focus to its root when a focused control leaves th
 });
 
 describe('TimelineSpace side panel, conflicts and clip lengths (inner#1708 visual V14-V17, V19, V21)', () => {
-  it('lists name, reason and frames in a conflict row without the conflict word, which stays on the clip and in properties (V14)', async () => {
-    seedConflictingClips();
-    showTimeline();
-    const row = await screen.findByTestId('timeline-conflict-' + CLIP.id);
-    await waitFor(() => expect(row).toHaveTextContent('Product launch.mp4'));
-    expect(row).toHaveTextContent(t('timeline.conflictReason.overlap'));
-    expect(row).toHaveTextContent(t('timeline.clipFrames', { start: 0, duration: 48 }));
-    expect(within(row).queryByText(t('timeline.conflict'), { exact: true })).toBe(null);
-    expect(within(screen.getByTestId('timeline-clip-' + CLIP.id)).getByText(t('timeline.conflict'), { exact: true })).toBeInTheDocument();
-    fireEvent.click(row);
-    expect(within(properties()).getByText(t('timeline.conflict'), { exact: true })).toBeInTheDocument();
-  });
-
-  it.each([['an Editor', false], ['a Viewer', true]] as const)('always shows the conflicts section to %s, with an empty state when nothing conflicts (V15)', async (_role, readOnly) => {
-    seedLayout([clipAt(X, 'v2', 10, 14)]);
-    showTimeline(readOnly ? { ...CONNECTED, writeAccess: 'denied' } : CONNECTED, readOnly);
-    await screen.findByTestId('timeline-clip-' + X);
-    const section = screen.getByTestId('timeline-conflicts');
-    expect(within(section).getByText(t('timeline.conflictList'))).toBeInTheDocument();
-    expect(within(section).getByText(t('timeline.noConflicts'))).toBeInTheDocument();
-    expect(within(section).queryByText(t('timeline.conflictHelp'))).toBe(null);
-  });
-
-  it.each([['an Editor', false], ['a Viewer', true]] as const)('shows %s the help and the rows instead of the empty state once a clip conflicts (V15)', async (_role, readOnly) => {
-    seedConflictingClips();
-    showTimeline(readOnly ? { ...CONNECTED, writeAccess: 'denied' } : CONNECTED, readOnly);
-    await screen.findByTestId('timeline-conflict-' + CLIP.id);
-    const section = screen.getByTestId('timeline-conflicts');
-    expect(within(section).getByText(t('timeline.conflictList'))).toBeInTheDocument();
-    expect(within(section).getByText(t('timeline.conflictHelp'))).toBeInTheDocument();
-    expect(within(section).getByTestId('timeline-conflict-' + CLIP.id)).toBeInTheDocument();
-    expect(within(section).queryByText(t('timeline.noConflicts'))).toBe(null);
-  });
-
-  it('holds the conflicts and the properties in one side panel, apart from the preview and the tracks (V16)', async () => {
+  it('holds the properties in the side panel, with no conflicts section, apart from the preview and the tracks (V16; inner#1709 design §3.5)', async () => {
     seedLayout([clipAt(X, 'v2', 10, 14)]);
     showTimeline();
     await screen.findByTestId('timeline-clip-' + X);
     const panel = screen.getByTestId('timeline-side-panel');
-    expect(within(panel).getByTestId('timeline-conflicts')).toBeInTheDocument();
+    expect(screen.queryByTestId('timeline-conflicts')).toBe(null);
     expect(within(panel).getByText(t('timeline.selectClip'))).toBeInTheDocument();
     expect(within(panel).queryByTestId('timeline-preview')).toBe(null);
     expect(within(panel).queryByTestId('timeline-lane-v2')).toBe(null);
@@ -2567,43 +2374,6 @@ describe('TimelineSpace side panel, conflicts and clip lengths (inner#1708 visua
     fireEvent.click(screen.getByTestId('timeline-clip-' + X));
     expect(within(panel).getByTestId('timeline-clip-start')).toBeInTheDocument();
     expect(within(panel).getByTestId('timeline-clip-duration')).toBeInTheDocument();
-  });
-
-  it.each([
-    ['scrolls a start outside the visible lanes into view', 500, true],
-    ['leaves the scroll alone for a start already visible', 50, false],
-  ] as const)('selects the clip, seeks to its start and %s when its conflict row is pressed (V17)', async (_name, startFrame, scrolls) => {
-    const ready = clipAt(Y2, MAIN, 0, 14);
-    const doc = seedLayout([ready, clipAt(X, 'v2', startFrame, 14)]);
-    showTimeline();
-    const clipButton = await screen.findByTestId('timeline-clip-' + X);
-    const pixelsPerFrame = parseFloat((clipButton.parentElement as HTMLElement).style.left) / startFrame;
-    act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
-    const row = await screen.findByTestId('timeline-conflict-' + X);
-    const viewport = screen.getByTestId('timeline-ruler').closest('[data-radix-scroll-area-viewport]');
-    if (!(viewport instanceof HTMLElement)) throw new Error('No track area viewport');
-    Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
-    viewport.scrollLeft = 0;
-    const scrollTo = vi.fn();
-    viewport.scrollTo = scrollTo as unknown as typeof viewport.scrollTo;
-    fireEvent.click(row);
-    expect(row).toHaveAttribute('aria-pressed', 'true');
-    await waitFor(() => expect(screen.getByText(position(startFrame, startFrame + 14))).toBeInTheDocument());
-    if (scrolls) await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ left: Math.max(0, startFrame * pixelsPerFrame - 24) })));
-    else expect(scrollTo).not.toHaveBeenCalled();
-  });
-
-  it('keeps only the delete action on a damaged row (V17)', async () => {
-    const damagedId = '30000000-0000-4000-8000-0000000000d7';
-    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
-    doc.transact(() => {
-      const record = new Y.Map<unknown>();
-      doc.getMap('clips').set(damagedId, record);
-      record.set('startFrame', 5);
-    }, 'provider');
-    showTimeline();
-    const row = await screen.findByTestId('timeline-conflict-' + damagedId);
-    expect(within(row).getAllByRole('button').map((button) => button.getAttribute('data-testid'))).toEqual(['timeline-damaged-delete-' + damagedId]);
   });
 
   it('shows each clip\'s length under its name and follows a trim (V19)', async () => {
@@ -2615,19 +2385,6 @@ describe('TimelineSpace side panel, conflicts and clip lengths (inner#1708 visua
     await waitFor(() => expect(screen.getByTestId('timeline-clip-' + X)).toHaveTextContent(timecode(20)));
   });
 
-  it('shows the Delete shortcut on the Delete button, as Split and Duplicate show theirs (V21)', async () => {
-    seedLayout([clipAt(X, 'v2', 10, 14)]);
-    showTimeline();
-    await screen.findByTestId('timeline-clip-' + X);
-    for (const [testId, shortcut] of [
-      ['timeline-split', formatShortcut({ mod: true, key: 'B' })],
-      ['timeline-duplicate', formatShortcut({ mod: true, key: 'D' })],
-      ['timeline-delete', formatShortcut({ key: 'Delete' })],
-    ] as const) {
-      const button = screen.getByTestId(testId);
-      expect(button.querySelector('kbd')?.textContent, testId).toBe(shortcut);
-    }
-  });
 });
 
 describe('TimelineSpace previews a drop into the new-track zone (inner#1708 visual V13)', () => {
@@ -2700,49 +2457,6 @@ describe('TimelineSpace visual round 2 (inner#1708 W13, W17, W19, W20)', () => {
     expect(screen.getByTestId('timeline-add-media')).toBeEnabled();
   });
 
-  it('shows the selected conflicting clip\'s first reason in its properties (W19)', async () => {
-    seedConflictingClips();
-    showTimeline();
-    fireEvent.click(await screen.findByTestId('timeline-conflict-' + CLIP.id));
-    const area = within(properties());
-    expect(area.getByText(t('timeline.conflict'), { exact: true })).toBeInTheDocument();
-    expect(area.getByText(t('timeline.conflictReason.overlap'), { exact: true })).toBeInTheDocument();
-  });
-
-  it('shows neither the conflict word nor a reason in a ready clip\'s properties (W19)', async () => {
-    seedLayout([clipAt(X, 'v2', 10, 14)]);
-    showTimeline();
-    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
-    const ready = within(properties());
-    expect(ready.queryByText(t('timeline.conflict'), { exact: true })).toBe(null);
-    expect(ready.queryByText(t('timeline.conflictReason.overlap'), { exact: true })).toBe(null);
-  });
-
-  it.each([
-    ['a sub track', 'v2', (): string => t('timeline.track', { index: 2 })],
-    ['the main track', MAIN, (): string => t('timeline.mainTrack')],
-  ] as const)('starts a conflict row\'s frames line with the name of %s (W20)', async (_name, trackId, name) => {
-    const doc = seedLayout([]);
-    const peer = new Y.Doc();
-    try {
-      Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
-      write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: { ...CLIP, trackId } }, placement: OFF });
-      write(peer, { operation: 'add_video', parameters: { source: SOURCE, clip: { ...CLIP, id: Y2, trackId } }, placement: OFF });
-      Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer), 'provider');
-    } finally { peer.destroy(); }
-    showTimeline();
-    const row = await screen.findByTestId('timeline-conflict-' + CLIP.id);
-    expect(within(row).getByText(`${name()} · ${t('timeline.clipFrames', { start: 0, duration: 48 })}`, { exact: true })).toBeInTheDocument();
-  });
-
-  it('names a removed track in a conflict row\'s frames line (W20)', async () => {
-    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
-    showTimeline();
-    await screen.findByTestId('timeline-clip-' + X);
-    act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
-    const row = await screen.findByTestId('timeline-conflict-' + X);
-    expect(within(row).getByText(`${t('timeline.edit.trackRemoved')} · ${t('timeline.clipFrames', { start: 10, duration: 14 })}`, { exact: true })).toBeInTheDocument();
-  });
 });
 
 describe('TimelineSpace size cap (inner#1790)', () => {
@@ -3088,6 +2802,31 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     expect(layout().clips[X]?.transform).toEqual(PIP);
   });
 
+  it('notes an unreadable video by its track in the note layer, retries only it, and keeps the selection (design §6.6)', async () => {
+    seedPip();
+    showTimeline();
+    await layersReady(X, CLIP.id);
+    fireEvent.click(screen.getByTestId('timeline-clip-' + CLIP.id));
+    const failed = previewVideo(X);
+    const other = previewVideo(CLIP.id);
+    Object.defineProperty(failed, 'error', { configurable: true, value: { code: 4 } });
+    fireEvent(failed, new Event('error'));
+    const notes = await screen.findByTestId('timeline-preview-notes');
+    const retry = await waitFor(() => within(notes).getByTestId('timeline-video-retry-' + X));
+    const note = within(notes).getByTestId('timeline-preview-note-' + X);
+    expect(note).toHaveTextContent(t('timeline.track', { index: 2 }));
+    expect(note).toHaveTextContent(t('timeline.media.readFailed', { kind: 'video' }));
+    // The selected clip's properties say nothing of another clip's failure.
+    expect(screen.getByTestId('timeline-side-panel')).not.toHaveTextContent(t('timeline.media.readFailed', { kind: 'video' }));
+    expect(screen.queryByTestId('timeline-layer-overlay')?.contains(retry) ?? false).toBe(false);
+    const failedLoad = vi.spyOn(failed, 'load').mockImplementation(() => undefined);
+    const otherLoad = vi.spyOn(other, 'load').mockImplementation(() => undefined);
+    fireEvent.click(retry);
+    expect(failedLoad).toHaveBeenCalledTimes(1);
+    expect(otherLoad).not.toHaveBeenCalled();
+    expect(selectedOnTrack(CLIP.id)).toBe('true');
+  });
+
   it('picks the lower ready layer, not an upper video whose element failed to load, and gives the failed one no handles (§4.2)', async () => {
     seedPip();
     showTimeline();
@@ -3113,6 +2852,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     await waitFor(() => previewVideo(X));
     expect(screen.getByTestId('timeline-preview')).toHaveClass('isolate');
   });
+
 });
 
 /**
@@ -3317,16 +3057,20 @@ describe('TimelineSpace frame ratio and play bar (breatic#1502)', () => {
     expect(within(playBar()).queryByText(t('timeline.transport.waiting'))).toBe(null);
   });
 
-  it('lays the play bar out as play button, timecode, slider and ratio control, with the timecode able to hold the buffering text above it', async () => {
+  it('lays the play bar out as the slider in a row of its own, then play button, timecode and ratio control, with the timecode able to hold the buffering text above it (inner#1709)', async () => {
     seedContent();
     showTimeline();
     await screen.findByTestId('timeline-play');
-    const row = playBar();
-    const timecodeBox = within(row).getByTestId('timeline-timecode');
+    const bar = playBar();
+    const [seekRow, controls] = [...bar.children] as HTMLElement[];
+    expect(bar.children).toHaveLength(2);
+    expect(within(seekRow!).getByRole('slider', { name: t('timeline.seek') })).toBeInTheDocument();
+    expect(controls).toBe(screen.getByTestId('timeline-transport'));
+    const timecodeBox = within(controls!).getByTestId('timeline-timecode');
     expect(timecodeBox).toHaveClass('relative');
     expect(timecodeBox).toHaveTextContent(position(0, 0));
-    expect([...row.children].map((child) => child.getAttribute('data-testid') ?? child.getAttribute('role') ?? child.querySelector('[role]')?.getAttribute('role')))
-      .toEqual(['timeline-play', 'timeline-timecode', 'slider', 'timeline-frame-ratio']);
+    const hooks = [...controls!.children].map((child) => child.querySelector('[data-testid]')?.getAttribute('data-testid') ?? child.getAttribute('data-testid'));
+    expect(hooks.filter(Boolean)).toEqual(['timeline-play', 'timeline-timecode', 'timeline-frame-ratio']);
   });
 
   it('removes the paused and playing transport strings from every locale', () => {
@@ -3346,7 +3090,7 @@ describe('TimelineSpace, following a member', () => {
 
   it('stops following when the user presses play', async () => {
     const doc = seedContent();
-    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    write(doc, { operation: 'add_media', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
     showTimeline();
     fireEvent.click(await screen.findByTestId('timeline-play'));
     expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
@@ -3354,7 +3098,7 @@ describe('TimelineSpace, following a member', () => {
 
   it('stops following when the user clicks the ruler to seek', async () => {
     const doc = seedContent();
-    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    write(doc, { operation: 'add_media', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
     showTimeline();
     fireEvent.pointerDown(await screen.findByTestId('timeline-ruler'), { clientX: 40 });
     expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
@@ -3362,7 +3106,7 @@ describe('TimelineSpace, following a member', () => {
 
   it('stops following when the user nudges the playhead with an arrow key', async () => {
     const doc = seedContent();
-    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    write(doc, { operation: 'add_media', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
     showTimeline(CONNECTED, true);
     press(await screen.findByTestId('timeline-space'), 'ArrowRight');
     expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
@@ -3370,7 +3114,7 @@ describe('TimelineSpace, following a member', () => {
 
   it('stops following when the user scrolls the tracks, and not when a shorter track clamps them', async () => {
     const doc = seedContent();
-    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    write(doc, { operation: 'add_media', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
     showTimeline();
     // The track area's ScrollArea viewport, the one that holds the ruler.
     const tracks = (await screen.findByTestId('timeline-ruler')).closest<HTMLElement>('[data-radix-scroll-area-viewport]');
@@ -3394,7 +3138,7 @@ describe('TimelineSpace, following a member', () => {
 
   it('keeps following while the user does nothing', async () => {
     const doc = seedContent();
-    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    write(doc, { operation: 'add_media', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
     showTimeline();
     await screen.findByTestId('timeline-play');
     expect(useFollowStore.getState().targetUserId).toBe('leader');

@@ -6,7 +6,7 @@
  *
  * A crop in a node's reference list is uploading the way a row in its task list is running: the backend publishes and
  * collab writes the node, the way a node's task counts reach it (`node-task-counts`) and a Document block receives
- * its upload (`document-upload-events`). The upload shows as uploading once its grant opens, until its deadline; its
+ * its upload (`space-upload-events`). The upload shows as uploading once its grant opens, until its deadline; its
  * ending moves it into the pool or takes it away. Failing to publish an ending throws: an upload finish job runs again,
  * and a ticket answered by a dedup hit fails and the page shows the failure.
  */

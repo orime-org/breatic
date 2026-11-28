@@ -3,13 +3,18 @@
 
 import { describe, expect, it } from 'vitest';
 
+import type { TimelineClip } from '@breatic/shared';
+
 import {
   parseTimelineFrame,
   timelineClipIntervalValid,
+  timelineHeadRoom,
+  timelineSourceOffset,
   timelineSourceSeconds,
   timelineTrimHead,
   validateTimelineRange,
 } from '@web/data/yjs/timeline-time';
+import { audioClip, imageClip, mediaUpload, textClip } from '@web/data/yjs/__tests__/timeline-media-fixtures';
 
 const fps = { num: 24, den: 1 };
 const source = {
@@ -162,5 +167,37 @@ describe('parseTimelineFrame (inner#1708 R4)', () => {
 
   it.each(['', ' ', '1e3', '5.0', '-1', 'abc', '+5', '0x10', '1 2'])('reads %j as not a frame', (text) => {
     expect(parseTimelineFrame(text)).toBeNaN();
+  });
+});
+
+// A still picture, a text and a picture placeholder have no in-point (inner#1709 design §2.4, §3.3): cuts advance it by
+// nothing, the head may grow without limit, and a head trim keeps it at 0.
+describe('still media keep their in-point at 0 (inner#1709)', () => {
+  const unbounded = { timebase: fps, extentFrames: Number.MAX_SAFE_INTEGER };
+  const stills: Array<[string, TimelineClip]> = [
+    ['a picture', imageClip('30000000-0000-4000-8000-000000000081', 'v2', 100, 48) as unknown as TimelineClip],
+    ['a text', textClip('30000000-0000-4000-8000-000000000082', 'v2', 100, 48) as unknown as TimelineClip],
+    ['a picture placeholder', mediaUpload('30000000-0000-4000-8000-000000000083', 'v2', 100, 48, 'image') as unknown as TimelineClip],
+    ['a picture at half speed', imageClip('30000000-0000-4000-8000-000000000084', 'v2', 100, 48, { rate: { num: 1, den: 2 } }) as unknown as TimelineClip],
+  ];
+
+  it.each(stills)('advances the in-point of %s by 0 for any cut', (_name, still) => {
+    for (const frames of [1, 7, 24, 47]) expect(timelineSourceOffset(still, unbounded, fps, frames), String(frames)).toBe(0);
+  });
+
+  it.each(stills)('gives %s unlimited head room', (_name, still) => {
+    expect(timelineHeadRoom(still, unbounded, fps)).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it.each(stills)('keeps the in-point of %s at 0 when its head is dragged either way', (_name, still) => {
+    for (const shift of [-100, -1, 1, 30]) expect(timelineTrimHead(still, unbounded, fps, shift), String(shift)).toBe(0);
+  });
+
+  it('still advances a sound clip and a sound placeholder by its source frames', () => {
+    const sound = audioClip('30000000-0000-4000-8000-000000000085', 'v2', 0, 48) as unknown as TimelineClip;
+    const placeholder = mediaUpload('30000000-0000-4000-8000-000000000086', 'v2', 0, 48, 'audio') as unknown as TimelineClip;
+    expect(timelineSourceOffset(sound, { timebase: fps, extentFrames: 120 }, fps, 12)).toBe(12);
+    expect(timelineTrimHead(placeholder, { timebase: fps, extentFrames: 60 }, fps, 12)).toBe(12);
+    expect(timelineTrimHead(placeholder, { timebase: fps, extentFrames: 60 }, fps, -1)).toBeNull();
   });
 });

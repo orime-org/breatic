@@ -2,37 +2,44 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The Timeline's background uploads (#1434 design §3.1), on the protocol of the Document's pending media blocks
- * (`spaces/document/document-upload-controller.ts`): a placeholder is an `upload` clip in the shared document, this
- * page runs the upload behind its `uploadId` and keeps the result for the document's lifetime, and whenever a
- * placeholder of a finished upload is in the document and this page may write, it turns it into a video clip under
- * the untracked `TIMELINE_UPLOAD_ORIGIN`. The controller lives with the document, so a hidden Space tab keeps it.
+ * The Timeline's background uploads (#1434 design §3.1; inner#1709), on the protocol of the
+ * Document's pending media blocks (`spaces/document/document-upload-controller.ts`): a placeholder is an `upload` clip
+ * in the shared document, and this page only sends its bytes behind the placeholder's `uploadId`. Once the server has
+ * them, collab writes the outcome into the placeholder; this page never writes the document on success. The controller
+ * lives with the document, so a hidden Space tab keeps it.
  */
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import type * as Y from 'yjs';
+import * as Y from 'yjs';
+import { newId, type TimelineUploadClip } from '@breatic/shared';
+import { attachTimelineRecord } from '@breatic/shared/space-content';
 
-import { UploadFailedError, uploadMedia, type StoredUpload, type UploadFailureReason } from '@web/data/upload/media-upload';
-import { readDocFacts, readDocProvider, readWriteAccess, subscribeDocProvider, type WriteAccess } from '@web/data/yjs/collab-socket';
+import { UploadFailedError, handOffSpaceMedia, type UploadFailureReason } from '@web/data/upload/media-upload';
+import { readDocProvider, subscribeDocProvider } from '@web/data/yjs/collab-socket';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { subscribeDocSize } from '@web/data/yjs/doc-size';
-import { convertTimelineUpload, readTimelineDocument, type TimelineRegisteredVideo } from '@web/data/yjs/timeline-document';
+import { writeSpaceDoc } from '@web/data/yjs/space-write';
+import { readTimelineDocument, TIMELINE_UPLOAD_ORIGIN } from '@web/data/yjs/timeline-document';
 import { CLAIMS_FIELD, renewOnWorker, type UploadClaim } from '@web/lib/upload-claims';
 import { uploadRetryCanChange } from '@web/spaces/canvas/upload-failure';
-import { timelineSourceName } from '@web/spaces/timeline/prepare-media-placement';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
-/** Where an upload stands on this page; `progress` is the share sent, 0 to 1, or null before any is known. */
+/**
+ * Where an upload stands on this page: sending, with the share sent (0 to 1, or null before any is known); handed to
+ * the server, the file kept for a retry after a server failure; or failed before the bytes reached the server.
+ */
 export type TimelineUploadEntry =
   | { readonly phase: 'uploading'; readonly progress: number | null }
-  | { readonly phase: 'done'; readonly video: TimelineRegisteredVideo }
+  | { readonly phase: 'handedOff' }
   | { readonly phase: 'failed'; readonly reason: UploadFailureReason; readonly retryable: boolean };
+
+/** The kinds collab turns a placeholder into. */
+export type TimelineUploadKind = TimelineUploadClip['upload']['kind'];
 
 /** One open Timeline document's uploads. */
 export interface TimelineUploads {
   /** Start the upload behind a placeholder just written. */
   start: (uploadId: string, file: File) => void;
-  /** Run a failed, retryable upload again with the same file. */
+  /** Run a retryable upload again with the same file, under a new `uploadId` on every placeholder of the old one. */
   retry: (uploadId: string) => void;
   /** What this page knows about an upload, if it ran it. */
   entry: (uploadId: string) => TimelineUploadEntry | undefined;
@@ -41,27 +48,26 @@ export interface TimelineUploads {
   dispose: () => void;
 }
 
-/** Where a document's uploads land, and who hears that one registered. */
+/** Where a document's uploads land, and who hears that collab landed one of them. */
 interface TimelineUploadsInputs {
   projectId: string;
   spaceId: string;
-  /** Called once an upload has registered as a Project video, so lists of Project videos read again. */
-  onRegistered?: () => void;
+  /** Called with the kind collab turned a placeholder of this page's upload into, so lists of that kind read again. */
+  onLanded?: (kind: TimelineUploadKind) => void;
 }
 
-/** One upload's record: the file is let go once the upload has finished; its name labels the clip. */
-interface UploadRecord { file: File | null; name: string; state: TimelineUploadEntry }
+/** One upload's record; the file is kept for a retry for the document's lifetime. */
+interface UploadRecord { file: File; state: TimelineUploadEntry }
 
 /**
- * This page's write access to an open Timeline document; with no provider the document is taken as writable, as the
- * Document's pending uploads take it.
- * @param name - The document name.
- * @returns The access.
+ * Whether this page can run an upload again: it holds the file, and either handed it off (a server failure collab
+ * writes can be retried) or failed in a way sending it again can change, as the Document's `canRetry` decides.
+ * @param state - The upload's state on this page.
+ * @returns True when a retry may run.
  * @throws {never} Never.
  */
-export function timelineUploadWriteAccess(name: string): WriteAccess {
-  const provider = readDocProvider(name);
-  return provider === null ? 'granted' : readWriteAccess(provider, readDocFacts(name).authFailure);
+function canRetry(state: TimelineUploadEntry): boolean {
+  return state.phase === 'handedOff' || (state.phase === 'failed' && state.retryable);
 }
 
 /**
@@ -72,11 +78,12 @@ export function timelineUploadWriteAccess(name: string): WriteAccess {
  * @throws {never} Never.
  */
 function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { name: string }): TimelineUploads {
-  const { projectId, spaceId, name, onRegistered } = inputs;
+  const { projectId, spaceId, name, onLanded } = inputs;
   const records = new Map<string, UploadRecord>();
   const listeners = new Set<() => void>();
   const registered = new Set<string>();
-  const aborts = new AbortController();
+  // The placeholders of this page's uploads as of the last scan, by clip id, to see collab land one.
+  let watching = new Map<string, string>();
   let claims: Readonly<Record<string, UploadClaim>> = {};
   let provider: HocuspocusProvider | null = null;
   let stopRenewal: (() => void) | null = null;
@@ -93,8 +100,7 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
   };
 
   /**
-   * Publish this page's claims for the placeholders in the document: failed, or in flight — a finished upload whose
-   * placeholder still waits to be written is still in flight to a collaborator.
+   * Publish this page's claims for the placeholders in the document.
    * @param next - The claims.
    */
   const claim = (next: Readonly<Record<string, UploadClaim>>): void => {
@@ -109,36 +115,23 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
     }
   };
 
-  /** Convert finished uploads this page may write, then bring the claims and the busy registrations in line. */
+  /** Hear what collab landed, then bring the claims and the busy registrations in line with the document. */
   const scan = (): void => {
     queued = false;
     if (disposed) return;
-    /**
-     * The registered video of an upload this page finished.
-     * @param uploadId - The upload.
-     * @returns The video, or null while it is not finished.
-     */
-    const finished = (uploadId: string): TimelineRegisteredVideo | null => {
-      const state = records.get(uploadId)?.state;
-      return state?.phase === 'done' ? state.video : null;
-    };
-    /**
-     * The uploads whose placeholders are in the document now.
-     * @returns Their ids.
-     */
-    const presentIds = (): Set<string> => new Set(Object.values(readTimelineDocument(doc).clips)
-      .flatMap((clip) => (clip.kind === 'upload' ? [clip.upload.uploadId] : [])));
-    if (timelineUploadWriteAccess(name) === 'granted') {
-      for (const uploadId of presentIds()) {
-        const video = finished(uploadId);
-        if (video !== null) convertTimelineUpload(doc, uploadId, video);
-      }
+    const clips = readTimelineDocument(doc).clips;
+    const landed = new Set<TimelineUploadKind>();
+    for (const clipId of watching.keys()) {
+      const kind = clips[clipId]?.kind;
+      if (kind === 'video' || kind === 'image' || kind === 'audio') landed.add(kind);
     }
-    const present = presentIds();
+    watching = new Map(Object.values(clips).flatMap((clip) => (clip.kind === 'upload' && records.has(clip.upload.uploadId) ? [[clip.id, clip.upload.uploadId] as const] : [])));
+    const present = new Set(watching.values());
     const next: Record<string, UploadClaim> = {};
     for (const uploadId of present) {
-      const record = records.get(uploadId);
-      if (record !== undefined) next[uploadId] = record.state.phase === 'failed' ? 'failed' : 'uploading';
+      const phase = records.get(uploadId)?.state.phase;
+      // Once the bytes are handed off, collab writes the outcome for everyone to read.
+      if (phase === 'uploading' || phase === 'failed') next[uploadId] = phase;
     }
     claim(next);
     const busy = new Set([...present].filter((uploadId) => records.get(uploadId)?.state.phase === 'uploading'));
@@ -153,9 +146,10 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
       registered.add(uploadId);
       operations.register(spaceId, uploadId);
     }
+    landed.forEach((kind) => onLanded?.(kind));
   };
 
-  /** Scan once the current task's transactions are all done, so the write never nests in the one that brought a placeholder in. */
+  /** Scan once the current task's transactions are all done. */
   const queue = (): void => {
     if (queued || disposed) return;
     queued = true;
@@ -170,85 +164,80 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
   const settle = (record: UploadRecord, state: TimelineUploadEntry): void => {
     if (disposed) return;
     record.state = state;
-    if (state.phase === 'done') record.file = null;
     queue();
     notify();
   };
 
   /**
-   * Upload a file and take the registered video's address and media facts from the upload's own result (inner#2171).
+   * Send a file to the server for a placeholder; collab writes what becomes of it.
+   * @param uploadId - The placeholder's upload.
    * @param record - The upload's record.
-   * @param file - The file.
    */
-  const run = (record: UploadRecord, file: File): void => {
+  const run = (uploadId: string, record: UploadRecord): void => {
     record.state = { phase: 'uploading', progress: null };
-    const { signal } = aborts;
-    void (async (): Promise<void> => {
-      let stored: StoredUpload;
-      try {
-        stored = await uploadMedia(file, { projectId, spaceId }, (share) => {
-          if (disposed) return;
-          record.state = { phase: 'uploading', progress: share };
-          notify();
-        }, signal);
-      } catch (err) {
+    handOffSpaceMedia(record.file, { projectId, spaceId, uploadId, uploadTarget: 'timeline' }, (share) => {
+      if (disposed) return;
+      record.state = { phase: 'uploading', progress: share };
+      notify();
+    }).then(
+      () => { settle(record, { phase: 'handedOff' }); },
+      (err: unknown) => {
         const reason = err instanceof UploadFailedError ? err.reason : 'upload';
         settle(record, { phase: 'failed', reason, retryable: uploadRetryCanChange(reason) });
-        return;
-      }
-      if (stored.kind !== 'video') {
-        settle(record, { phase: 'failed', reason: 'unsupportedType', retryable: false });
-        return;
-      }
-      if (!disposed) onRegistered?.();
-      settle(record, { phase: 'done', video: {
-        url: stored.fileUrl, coverUrl: stored.coverUrl, name: record.name, mimeType: stored.mimeType,
-        width: stored.width, height: stored.height, durationSeconds: stored.durationSeconds,
-      } });
-    })();
+      },
+    );
+  };
+
+  /**
+   * Give every placeholder of an upload a new `uploadId` and drop what collab wrote onto it, outside any history.
+   * @param uploadId - The upload being retried.
+   * @param nextId - Its new id.
+   * @returns False when the Space's size refused the write.
+   */
+  const rename = (uploadId: string, nextId: string): boolean => {
+    const placeholders = Object.values(readTimelineDocument(doc).clips)
+      .flatMap((clip) => (clip.kind === 'upload' && clip.upload.uploadId === uploadId ? [clip] : []));
+    if (placeholders.length === 0) return true;
+    return writeSpaceDoc(name, { kind: 'edit' }, () => {
+      doc.transact(() => {
+        const clips = doc.getMap<unknown>('clips');
+        for (const clip of placeholders) {
+          const { state: _state, failure: _failure, retryable: _retryable, ...kept } = clip.upload;
+          const upload = { ...kept, uploadId: nextId };
+          const stored = clips.get(clip.id);
+          if (stored instanceof Y.Map) stored.set('upload', upload);
+          else attachTimelineRecord(clips, clip.id, { ...clip, upload });
+        }
+      }, TIMELINE_UPLOAD_ORIGIN);
+    }).ok;
   };
 
   const clips = doc.getMap<unknown>('clips');
   clips.observeDeep(queue);
-  /**
-   * Stop listening to the provider bound last; nothing is bound yet.
-   * @returns Nothing.
-   */
-  let stopProvider = (): void => undefined;
-  /** Follow the document's current provider, rescanning whenever its write access may have changed. */
+  /** Follow the document's current provider, whose awareness carries the claims. */
   const bindProvider = (): void => {
-    stopProvider();
     provider = readDocProvider(name);
-    const bound = provider;
-    if (bound === null) {
-      stopProvider = (): void => undefined;
-    } else {
-      bound.on('authenticated', queue);
-      bound.on('authenticationFailed', queue);
-      stopProvider = (): void => {
-        bound.off('authenticated', queue);
-        bound.off('authenticationFailed', queue);
-      };
-    }
     queue();
   };
   bindProvider();
   const stopRegistry = subscribeDocProvider(name, bindProvider);
-  // A conversion the size held back lands once the Space has room (inner#1790).
-  const stopSize = subscribeDocSize(name, queue);
 
   return {
     start(uploadId, file) {
-      const record: UploadRecord = { file, name: timelineSourceName(file.name), state: { phase: 'uploading', progress: null } };
+      const record: UploadRecord = { file, state: { phase: 'uploading', progress: null } };
       records.set(uploadId, record);
-      run(record, file);
+      run(uploadId, record);
       queue();
       notify();
     },
     retry(uploadId) {
       const record = records.get(uploadId);
-      if (record?.state.phase !== 'failed' || !record.state.retryable || record.file === null) return;
-      run(record, record.file);
+      if (record === undefined || !canRetry(record.state)) return;
+      const nextId = newId();
+      if (!rename(uploadId, nextId)) return;
+      records.delete(uploadId);
+      records.set(nextId, record);
+      run(nextId, record);
       queue();
       notify();
     },
@@ -261,11 +250,8 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
       if (disposed) return;
       claim({});
       disposed = true;
-      aborts.abort();
       clips.unobserveDeep(queue);
       stopRegistry();
-      stopSize();
-      stopProvider();
       const operations = useSpaceOperationsStore.getState();
       for (const uploadId of registered) operations.unregister(spaceId, uploadId);
       registered.clear();
@@ -280,7 +266,7 @@ const cache = createDocScopedCache<TimelineUploads, TimelineUploadsInputs & { na
  * The background uploads of an open Timeline document, kept across body remounts and hidden tabs.
  * @param doc - The live collaborative document.
  * @param name - Its canonical document name.
- * @param inputs - The Project and Space its uploads land in, and who hears that one registered.
+ * @param inputs - The Project and Space its uploads land in, and who hears that collab landed one.
  * @returns The cached or new controller.
  * @throws {never} Never.
  */

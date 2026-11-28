@@ -54,3 +54,68 @@ export function durationToFrames(duration: string | number, fps: TimelineRate): 
   if (frames < 1n || frames > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError("Timeline source extent is not a safe integer");
   return Number(frames);
 }
+
+/**
+ * What frame arithmetic reads from a clip's source: a registered video or sound, whose measured `durationSeconds` may
+ * end between frames, or a source counted in whole frames at its timebase (a web animation, or a still that has no end).
+ */
+export interface TimelineSourceExtent { timebase: TimelineRate; extentFrames: number; durationSeconds?: string }
+
+/** The clip fields the source arithmetic reads. */
+type TimelineSampledClip = { sourceInFrame: number; rate: TimelineRate };
+
+/**
+ * A source's length in seconds as an exact fraction.
+ * @param source - The source.
+ * @returns Its measured duration, or its whole frames at its timebase when it has none.
+ * @throws {RangeError} When a measured duration is invalid.
+ */
+function sourceDuration(source: TimelineSourceExtent): TimelineFraction {
+  if (source.durationSeconds !== undefined) return timelineDurationFraction(source.durationSeconds);
+  return { num: BigInt(source.extentFrames) * BigInt(source.timebase.den), den: BigInt(source.timebase.num) };
+}
+
+/**
+ * How many clip frames, counted from its in-point, sample inside the source.
+ * @param clip - The placement with its in-point and speed.
+ * @param source - Its source descriptor.
+ * @param fps - The Timeline frame rate.
+ * @returns The frame count, capped at Number.MAX_SAFE_INTEGER.
+ * @throws {RangeError} When a rate or the source duration is invalid.
+ */
+export function timelineSourceRoom(clip: TimelineSampledClip, source: TimelineSourceExtent, fps: TimelineRate): number {
+  assertTimelineRate(fps);
+  assertTimelineRate(source.timebase);
+  assertTimelineRate(clip.rate);
+  // Frame j samples in·tb.den/tb.num + j·step seconds, step = fps.den·rate.num / (fps.num·rate.den);
+  // it is inside while that stays below the duration, so the count is ceil of the bound on j.
+  const duration = sourceDuration(source);
+  const tbNum = BigInt(source.timebase.num);
+  const stepDen = BigInt(fps.num) * BigInt(clip.rate.den);
+  const bound = (duration.num * tbNum - BigInt(clip.sourceInFrame) * BigInt(source.timebase.den) * duration.den) * stepDen;
+  const per = BigInt(fps.den) * BigInt(clip.rate.num) * tbNum * duration.den;
+  if (bound <= 0n) return 0;
+  const room = (bound + per - 1n) / per;
+  return room > BigInt(Number.MAX_SAFE_INTEGER) ? Number.MAX_SAFE_INTEGER : Number(room);
+}
+
+/**
+ * The extent an upload placeholder is measured against: a video or sound file the browser read, conformed like a
+ * registered one; a picture has no end (inner#1709).
+ * @param fps - The document frame rate.
+ * @param clip - The placeholder.
+ * @param clip.upload - Its upload fields.
+ * @param clip.upload.durationSeconds - The length the browser read, null for a picture.
+ * @returns The extent, or undefined when the duration is too long to count in frames.
+ * @throws {never} Never.
+ */
+export function timelineUploadExtent(fps: TimelineRate, clip: { upload: { durationSeconds: number | null } }): TimelineSourceExtent | undefined {
+  const { durationSeconds } = clip.upload;
+  if (durationSeconds === null) return { timebase: fps, extentFrames: Number.MAX_SAFE_INTEGER };
+  try {
+    return { timebase: fps, extentFrames: durationToFrames(durationSeconds, fps), durationSeconds: String(durationSeconds) };
+  } catch {
+    // A duration whose frame count is not a safe integer cannot be measured, like a missing source.
+    return undefined;
+  }
+}

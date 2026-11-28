@@ -9,14 +9,14 @@ import { readTimelineDocument } from "../document.js";
 const SETTINGS = { width: 2560, height: 1440, fps: { num: 30000, den: 1001 } };
 
 describe("Timeline content seeds", () => {
-  it("encodes complete version 2 content using the creation settings supplied by the service (#1502 design §5)", () => {
+  it("encodes complete version 3 content using the creation settings supplied by the service (inner#1709 design §2.1)", () => {
     const document = new Y.Doc();
     try {
       Y.applyUpdate(document, encodeInitialSpaceContent("timeline", SETTINGS));
       expect(readTimelineDocument(document)).toEqual({
-        schemaVersion: 2,
+        schemaVersion: 3,
         settings: SETTINGS,
-        tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
+        tracks: { "visual-1": { id: "visual-1", order: 0 } },
         clips: {},
         sources: {},
       });
@@ -35,7 +35,7 @@ describe("Timeline content seeds", () => {
       Y.applyUpdate(first, Y.encodeStateAsUpdate(second));
       Y.applyUpdate(second, Y.encodeStateAsUpdate(first));
       expect(readTimelineDocument(first).tracks).toEqual({
-        "visual-1": { id: "visual-1", kind: "visual", order: 0 },
+        "visual-1": { id: "visual-1", order: 0 },
       });
       expect(readTimelineDocument(second)).toEqual(readTimelineDocument(first));
       expect(readTimelineDocument(second).settings).toEqual(SETTINGS);

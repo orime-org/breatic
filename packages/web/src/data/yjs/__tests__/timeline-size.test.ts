@@ -18,7 +18,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as TimelineEditModule from '@web/data/yjs/timeline-edit';
 import * as Y from 'yjs';
-import { type TimelineVideoSource } from '@breatic/shared';
+import { type TimelineClip, type TimelineVideoSource } from '@breatic/shared';
 import { updateShape } from '@breatic/shared/update-shape';
 
 const { toast } = vi.hoisted(() => ({
@@ -32,7 +32,7 @@ vi.mock('@web/data/yjs/timeline-edit', async (importOriginal) => {
 
 import { clearAllDocSizes } from '@web/data/yjs/doc-size';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
-import { readTimelineDocument, removeTimelineClip } from '@web/data/yjs/timeline-document';
+import { readTimelineDocument } from '@web/data/yjs/timeline-document';
 import { planTimelineEdit, type TimelineEditCommand, type TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { evictTimelineEditSession, getTimelineEditSession, type TimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import {
@@ -74,15 +74,17 @@ let session: TimelineEditSession;
  * Loads the initial layout into the registered document as a peer's update
  * and opens the session on it.
  * @param plainC1 - Store c1 as a plain value instead of a map.
+ * @param extra - More clips to load.
  * @returns The document.
  */
-function seed(plainC1 = false): Y.Doc {
+function seed(plainC1 = false, extra: readonly TimelineClip[] = []): Y.Doc {
   const layout = timeline(
     [
       clip(C1, MAIN, 0, 100, { sourceId: S1.id }),
       clip(C2, MAIN, 100, 100, { sourceId: S2.id }),
       clip(C3, MAIN, 200, 100, { sourceId: S3.id }),
       clip(A2, V2, 120, 20, { sourceId: S2.id }),
+      ...extra,
     ],
     [track(MAIN, 0), track(V2, 1), track(V3, 2)],
     [S1, S2, S3],
@@ -146,8 +148,8 @@ afterEach(() => {
 
 describe('TL-01 commands that write a new clip record are add', () => {
   kindRows<TimelineEditPlan>({
-    id: 'TL-01', title: 'add_video', kind: 'add', name: NAME, seed: () => seed(),
-    run: () => session.edit(command('add_video', { source: S4, clip: clip(C4, MAIN, 300, 100, { sourceId: S4.id }) })),
+    id: 'TL-01', title: 'add_media', kind: 'add', name: NAME, seed: () => seed(),
+    run: () => session.edit(command('add_media' as TimelineEditCommand['operation'], { source: S4, clip: clip(C4, MAIN, 300, 100, { sourceId: S4.id }) })),
     written: (plan, target) => { expect(plan.ok).toBe(true); expect(target.getMap('clips').has(C4)).toBe(true); },
     refused: refusedPlan,
   });
@@ -266,33 +268,23 @@ describe('TL-05 delete_track is planned: only deletions are remove, anything els
   });
 });
 
-describe('TL-06 removeTimelineClip on a full Space only deletes the clip', () => {
-  it.each(['F', 'O'] as const)('TL-06 at %s removes c3 and keeps s3', (code) => {
-    seed();
+// removeTimelineClip is gone with the damaged-record list (inner#1709 design §3.5). A clip longer than its source is
+// planned at the length it plays but written only when an edit touches it, so a delete on a full Space next to one
+// still writes only deletions.
+describe('TL-06 a delete on a full Space next to a clip longer than its source is remove (inner#1709 design §3.5)', () => {
+  const LONG = cid(30);
+  const long = clip(LONG, V3, 0, 100, { sourceId: S1.id, sourceInFrame: 950 });
+
+  it.each(['F', 'O'] as const)('TL-06 at %s delete c3 removes c3 and leaves the longer clip as stored', (code) => {
+    seed(false, [long]);
+    const before = records(doc);
     enterSize(NAME, code);
     toast.warning.mockClear();
-    const captured = captureWrite(doc, () => removeTimelineClip(doc, C3, session.origin));
+    const captured = captureWrite(doc, () => session.edit(command('delete', { clipId: C3 })));
+    expect(captured.result.ok).toBe(true);
     expect(doc.getMap('clips').has(C3)).toBe(false);
-    expect(doc.getMap('sources').has(S3.id)).toBe(true);
-    expect(captured.shape).toBe('R');
-    expectSizeToast(null);
-  });
-
-  it('TL-06 at U removes c3 and sweeps s3 as before', () => {
-    seed();
-    removeTimelineClip(doc, C3, session.origin);
-    expect(doc.getMap('clips').has(C3)).toBe(false);
-    expect(doc.getMap('sources').has(S3.id)).toBe(false);
-  });
-
-  it('TL-06 at Z writes nothing and shows no toast', () => {
-    seed();
-    enterSize(NAME, 'Z');
-    toast.warning.mockClear();
-    const before = Y.encodeStateAsUpdate(doc);
-    const captured = captureWrite(doc, () => removeTimelineClip(doc, C3, session.origin));
-    expect(captured.shape).toBe('∅');
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(records(doc).clips[LONG]).toEqual(before.clips[LONG]);
+    expectKindShape('remove', captured);
     expectSizeToast(null);
   });
 });

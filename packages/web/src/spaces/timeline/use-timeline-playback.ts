@@ -3,31 +3,37 @@
 
 import * as React from 'react';
 import { TIMELINE_PREVIEW_DEFAULTS, t, type TimelineDocumentV1, type TimelinePreviewSyncLimits } from '@breatic/shared';
+import { pickTimelineClipAt } from '@web/data/yjs/timeline-arrangement';
 import { nextTimelinePlaybackBoundary } from '@web/data/yjs/timeline-layers';
 import { timelineSourceSeconds } from '@web/data/yjs/timeline-time';
 import { toast } from '@web/lib/toast';
 import { timelineFrameAt, type TimelineMediaTransport } from '@web/spaces/timeline/media-transport';
 import {
-  createVideoLayerController, videoLaneClip, videoLaneFailed, videoLaneMapping, videoLaneSourceSeconds,
-  type TimelineVideoLayer, type TimelineVideoLayerState, type VideoLane,
-} from '@web/spaces/timeline/video-layer-controller';
+  createMediaLayerController, mediaLaneClip, mediaLaneFailed, mediaLaneMapping, mediaLaneSourceSeconds,
+  type MediaLane, type TimelineMediaLayer, type TimelineMediaLayerState,
+} from '@web/spaces/timeline/media-layer-controller';
 import { createWebAnimationHost, type TimelineWebLayer, type WebInstanceState } from '@web/spaces/timeline/web-animation-host';
 
 const NO_WEB_LAYERS: readonly TimelineWebLayer[] = [];
-const NO_VIDEO_LAYERS: readonly TimelineVideoLayer[] = [];
+const NO_VIDEO_LAYERS: readonly TimelineMediaLayer[] = [];
 // An element this close to its file end shows the last picture (`media.js:279-283`).
 const END_TOLERANCE_SECONDS = 0.001;
 
-/** The document, the visible and premounted video layers, and the visible web-animation instances. */
+/** The view document, the visible and premounted media layers, and the visible web-animation instances. */
 export interface TimelinePlaybackInput {
+  /** The page's view document (inner#1709): only clips that can be shown, each at the length it plays. */
   document: TimelineDocumentV1;
-  readyClipIds: ReadonlySet<string>;
   frame: number;
   onFrame: (frame: number) => void;
-  /** Every visible video clip and every one starting within the premount lead, bottom-up; an unchanged set keeps its identity. */
-  videoLayers?: readonly TimelineVideoLayer[];
-  /** Makes a clip's element; a `<video>` by default. */
-  createMedia?: (clipId: string) => HTMLVideoElement;
+  /**
+   * Every heard video and sound clip and every one starting within the premount lead, bottom-up; an unchanged set keeps
+   * its identity.
+   */
+  videoLayers?: readonly TimelineMediaLayer[];
+  /** Makes a clip's element of the given kind; `document.createElement(kind)` by default. */
+  createMedia?: (clipId: string, kind: 'video' | 'audio') => HTMLMediaElement;
+  /** Whether a visible picture or text is not ready yet (decoding, or its font slices loading); play waits for it. */
+  stillPending?: boolean;
   enabled: boolean;
   /** The drift thresholds; the shared defaults until the Timeline limits arrive. */
   preview?: TimelinePreviewSyncLimits;
@@ -45,13 +51,13 @@ export interface TimelinePlayback {
   state: TimelineMediaTransport;
   toggle: () => void;
   seek: (frame: number) => void;
-  /** Each video layer's state, by clip id. */
-  videoStates: ReadonlyMap<string, TimelineVideoLayerState>;
-  /** A video clip's element, which the playback drives. */
+  /** Each media lane's state, by clip id. */
+  videoStates: ReadonlyMap<string, TimelineMediaLayerState>;
+  /** A video clip's element, which the playback drives; a sound's element is never mounted. */
   videoElement: (clipId: string) => HTMLVideoElement | undefined;
   /** What a video clip's layer mounts in the frame: its element, or the renderer host of a selected version. */
   videoSurface: (clipId: string) => HTMLElement | undefined;
-  /** Load one video layer again; the preview waits for it like a newly visible one. */
+  /** Load one media lane again; the preview waits for it like a newly visible one. */
   retryVideo: (clipId: string) => void;
   /** Each visible web-animation instance's state, by instance key. */
   webStates: ReadonlyMap<string, WebInstanceState>;
@@ -77,7 +83,7 @@ type PlaybackActions = Pick<TimelinePlayback, 'toggle' | 'seek' | 'retryVideo' |
  * @returns Whether it is at its end.
  * @throws {never} Never.
  */
-function atFileEnd(element: HTMLVideoElement): boolean {
+function atFileEnd(element: HTMLMediaElement): boolean {
   return Number.isFinite(element.duration) && Math.abs(element.currentTime - element.duration) <= END_TOLERANCE_SECONDS;
 }
 
@@ -88,7 +94,7 @@ function atFileEnd(element: HTMLVideoElement): boolean {
  * @returns Whether it is past the end.
  * @throws {never} Never.
  */
-function pastFileEnd(element: HTMLVideoElement, target: number): boolean {
+function pastFileEnd(element: HTMLMediaElement, target: number): boolean {
   return Number.isFinite(element.duration) && target > element.duration;
 }
 
@@ -101,7 +107,7 @@ function pastFileEnd(element: HTMLVideoElement, target: number): boolean {
  * @returns Whether it is there.
  * @throws {never} Never.
  */
-function landedAt(element: HTMLVideoElement, target: number, tolerance: number): boolean {
+function landedAt(element: HTMLMediaElement, target: number, tolerance: number): boolean {
   if (pastFileEnd(element, target)) return atFileEnd(element);
   return Math.abs(element.currentTime - target) <= tolerance;
 }
@@ -120,7 +126,8 @@ function sameStates(a: ReadonlyMap<string, string>, b: ReadonlyMap<string, strin
 }
 
 /**
- * Drive the preview over every visible video layer and web-animation copy on one clock (#1410 design §6). The clock is
+ * Drive the preview over every visible video, sound, picture, text and web-animation copy on one clock (#1410 design
+ * §6, inner#1709). The clock is
  * an anchor plus `performance.now()`; each video lane is steered or hard-synced to it by the rules ported from the
  * HyperFrames runtime, and whenever a lane must seek, runs dry or appears without being ready, the whole preview freezes on the
  * current frame and goes on from it once every lane is in place.
@@ -144,7 +151,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
   // Set when play reached a boundary; the render that shows the boundary frame checks the new layers.
   const atBoundary = React.useRef(false);
   const [webStates, setWebStates] = React.useState<ReadonlyMap<string, WebInstanceState>>(() => new Map());
-  const [videoStates, setVideoStates] = React.useState<ReadonlyMap<string, TimelineVideoLayerState>>(() => new Map());
+  const [videoStates, setVideoStates] = React.useState<ReadonlyMap<string, TimelineMediaLayerState>>(() => new Map());
   const [host] = React.useState(() => createWebAnimationHost({
     frame: () => position.current,
     timelineFps: () => latest.current.document.settings.fps,
@@ -154,15 +161,25 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       evaluateNow.current?.();
     },
   }));
-  const [controller] = React.useState(() => createVideoLayerController({
+  const [controller] = React.useState(() => createMediaLayerController({
     document: () => latest.current.document,
-    createMedia: (clipId) => latest.current.createMedia?.(clipId) ?? document.createElement('video'),
+    createMedia: (clipId, kind) => latest.current.createMedia?.(clipId, kind) ?? document.createElement(kind),
     onChange: () => evaluateNow.current?.(),
   }));
+  // The preview's one AudioContext (design §7.5): made on the first play, closed with the lanes when the tab hides.
+  const audio = React.useRef<AudioContext | null>(null);
 
   // Declared before the playback effect: under StrictMode the remount syncs the lanes again before checking them.
-  React.useEffect(() => () => controller.dispose(), [controller]);
-  React.useEffect(() => {
+  // A media element joins an audio graph only once, so the context closes exactly when the lanes are released.
+  React.useEffect(() => () => {
+    controller.dispose();
+    const context = audio.current;
+    audio.current = null;
+    if (context !== null && context.state !== 'closed') void context.close().catch(() => undefined);
+  }, [controller]);
+  // A layout effect, so a lane made or replaced here (a clip entering, a version selected) is in place before the Space's
+  // own layout effect mounts each lane's surface in the frame; a passive one would leave it unmounted until a later render.
+  React.useLayoutEffect(() => {
     controller.sync(videoLayers);
     evaluateNow.current?.();
   }, [controller, videoLayers]);
@@ -243,12 +260,15 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @returns Its role, or null when its clip or source is gone.
      * @throws {never} Never.
      */
-    function roleOf(lane: VideoLane): 'visible' | 'premount' | 'gone' | null {
-      const found = videoLaneClip(latest.current.document, lane.clipId);
+    function roleOf(lane: MediaLane): 'visible' | 'premount' | 'gone' | null {
+      const { document } = latest.current;
+      const found = mediaLaneClip(document, lane.clipId);
       if (found === null) return null;
       const { clip } = found;
       if (position.current < clip.startFrame) return 'premount';
-      return position.current < clip.startFrame + clip.durationFrames ? 'visible' : 'gone';
+      if (position.current >= clip.startFrame + clip.durationFrames) return 'gone';
+      // A clip covered by a later one of any kind on its track is neither drawn nor heard there (inner#1709 design §2.4).
+      return pickTimelineClipAt(document.clips, clip.trackId, position.current)?.id === clip.id ? 'visible' : 'gone';
     }
 
     /**
@@ -256,8 +276,8 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @returns The lanes.
      * @throws {never} Never.
      */
-    function activeLanes(): VideoLane[] {
-      return controller.lanes().filter((lane) => roleOf(lane) === 'visible' && !videoLaneFailed(lane));
+    function activeLanes(): MediaLane[] {
+      return controller.lanes().filter((lane) => roleOf(lane) === 'visible' && !mediaLaneFailed(lane));
     }
 
     /**
@@ -266,8 +286,8 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @returns The source time, or null when its clip is gone.
      * @throws {never} Never.
      */
-    function targetOf(lane: VideoLane): number | null {
-      const found = videoLaneClip(latest.current.document, lane.clipId);
+    function targetOf(lane: MediaLane): number | null {
+      const found = mediaLaneClip(latest.current.document, lane.clipId);
       if (found === null) return null;
       const { clip, source } = found;
       const frame = Math.min(clip.startFrame + clip.durationFrames - 1, Math.max(clip.startFrame, position.current));
@@ -286,7 +306,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @returns Whether it is in its tail.
      * @throws {never} Never.
      */
-    function inTail(lane: VideoLane, target: number | null = targetOf(lane)): boolean {
+    function inTail(lane: MediaLane, target: number | null = targetOf(lane)): boolean {
       return atFileEnd(lane.element) || (target !== null && pastFileEnd(lane.element, target));
     }
 
@@ -298,13 +318,13 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @param tolerance - How far off an in-file time it may stay unsought.
      * @throws {never} Never.
      */
-    function place(lane: VideoLane, target: number, tolerance: number): void {
+    function place(lane: MediaLane, target: number, tolerance: number): void {
       lane.fresh = false;
       lane.target = target;
       lane.tailSeek = false;
       lane.lastDrift = null;
-      const found = videoLaneClip(latest.current.document, lane.clipId);
-      if (found !== null) lane.mapping = videoLaneMapping(found.clip);
+      const found = mediaLaneClip(latest.current.document, lane.clipId);
+      if (found !== null) lane.mapping = mediaLaneMapping(found.clip);
       const element = lane.element;
       if (tolerance > 0 && element.readyState >= 1 && !element.seeking && landedAt(element, target, tolerance)) {
         lane.awaitingSeek = false;
@@ -319,7 +339,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @param lane - The lane.
      * @throws {never} Never.
      */
-    function advanceSeek(lane: VideoLane): void {
+    function advanceSeek(lane: MediaLane): void {
       const element = lane.element;
       if (!lane.awaitingSeek || element.readyState < 1) return;
       try {
@@ -342,7 +362,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @returns Whether it is in place.
      * @throws {never} Never.
      */
-    function ready(lane: VideoLane): boolean {
+    function ready(lane: MediaLane): boolean {
       const element = lane.element;
       if (lane.fresh || lane.awaitingSeek) return false;
       if (inTail(lane)) {
@@ -358,7 +378,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @returns Whether it needs no play().
      * @throws {never} Never.
      */
-    function started(lane: VideoLane): boolean {
+    function started(lane: MediaLane): boolean {
       return inTail(lane) || (!lane.element.paused && !lane.pendingPlay);
     }
 
@@ -367,7 +387,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @param lanes - The lanes to stop.
      * @throws {never} Never.
      */
-    function stop(lanes: readonly VideoLane[]): void {
+    function stop(lanes: readonly MediaLane[]): void {
       for (const lane of lanes) {
         lane.token += 1;
         lane.pendingPlay = false;
@@ -380,6 +400,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @throws {never} Never.
      */
     function refusedByBrowser(): void {
+      if (!active) return;
       cancelFrame();
       anchor = null;
       boundaryAnchor = null;
@@ -396,7 +417,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @param lane - The lane.
      * @throws {never} Never.
      */
-    function requestPlay(lane: VideoLane): void {
+    function requestPlay(lane: MediaLane): void {
       if (lane.pendingPlay) return;
       lane.pendingPlay = true;
       const token = lane.token;
@@ -454,7 +475,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @param awaited - The lanes the wait is for.
      * @throws {never} Never.
      */
-    function freeze(awaited: readonly VideoLane[]): void {
+    function freeze(awaited: readonly MediaLane[]): void {
       for (const lane of awaited) {
         const target = targetOf(lane);
         if (target !== null) place(lane, target, 0);
@@ -478,17 +499,17 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @returns The lanes to hard-sync.
      * @throws {never} Never.
      */
-    function checkDrift(now: number): VideoLane[] {
+    function checkDrift(now: number): MediaLane[] {
       if (anchor === null) return [];
       const fps = latest.current.document.settings.fps;
       const seconds = anchor.frame * fps.den / fps.num + Math.max(0, now - anchor.at) / 1000;
       const { driftSteerSeconds, driftHardSyncSeconds, driftCatastrophicSeconds, driftSteerRate } = limits();
-      const hard: VideoLane[] = [];
+      const hard: MediaLane[] = [];
       for (const lane of activeLanes()) {
-        const found = videoLaneClip(latest.current.document, lane.clipId);
+        const found = mediaLaneClip(latest.current.document, lane.clipId);
         const element = lane.element;
         if (found === null || lane.awaitingSeek) continue;
-        const target = videoLaneSourceSeconds(found.clip, found.source, fps, seconds);
+        const target = mediaLaneSourceSeconds(found.clip, found.source, fps, seconds);
         if (inTail(lane, target)) {
           // The clip runs on past its file: hold the last picture, seeking to the end once when it lags.
           if (!atFileEnd(element) && !lane.tailSeek) {
@@ -524,8 +545,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       if (!active || state.current.intent !== 'play' || state.current.state !== 'playing' || anchor === null) return;
       const end = sequenceEnd();
       const fps = latest.current.document.settings.fps;
-      const { document, readyClipIds } = latest.current;
-      const boundary = nextTimelinePlaybackBoundary(document, readyClipIds, position.current, end);
+      const boundary = nextTimelinePlaybackBoundary(latest.current.document, position.current, end);
       const next = Math.min(boundary, timelineFrameAt(anchor, now, fps, end));
       if (next >= end) {
         showFrame(Math.max(0, end - 1));
@@ -580,7 +600,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       for (const lane of controller.lanes()) {
         const role = roleOf(lane);
         // A failed lane stays paused with its note until it is retried (#1410 design §6.2).
-        if (role === 'gone' || role === null || videoLaneFailed(lane)) {
+        if (role === 'gone' || role === null || mediaLaneFailed(lane)) {
           stop([lane]);
           continue;
         }
@@ -597,7 +617,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
         return;
       }
       const lanes = activeLanes();
-      const webReady = host.ready() && latest.current.webPending !== true;
+      const webReady = host.ready() && latest.current.webPending !== true && latest.current.stillPending !== true;
       const waiting = lanes.filter((lane) => !ready(lane));
       if (state.current.state === 'playing') {
         // A lane in its tail holds its last picture and gets its one seek from checkDrift; it never makes a playing
@@ -637,7 +657,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      */
     function placeAll(): void {
       for (const lane of controller.lanes()) {
-        if (roleOf(lane) === 'gone' || videoLaneFailed(lane)) continue;
+        if (roleOf(lane) === 'gone' || mediaLaneFailed(lane)) continue;
         const target = targetOf(lane);
         if (target !== null) place(lane, target, halfFrame());
       }
@@ -676,6 +696,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
         evaluate();
         return;
       }
+      startAudio();
       if (sequenceEnded) {
         publish('play', 'waiting');
         seek(0);
@@ -685,6 +706,22 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       placeAll();
       publish('play', 'waiting');
       evaluate();
+    }
+
+    /**
+     * Make the preview's AudioContext on a play press, the user gesture browsers ask for, and route every lane through
+     * it; one closed with a hidden tab is made again (design §5.2, §7.5). A refused resume pauses with the existing note.
+     * @throws {never} Never.
+     */
+    function startAudio(): void {
+      if (typeof AudioContext === 'undefined') return;
+      let context = audio.current;
+      if (context === null || context.state === 'closed') {
+        context = new AudioContext();
+        audio.current = context;
+        controller.attachAudio(context);
+      }
+      if (context.state !== 'running') void context.resume().catch(refusedByBrowser);
     }
 
     /**
@@ -740,8 +777,8 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
     function placementChanged(): void {
       controller.configure();
       const moved = controller.lanes().filter((lane) => {
-        const found = videoLaneClip(latest.current.document, lane.clipId);
-        return !lane.fresh && found !== null && lane.mapping !== '' && lane.mapping !== videoLaneMapping(found.clip);
+        const found = mediaLaneClip(latest.current.document, lane.clipId);
+        return !lane.fresh && found !== null && lane.mapping !== '' && lane.mapping !== mediaLaneMapping(found.clip);
       });
       if (moved.length === 0) {
         evaluate();
@@ -788,7 +825,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
 
   React.useEffect(() => {
     evaluateNow.current?.();
-  }, [input.webPending]);
+  }, [input.webPending, input.stillPending]);
 
   React.useEffect(() => {
     actions.current?.placementChanged();
@@ -804,7 +841,10 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
   const seek = React.useCallback((frame: number): void => actions.current?.seek(frame), []);
   const retryVideo = React.useCallback((clipId: string): void => actions.current?.retryVideo(clipId), []);
   const retryWeb = React.useCallback((key: string): void => actions.current?.retryWeb(key), []);
-  const videoElement = React.useCallback((clipId: string): HTMLVideoElement | undefined => controller.element(clipId), [controller]);
+  const videoElement = React.useCallback((clipId: string): HTMLVideoElement | undefined => {
+    const element = controller.element(clipId);
+    return element instanceof HTMLVideoElement ? element : undefined;
+  }, [controller]);
   const videoSurface = React.useCallback((clipId: string): HTMLElement | undefined => controller.surface(clipId), [controller]);
   return { ...snapshot, toggle, seek, videoStates, videoElement, videoSurface, retryVideo, webStates, retryWeb };
 }

@@ -164,6 +164,7 @@ export type {
   UploadGrant,
   GrantFocusImage,
   SceneLookTarget,
+  SpaceUploadTarget,
   FinalizeClaim,
   FinalizeRefusal,
 } from "@domain/asset/upload-grant.repo.js";
@@ -310,7 +311,9 @@ export {
 //    upload, our worker finishes its own — one function, one place) ──
 export * as ingestReportService from "@domain/asset/ingest-report.service.js";
 export { uploadDeadlineByKey } from "@domain/asset/upload-deadline.js";
-export { announceDocumentUploadAsset, announceDocumentUploadProcessing, documentTargetOf } from "@domain/asset/document-upload-events.js";
+export {
+  announceSpaceUploadAsset, announceSpaceUploadProcessing, spaceUploadTargetOf, type SpaceUploadDestination,
+} from "@domain/asset/space-upload-events.js";
 export { announceFocusImage, announceFocusImageUploading } from "@domain/asset/focus-image-events.js";
 export type {
   IngestReport,

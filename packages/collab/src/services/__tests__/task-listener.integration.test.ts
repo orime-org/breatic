@@ -26,6 +26,9 @@ import {
   type DocumentUploadEvent, type NodeTaskCountsEvent, type SceneLookPictureEvent, type SceneLookSettledControlEvent,
 } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
+import {
+  attachTimelineRecord, initializeTimelineDocument, timelineRecordJson, type TimelineUploadEvent,
+} from "@breatic/shared/space-content";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import {
   createPersistenceExtension,
@@ -1102,6 +1105,145 @@ describe("Document upload events (breatic#1574)", () => {
     expect(await yjsRepo.restoreByName(c.docName)).toBe(true);
     expect(await readImage(c.docName)).toMatchObject({ url: "", uploadId: "u1" });
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+});
+
+/** The Timeline upload clip each Timeline case seeds, and the upload it waits for. */
+const TIMELINE_CLIP = "5f0c1c55-2c55-4a55-8a55-0c55c55c55c5";
+const TIMELINE_UPLOAD = "6a1d2d66-3d66-4b66-9b66-1d66d66d66d6";
+
+/**
+ * A fresh stream and key prefix, and a Timeline whose main track holds one upload clip waiting for a video.
+ * @returns The case's names.
+ */
+async function newTimelineUploadCase(): Promise<Case> {
+  const c = bareCase(timelineSpaceDocName(PID, randomUUID()));
+  const doc = new Y.Doc();
+  initializeTimelineDocument(doc, { width: 1920, height: 1080, fps: { num: 24, den: 1 } });
+  attachTimelineRecord(doc.getMap("clips"), TIMELINE_CLIP, {
+    id: TIMELINE_CLIP, trackId: "visual-1", kind: "upload", startFrame: 0, sourceInFrame: 0, durationFrames: 48,
+    rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+    upload: { uploadId: TIMELINE_UPLOAD, name: "shot.mp4", kind: "video", durationSeconds: 2 },
+  });
+  await yjsRepo.seedInitialState(c.docName, Y.encodeStateAsUpdate(doc));
+  return c;
+}
+
+/**
+ * Publish Timeline upload events.
+ * @param c - The case.
+ * @param events - The events, completed with a document name: the case's unless the event names one.
+ * @returns Their stream ids.
+ */
+async function publishTimelineUpload(
+  c: Case,
+  events: Array<Omit<TimelineUploadEvent, "type" | "docName"> & { docName?: string }>,
+): Promise<string[]> {
+  const ids: string[] = [];
+  for (const event of events) {
+    const payload = JSON.stringify({ type: "timeline-upload", docName: c.docName, ...event });
+    ids.push((await stream.xadd(c.streamKey, "*", "payload", payload))!);
+  }
+  return ids;
+}
+
+/**
+ * The Timeline's clips and sources as the stored document holds them.
+ * @param docName - The document.
+ * @returns Plain copies by id.
+ */
+async function readTimeline(docName: string): Promise<{ clips: Record<string, Record<string, unknown>>; sources: Record<string, Record<string, unknown>> }> {
+  const conn = await instanceA.openDirectConnection(docName, { context: { user: { id: "test" } } });
+  try {
+    const plain = (name: string): Record<string, Record<string, unknown>> => Object.fromEntries(
+      [...conn.document!.getMap(name).entries()].map(([id, value]) => [id, timelineRecordJson(value) as Record<string, unknown>]),
+    );
+    return { clips: plain("clips"), sources: plain("sources") };
+  } finally {
+    await conn.disconnect();
+  }
+}
+
+describe("Timeline upload events (inner#1709 design §4.3)", () => {
+  const COMPLETED = {
+    uploadId: TIMELINE_UPLOAD, state: "completed" as const,
+    result: {
+      kind: "video" as const, url: "https://cdn.example/assets/upload.mp4", coverUrl: null, mimeType: "video/mp4", durationSeconds: 2, width: 1280, height: 720,
+    },
+  };
+
+  it("writes processing into the clip waiting for the upload", async () => {
+    const c = await newTimelineUploadCase();
+    const ids = await publishTimelineUpload(c, [{ uploadId: TIMELINE_UPLOAD, state: "processing" }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    const { clips } = await readTimeline(c.docName);
+    expect(clips[TIMELINE_CLIP]).toMatchObject({ kind: "upload", upload: { uploadId: TIMELINE_UPLOAD, kind: "video", state: "processing" } });
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("turns the clip into a video clip of the registered asset once the upload ends, while nobody has the Timeline open", async () => {
+    const c = await newTimelineUploadCase();
+    const ids = await publishTimelineUpload(c, [{ uploadId: TIMELINE_UPLOAD, state: "processing" }, COMPLETED]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    const { clips, sources } = await readTimeline(c.docName);
+    const clip = clips[TIMELINE_CLIP]!;
+    expect(clip).toMatchObject({ id: TIMELINE_CLIP, kind: "video", trackId: "visual-1", startFrame: 0 });
+    expect(clip).not.toHaveProperty("upload");
+    expect(Object.values(sources)).toEqual([expect.objectContaining({
+      id: clip.sourceId, kind: "video", url: "https://cdn.example/assets/upload.mp4", durationOrigin: "registered",
+    })]);
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("writes the failure and its cause into the clip", async () => {
+    const c = await newTimelineUploadCase();
+    const ids = await publishTimelineUpload(c, [{ uploadId: TIMELINE_UPLOAD, state: "failed", reason: "unsupported_type" }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    const { clips } = await readTimeline(c.docName);
+    expect(clips[TIMELINE_CLIP]).toMatchObject({ kind: "upload", upload: { state: "failed", failure: "unsupportedType", retryable: false } });
+  });
+
+  it("writes nothing for an upload no clip in the Timeline waits for", async () => {
+    const c = await newTimelineUploadCase();
+    const before = await readTimeline(c.docName);
+    const ids = await publishTimelineUpload(c, [{ ...COMPLETED, uploadId: randomUUID() }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readTimeline(c.docName)).toEqual(before);
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("acknowledges and skips a Timeline upload addressed to a Document, leaving its block as it was", async () => {
+    const c = await newDocumentUploadCase();
+    const ids = await publishTimelineUpload(c, [{ ...COMPLETED, uploadId: "u1" }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readImage(c.docName)).toMatchObject({ url: "", uploadId: "u1", uploadState: "" });
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("acknowledges and skips a Document upload addressed to a Timeline, leaving its clip as it was", async () => {
+    const c = await newTimelineUploadCase();
+    const before = await readTimeline(c.docName);
+    const ids = await publishDocumentUpload(c, [{ uploadId: TIMELINE_UPLOAD, state: "completed", result: { url: "https://cdn.example/a.mp4" } }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readTimeline(c.docName)).toEqual(before);
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("leaves a deleted Timeline's stored content as it was", async () => {
+    const c = await newTimelineUploadCase();
+    expect(await yjsRepo.softDeleteByName(c.docName)).toBe(true);
+    const ids = await publishTimelineUpload(c, [COMPLETED]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    await untilUnloaded(c.docName);
+    expect(await yjsRepo.restoreByName(c.docName)).toBe(true);
+    expect((await readTimeline(c.docName)).clips[TIMELINE_CLIP]).toMatchObject({ kind: "upload", upload: { uploadId: TIMELINE_UPLOAD } });
   });
 });
 

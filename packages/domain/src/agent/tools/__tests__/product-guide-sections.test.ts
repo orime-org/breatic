@@ -252,8 +252,8 @@ describe("the index in the tool's description", () => {
     }
   });
 
-  it("indexes the Timeline spaces section as adding videos and copies of web animations, and Motion as making them", () => {
-    expect(described()).toContain('Timeline: "Timeline spaces" (adding videos and copies of web animations made in Motion to a timeline and arranging them).');
+  it("indexes the Timeline spaces section as adding media, texts and copies of web animations, and Motion as making them", () => {
+    expect(described()).toContain('Timeline: "Timeline spaces" (adding videos, pictures, sounds, texts and copies of web animations made in Motion to a timeline and arranging them).');
     expect(described()).toContain('Motion: "Motion spaces" (making, modifying and exporting web animations, annotating them and putting their videos on a canvas).');
   });
 });

@@ -114,3 +114,31 @@ describe("defaults: a new Timeline's frame is one of the seven presets (#1502 de
     expect(timelineConfigSchema.safeParse({ defaults: { width: 1620, height: 1080 } }).success).toBe(false);
   });
 });
+
+describe("media: a new picture's and text clip's length and a new text clip's size (inner#1709 design §3.4)", () => {
+  it("defaults a picture and a text clip to five seconds and a text clip's size to 0.06 of the frame height", () => {
+    expect(timelineConfigSchema.parse({}).media).toEqual({ image_duration_seconds: 5, text_duration_seconds: 5, text_size: 0.06 });
+  });
+
+  it("reads five seconds, five seconds and 0.06 from the tracked yaml", () => {
+    expect(getTimelineConfig().media).toEqual({ image_duration_seconds: 5, text_duration_seconds: 5, text_size: 0.06 });
+  });
+
+  it("keeps values given in the yaml", () => {
+    const given = { image_duration_seconds: 3, text_duration_seconds: 8, text_size: 0.1 };
+    expect(timelineConfigSchema.parse({ media: given }).media).toEqual(given);
+  });
+
+  it.each([0, -1])("refuses a picture or text length of %i seconds", (seconds) => {
+    expect(timelineConfigSchema.safeParse({ media: { image_duration_seconds: seconds } }).success).toBe(false);
+    expect(timelineConfigSchema.safeParse({ media: { text_duration_seconds: seconds } }).success).toBe(false);
+  });
+
+  it("accepts a text size at either end of the clip format's 0.01..0.5 and refuses one outside it, so a new clip is always readable", () => {
+    expect(timelineConfigSchema.safeParse({ media: { text_size: 0.01 } }).success).toBe(true);
+    expect(timelineConfigSchema.safeParse({ media: { text_size: 0.5 } }).success).toBe(true);
+    expect(timelineConfigSchema.safeParse({ media: { text_size: 0 } }).success).toBe(false);
+    expect(timelineConfigSchema.safeParse({ media: { text_size: 0.009 } }).success).toBe(false);
+    expect(timelineConfigSchema.safeParse({ media: { text_size: 0.51 } }).success).toBe(false);
+  });
+});

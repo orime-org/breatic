@@ -15,9 +15,12 @@ import * as React from 'react';
 import { act, renderHook, type RenderHookResult } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TimelineDocumentV1, TimelineTrack, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
-import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
+import type {
+  TimelineClip, TimelineDocumentV1, TimelineImageClip, TimelineImageSource, TimelineSource, TimelineTrack, TimelineVideoClip, TimelineVideoSource,
+} from '@breatic/shared';
+import { arrangeTimelineClips, EMPTY_TIMELINE_WEB_RESOLUTION } from '@web/data/yjs/timeline-arrangement';
 import { toast } from '@web/lib/toast';
+import { corsUrl } from '@web/lib/cors-url';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
 
 vi.mock('@web/lib/toast', () => ({ toast: { warning: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn() } }));
@@ -111,8 +114,8 @@ const CLIP: TimelineVideoClip = {
 // A second and third video stacked over CLIP for its whole span, as after the user shrinks the upper ones.
 const LANE_B: TimelineVideoClip = { ...CLIP, id: '30000000-0000-4000-8000-000000000012', trackId: 'v2', sourceId: SOURCE_B.id };
 const LANE_C: TimelineVideoClip = { ...CLIP, id: '30000000-0000-4000-8000-000000000013', trackId: 'v3', sourceId: SOURCE_C.id };
-const TRACKS: TimelineTrack[] = [{ id: 'visual-1', kind: 'visual', order: 0 }, { id: 'v2', kind: 'visual', order: 1 }];
-const THREE_TRACKS: TimelineTrack[] = [...TRACKS, { id: 'v3', kind: 'visual', order: 2 }];
+const TRACKS: TimelineTrack[] = [{ id: 'visual-1', order: 0 }, { id: 'v2', order: 1 }];
+const THREE_TRACKS: TimelineTrack[] = [...TRACKS, { id: 'v3', order: 2 }];
 // A file of 1.000 s under a clip of ceil(1.080 s x 24) = 26 frames: the clip's tail runs past the file's end.
 const TAIL_SOURCE: TimelineVideoSource = { ...SOURCE, durationSeconds: '1.080', extentFrames: 26 };
 const TAIL_CLIP: TimelineVideoClip = { ...CLIP, durationFrames: 26 };
@@ -196,6 +199,15 @@ function mediaFixture(overrides: Partial<MediaFacts> = {}): MediaFixture {
       src = value;
     },
   });
+  // Removing the attribute empties `src`, as in a browser, so a later assignment of the same address loads it again.
+  const removeAttribute = element.removeAttribute.bind(element);
+  Object.defineProperty(element, 'removeAttribute', {
+    configurable: true,
+    value: (name: string): void => {
+      if (name === 'src') src = '';
+      removeAttribute(name);
+    },
+  });
   const play = vi.fn<() => Promise<void>>(() => {
     facts.paused = false;
     return Promise.resolve();
@@ -236,9 +248,9 @@ function deferredPlay(): DeferredPlay {
  * @throws {never} Never.
  */
 function timelineDocument(
-  clips: TimelineVideoClip[] = [CLIP],
-  sources: TimelineVideoSource[] = [SOURCE],
-  tracks: TimelineTrack[] = [{ id: 'visual-1', kind: 'visual', order: 0 }],
+  clips: TimelineClip[] = [CLIP],
+  sources: TimelineSource[] = [SOURCE],
+  tracks: TimelineTrack[] = [{ id: 'visual-1', order: 0 }],
 ): TimelineDocumentV1 {
   return {
     schemaVersion: 2,
@@ -260,18 +272,18 @@ function urlOf(clipId: string): string {
 }
 
 /**
- * The video layers the Space hands the playback at a frame: every ready video clip covering it or starting within the
- * premount lead after it, bottom-up by track order.
+ * The video layers the Space hands the playback at a frame: every video clip of the view covering it or starting within
+ * the premount lead after it, bottom-up by track order.
  * @param props - The case.
- * @param ready - The clips the arrangement resolved as ready.
+ * @param view - The view document the page builds (inner#1709).
  * @param frame - The current frame.
  * @returns The layers.
  * @throws {never} Never.
  */
-function videoLayersAt(props: HarnessProps, ready: ReadonlySet<string>, frame: number): VideoLayerInput[] {
-  const order = new Map(Object.values(props.document.tracks).map((track) => [track.id, track.order]));
-  return Object.values(props.document.clips)
-    .filter((clip): clip is TimelineVideoClip => clip.kind === 'video' && ready.has(clip.id) && order.has(clip.trackId)
+function videoLayersAt(props: HarnessProps, view: TimelineDocumentV1, frame: number): VideoLayerInput[] {
+  const order = new Map(Object.values(view.tracks).map((track) => [track.id, track.order]));
+  return Object.values(view.clips)
+    .filter((clip): clip is TimelineVideoClip => clip.kind === 'video' && order.has(clip.trackId)
       && frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - PREMOUNT_FRAMES)
     .sort((a, b) => (order.get(a.trackId) ?? 0) - (order.get(b.trackId) ?? 0) || (a.id < b.id ? -1 : 1))
     .map((clip) => ({ clipId: clip.id, fileUrl: props.urls[clip.id] ?? urlOf(clip.id), coverUrl: null }));
@@ -310,14 +322,15 @@ function renderPlayback(
       created.set(clipId, given);
       return given.element;
     }, []);
-    // Mirrors TimelineSpace: readiness checks source ranges once per document; an unchanged layer set keeps its identity.
-    const ready = React.useMemo(() => new Set(resolveTimelineArrangement(input.document).readyClipIds), [input.document]);
-    const layersNow = videoLayersAt(input, ready, frame);
+    // Mirrors TimelineSpace: the view document holds only the clips that play, each at the length it plays (inner#1709);
+    // an unchanged layer set keeps its identity.
+    const view = React.useMemo((): TimelineDocumentV1 => ({ ...input.document, clips: arrangeTimelineClips(input.document, EMPTY_TIMELINE_WEB_RESOLUTION) }), [input.document]);
+    const layersNow = videoLayersAt(input, view, frame);
     const signature = JSON.stringify(layersNow);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the layer set changes only when its content does.
     const videoLayers = React.useMemo(() => layersNow, [signature]);
     const playbackInput: PlaybackInput = {
-      document: input.document, readyClipIds: ready, frame, onFrame, videoLayers, createMedia, enabled: input.enabled,
+      document: view, frame, onFrame, videoLayers, createMedia, enabled: input.enabled,
     };
     return { ...useTimelinePlayback(playbackInput), frame };
   }, { initialProps: props, ...(strict ? { wrapper: React.StrictMode } : {}) });
@@ -720,7 +733,7 @@ describe('useTimelinePlayback', () => {
     const hook = renderPlayback(media);
     act(() => hook.result.current.toggle());
     hook.rerender({ ...hook.props, urls: { [CLIP.id]: 'https://cdn.test/replacement.mp4' } });
-    expect(media.srcs.at(-1)).toBe('https://cdn.test/replacement.mp4');
+    expect(media.srcs.at(-1)).toBe(corsUrl('https://cdn.test/replacement.mp4'));
     await act(async () => {
       media.facts.paused = false;
       pending.resolve();
@@ -926,6 +939,10 @@ describe('useTimelinePlayback', () => {
   it('recreates the active media lifecycle under React StrictMode', async () => {
     const media = mediaFixture();
     const hook = renderPlayback(media, {}, true);
+    // StrictMode's first cleanup released the lane, so the remount loads the file again (design §7.4).
+    expect(media.load).toHaveBeenCalledTimes(1);
+    expect(media.srcs).toEqual([corsUrl(urlOf(CLIP.id)), corsUrl(urlOf(CLIP.id))]);
+    mediaEvent(media, 'loadeddata', { readyState: 4, seeking: false, duration: 10 });
     act(() => hook.result.current.toggle());
     await settle();
     expect(hook.result.current.state).toBe('playing');
@@ -1216,42 +1233,6 @@ describe('useTimelinePlayback review regressions', () => {
     expect(hook.result.current.frame).toBe(36);
   });
 
-  it('crosses consecutive conflict intervals and holds the next ready video until its native seek completes', async () => {
-    const conflicts = [24, 48, 96, 120].map((startFrame, index) => ({
-      ...CLIP, id: `30000000-0000-4000-8000-00000000000${index + 1}`, startFrame, durationFrames: 48,
-    }));
-    const later = { ...CLIP, id: '30000000-0000-4000-8000-000000000005', startFrame: 192, durationFrames: 24, sourceInFrame: 24 };
-    const document = timelineDocument([...conflicts, later]);
-    expect(resolveTimelineArrangement(document).readyClipIds).toEqual([later.id]);
-    const media = mediaFixture({ readyState: 0 });
-    const hook = renderPlayback(media, { document, media: new Map([[later.id, media]]) });
-    act(() => hook.result.current.toggle());
-    for (let second = 1; second <= 7; second += 1) {
-      tick(second * 1000);
-      expect(hook.result.current.frame).toBe(second * 24);
-      expect(hook.result.current.state).toBe('playing');
-      expect(media.play).toHaveBeenCalledTimes(0);
-    }
-    tick(8000);
-    expect(hook.result.current.frame).toBe(192);
-    expect(hook.result.current.state).toBe('waiting');
-    tick(12000);
-    expect(hook.result.current.frame).toBe(192);
-    mediaEvent(media, 'loadedmetadata', { readyState: 1 });
-    expect(media.facts.currentTime).toBe(1);
-    mediaEvent(media, 'canplay', { readyState: 4, seeking: true });
-    expect(hook.result.current.state).toBe('waiting');
-    expect(media.play).toHaveBeenCalledTimes(0);
-    mediaEvent(media, 'seeked', { seeking: false });
-    await settle();
-    expect(hook.result.current.state).toBe('playing');
-    tick(12250);
-    expect(hook.result.current.frame).toBe(198);
-    tick(13000);
-    expect(hook.result.current.frame).toBe(215);
-    expect(hook.result.current.intent).toBe('pause');
-  });
-
   it.each([0, 4])('stops an arbitrarily late gap frame at the first ready source barrier with readyState %i', async (readyState) => {
     const clip = { ...CLIP, startFrame: 48, durationFrames: 24, sourceInFrame: 24 };
     const media = mediaFixture({ readyState });
@@ -1288,7 +1269,7 @@ describe('useTimelinePlayback review regressions', () => {
     expect(hook.result.current.state).toBe('playing');
     act(() => hook.result.current.retryVideo(clip.id));
     expect(media.load).toHaveBeenCalledTimes(1);
-    expect(media.srcs).toEqual([urlOf(clip.id)]);
+    expect(media.srcs).toEqual([corsUrl(urlOf(clip.id))]);
     expect(media.facts.error).toBeNull();
     expect(media.facts.currentTime).toBe(0);
     expect(hook.result.current.intent).toBe('play');
@@ -1309,8 +1290,10 @@ describe('useTimelinePlayback review regressions', () => {
     mediaEvent(media, 'canplay', { readyState: 4 });
     await settle();
     expect(media.element.playbackRate).toBe(2);
-    expect(media.element.volume).toBe(0.4);
-    expect(media.element.muted).toBe(true);
+    // Gain and mute go through Web Audio; the element itself plays at full volume, unmuted (inner#1709 design §5.2).
+    expect(media.element.volume).toBe(1);
+    expect(media.element.muted).toBe(false);
+    expect(media.element.crossOrigin).toBe('anonymous');
     expect(media.play).toHaveBeenCalledTimes(1);
     expect(hook.result.current.videoStates.get(clip.id)).toBe('ready');
     expect(hook.result.current.state).toBe('playing');
@@ -1494,7 +1477,8 @@ describe('useTimelinePlayback review regressions', () => {
     expect(media.facts.paused).toBe(true);
     expect(queuedFrames.size).toBe(0);
     expect(hook.observedFrames).toHaveLength(writes);
-    expect(media.load).toHaveBeenCalledTimes(1);
+    // The retry's load and the release on unmount (design §7.4); nothing after.
+    expect(media.load).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -1599,11 +1583,11 @@ describe('useTimelinePlayback across layers (inner#1708 E22)', () => {
     expect(upper.pause).toHaveBeenCalledTimes(pausesWhilePlaying);
   });
 
-  it('treats a clip outside its source as not ready and plays through it as a gap', () => {
-    const outside = { ...CLIP, id: '30000000-0000-4000-8000-000000000003', startFrame: 24, durationFrames: 24, sourceInFrame: 230 };
+  it('leaves a clip wholly outside its source out of the view and plays through it as a gap', () => {
+    const outside = { ...CLIP, id: '30000000-0000-4000-8000-000000000003', startFrame: 24, durationFrames: 24, sourceInFrame: 240 };
     const later = { ...CLIP, id: '30000000-0000-4000-8000-000000000004', startFrame: 96, durationFrames: 24, sourceInFrame: 24 };
     const document = timelineDocument([outside, later]);
-    expect(resolveTimelineArrangement(document).readyClipIds).toEqual([later.id]);
+    expect(Object.keys(arrangeTimelineClips(document, EMPTY_TIMELINE_WEB_RESOLUTION))).toEqual([later.id]);
     const media = mediaFixture({ readyState: 0 });
     const hook = renderPlayback(media, { document, media: new Map([[later.id, media]]) });
     act(() => hook.result.current.toggle());
@@ -1954,6 +1938,25 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(hook.result.current.state).toBe('playing');
     expect(a.facts.paused).toBe(false);
     expect(b.play).toHaveBeenCalledTimes(0);
+  });
+
+  it('pauses a playing video once a later-starting picture on its track covers it, whatever the kinds (inner#1709 design §2.4)', async () => {
+    const picture: TimelineImageClip = {
+      ...CLIP, id: '30000000-0000-4000-8000-000000000021', kind: 'image', sourceId: '20000000-0000-4000-8000-000000000021', sourceInFrame: 0, startFrame: 24, durationFrames: 48,
+    };
+    const pictureSource: TimelineImageSource = {
+      id: '20000000-0000-4000-8000-000000000021', kind: 'image', url: 'https://cdn.test/picture.png', name: 'picture.png', mimeType: 'image/png', width: 1920, height: 1080,
+    };
+    const media = mediaFixture();
+    const hook = renderPlayback(media, { document: timelineDocument([CLIP, picture], [SOURCE, pictureSource]) });
+    act(() => hook.result.current.toggle());
+    await settle();
+    const pauses = media.pause.mock.calls.length;
+    // The boundary at frame 24 is reached at 1000 ms and observed at 1010 ms.
+    tick(1010);
+    expect(hook.result.current.frame).toBe(24);
+    expect(media.pause.mock.calls.length).toBeGreaterThan(pauses);
+    expect(media.facts.paused).toBe(true);
   });
 
   it('seeks a premounted lane to its in-point ahead of its start and keeps it paused', () => {

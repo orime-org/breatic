@@ -15,7 +15,7 @@ import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { roomForUploads } from '../helpers/upload-budget';
 import {
-  expectTimelineVideoReady, moveTimelineClip, openTimeline, selectTimelineClip, timelineClipIds, timelineVideoOf, uploadTimelineVideo, withTimelinePeer,
+  expectTimelineVideoReady, storedVideoAddress, moveTimelineClip, openTimeline, selectTimelineClip, timelineClipIds, timelineVideoOf, uploadTimelineVideo, withTimelinePeer,
 } from '../helpers/timeline-media';
 
 const FIXTURE = resolve(__dirname, '../fixtures/media-history.mp4');
@@ -77,7 +77,7 @@ async function setSwitch(page: Page, testId: string, on: boolean): Promise<void>
 async function expectPreviewDecodes(page: Page, clipId: string): Promise<void> {
   const video = timelineVideoOf(page, clipId);
   await expect(video).toHaveAttribute('src', /^https?:/, { timeout: CONVERTED_MS });
-  await expectTimelineVideoReady(page, clipId, (await video.getAttribute('src'))!);
+  await expectTimelineVideoReady(page, clipId, storedVideoAddress((await video.getAttribute('src'))!));
 }
 
 test('a local video uploads behind the closed dialog, spins the tab, holds the close and becomes a playable video @needs-storage @needs-ingest', async ({ page }) => {
@@ -95,7 +95,7 @@ test('a local video uploads behind the closed dialog, spins the tab, holds the c
     await expect(outlet.getByTestId(`timeline-clip-${clipId}`)).toHaveAttribute('data-state', 'uploading');
     await expect(page.getByTestId(`space-tab-busy-${spaceId}`)).toBeVisible();
     // Editing goes on while the upload runs: the first clip moves to a new track and the main track closes up.
-    await moveTimelineClip(page, first.clipId, 0, first.durationFrames, 'New visual track');
+    await moveTimelineClip(page, first.clipId, 0, first.durationFrames, 'New track');
     await selectTimelineClip(page, clipId);
     await expect(outlet.getByTestId('timeline-clip-upload')).toBeVisible();
 

@@ -21,7 +21,8 @@
 import { formatNameOf, type PastePair } from '@breatic/shared';
 
 import { ApiException } from '@web/data/api/types';
-import { UploadFailedError, type UploadFailureReason } from '@web/data/upload/media-upload';
+import { UploadFailedError } from '@web/data/upload/media-upload';
+import { FILE_FAILURE_REASON } from '@web/data/upload/upload-failure-text';
 import { STORAGE_FULL_STATUS } from '@web/data/upload/upload-retry';
 import { uploadRetryCanChange } from '@web/spaces/canvas/upload-failure';
 import { routeAddress } from '@web/spaces/document/document-media-address';
@@ -64,17 +65,6 @@ const RATE_LIMITED_STATUS = 429;
 
 /** How long to wait on a 429 that named no time; the server always names one. */
 const FALLBACK_WAIT_SECONDS = 1;
-
-/** What the block says for each way a file upload fails. */
-const FILE_FAILURE_REASON: Readonly<Record<UploadFailureReason, PendingFailureReason>> = {
-  storage: 'storageFull',
-  hash: 'hashUnavailable',
-  unsupportedType: 'unsupportedType',
-  rateLimited: 'rateLimited',
-  tooLarge: 'tooLarge',
-  upload: 'failed',
-  transfer: 'failed',
-};
 
 /** The server has the upload: it announces the ending and collab writes the block. */
 const HANDED_OFF: UploadOutcome = { ok: true, handedOff: true };

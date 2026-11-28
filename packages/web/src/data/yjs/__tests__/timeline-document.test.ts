@@ -5,18 +5,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
 
-import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
+import { EMPTY_TIMELINE_WEB_RESOLUTION, arrangeTimelineClips, pickTimelineClipAt } from '@web/data/yjs/timeline-arrangement';
 import * as sharedIndex from '@breatic/shared';
 import * as spaceContent from '@breatic/shared/space-content';
 import { initializeTimelineDocument } from '@breatic/shared/space-content';
-import { applyTimelineEdit, readTimelineContent, readTimelineDocument, missingTimelineSourceIds, removeTimelineClip, timelineClipSourceId } from '@web/data/yjs/timeline-document';
+import { applyTimelineEdit, readTimelineContent, readTimelineDocument, missingTimelineSourceIds, timelineClipSourceId } from '@web/data/yjs/timeline-document';
 import { planTimelineEdit } from '@web/data/yjs/timeline-edit';
 import type { TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { TimelineDocumentV1Schema } from '@breatic/shared';
 import type { TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import {
-  MAIN, OFF, ON, SHORT_SOURCE, SOURCE, V2, cid, clip as fixtureClip, idFactory, sourceIdOf, starts, timeline,
+  MAIN, OFF, ON, SHORT_SOURCE, SOURCE, V2, cid, clip as fixtureClip, idFactory, sourceIdOf, starts, timeline, track,
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 
 const settings = { width: 1920, height: 1080, fps: { num: 24, den: 1 } };
@@ -47,11 +47,11 @@ const clip = {
   mute: false,
   transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
-const add: TimelineEditCommand = {
-  operation: 'add_video',
+const add = {
+  operation: 'add_media',
   parameters: { source, clip },
   placement: ON,
-};
+} as unknown as TimelineEditCommand;
 const ORIGIN = Symbol('timeline-test-session');
 const OTHER_ORIGIN = Symbol('timeline-other-session');
 const docs: Y.Doc[] = [];
@@ -220,7 +220,7 @@ const move = (clipId: string, startFrame: number, placement: TimelineEditPlaceme
 const setRange = (clipId: string, startFrame: number, sourceInFrame: number, durationFrames: number, placement: TimelineEditPlacement): TimelineEditCommand =>
   ({ operation: 'set_range', parameters: { clipId, startFrame, sourceInFrame, durationFrames }, placement });
 const addVideo = (added: TimelineVideoClip, placement: TimelineEditPlacement, addedSource = SOURCE): TimelineEditCommand =>
-  ({ operation: 'add_video', parameters: { source: addedSource, clip: added }, placement });
+  ({ operation: 'add_media', parameters: { source: addedSource, clip: added }, placement } as unknown as TimelineEditCommand);
 
 afterEach(() => {
   for (const doc of docs.splice(0)) doc.destroy();
@@ -285,9 +285,9 @@ describe('Timeline native edit transactions', () => {
 
   it('keeps stored source and clip snapshots unchanged when callers mutate their command inputs', () => {
     const doc = seededDoc();
-    const command = structuredClone(add);
-    expect(applyTimelineEdit(doc, command, ORIGIN).ok).toBe(true);
-    if (command.operation !== 'add_video') throw new Error('The fixture is an addition');
+    const command = structuredClone(add) as unknown as { operation: string; parameters: { source: object; clip: { transform: object } } };
+    expect(applyTimelineEdit(doc, command as unknown as TimelineEditCommand, ORIGIN).ok).toBe(true);
+    if (command.operation !== 'add_media') throw new Error('The fixture is an addition');
     const before = Y.encodeStateAsUpdate(doc);
     for (const mutate of [
       () => Reflect.set(command.parameters.source, 'durationSeconds', '9'),
@@ -377,7 +377,7 @@ describe('Timeline native edit transactions', () => {
     expect(readTimelineDocument(doc).sources).toEqual({});
   });
 
-  it('refuses an unavailable source without writing: source_unavailable for an addition, missing_source for an existing clip', () => {
+  it('refuses an unavailable source without writing: source_unavailable for an addition, target_missing for an existing clip that cannot be shown', () => {
     const missingSourceId = '10000000-0000-4000-8000-000000000009';
     const added = seededDoc();
     expect(applyTimelineEdit(added, add, ORIGIN).ok).toBe(true);
@@ -390,9 +390,9 @@ describe('Timeline native edit transactions', () => {
     const sourcelessBytes = Y.encodeStateAsUpdate(sourceless);
     const updates = vi.fn();
     sourceless.on('update', updates);
-    // An existing clip without its source is refused as missing_source (inner#1708 P1); source_unavailable is for additions.
-    expect(applyTimelineEdit(sourceless, move(cid(8), 100, ON), ORIGIN)).toEqual({ ok: false, reason: 'missing_source' });
-    expect(applyTimelineEdit(sourceless, setRange(cid(8), 0, 0, 5, ON), ORIGIN)).toEqual({ ok: false, reason: 'missing_source' });
+    // An existing clip without its source is not shown and takes part in no edit (inner#1709); source_unavailable is for additions.
+    expect(applyTimelineEdit(sourceless, move(cid(8), 100, ON), ORIGIN)).toEqual({ ok: false, reason: 'target_missing' });
+    expect(applyTimelineEdit(sourceless, setRange(cid(8), 0, 0, 5, ON), ORIGIN)).toEqual({ ok: false, reason: 'target_missing' });
     expect(updates).not.toHaveBeenCalled();
     expect(Y.encodeStateAsUpdate(sourceless)).toEqual(sourcelessBytes);
   });
@@ -632,17 +632,16 @@ describe('Timeline concurrent edits across two replicas', () => {
   }
 
   /**
-   * Resolve a document's arrangement with source ranges.
+   * The clip view of a document (inner#1709 design §3.5).
    * @param doc - The document.
-   * @returns The arrangement.
+   * @returns The clips that can be shown, at the lengths they play.
    * @throws {Error} When the document cannot be read.
    */
-  function arrange(doc: Y.Doc): ReturnType<typeof resolveTimelineArrangement> {
-    const value = readTimelineDocument(doc);
-    return resolveTimelineArrangement(value);
+  function arrange(doc: Y.Doc): ReturnType<typeof arrangeTimelineClips> {
+    return arrangeTimelineClips(readTimelineDocument(doc), EMPTY_TIMELINE_WEB_RESOLUTION);
   }
 
-  it('derives the same arrangement from concurrent main-track inserts in either order, and the next magnetic edit packs them', () => {
+  it('derives the same view and the same clip per frame from concurrent main-track inserts in either order, and the next magnetic edit packs them', () => {
     const initial = Y.encodeStateAsUpdate(docFrom(timeline([fixtureClip(A, MAIN, 0, 48)])));
     const left = trackedDoc(initial);
     const right = trackedDoc(initial);
@@ -651,14 +650,16 @@ describe('Timeline concurrent edits across two replicas', () => {
     const [forward, backward] = mergeBothOrders(initial, left, right);
     expect(readTimelineDocument(forward)).toEqual(readTimelineDocument(backward));
     expect(arrange(forward)).toEqual(arrange(backward));
-    expect(arrange(forward).conflicts.map((item) => item.clipId).sort()).toEqual([X, Y_].sort());
+    // X and Y start together on the main track; one of them plays there, the same one in both replicas.
+    const playing = pickTimelineClipAt(arrange(forward), MAIN, 50)?.id;
+    expect([X, Y_]).toContain(playing);
+    expect(pickTimelineClipAt(arrange(backward), MAIN, 50)?.id).toBe(playing);
 
     accepted(applyTimelineEdit(forward, { operation: 'split', parameters: { clipId: A, frame: 24, newClipId: cid(9) }, placement: ON }, ORIGIN));
     expect(starts(readTimelineDocument(forward), MAIN)).toEqual([[A, 0, 24], [cid(9), 24, 24], [X, 48, 24], [Y_, 72, 24]]);
-    expect(arrange(forward).hasConflicts).toBe(false);
   });
 
-  it('keeps a clip moved into a concurrently deleted track as missing_track, and resolves it by moving to an existing track', () => {
+  it('keeps a clip moved into a concurrently deleted track out of the view and out of every edit (inner#1709 design §3.5)', () => {
     const B = cid(4);
     const initial = Y.encodeStateAsUpdate(docFrom(timeline([fixtureClip(A, MAIN, 0, 48), fixtureClip(B, MAIN, 48, 24)])));
     const left = trackedDoc(initial);
@@ -670,16 +671,16 @@ describe('Timeline concurrent edits across two replicas', () => {
       const value = readTimelineDocument(doc);
       expect(value.clips[B]).toMatchObject({ trackId: V2, startFrame: 100 });
       expect(value.tracks[V2]).toBeUndefined();
-      expect(arrange(doc).conflicts).toEqual([expect.objectContaining({ clipId: B, reasons: [expect.objectContaining({ code: 'missing_track' })] })]);
+      expect(Object.keys(arrange(doc))).toEqual([A]);
     }
     expect(readTimelineDocument(forward)).toEqual(readTimelineDocument(backward));
-    expect(planTimelineEdit(readTimelineDocument(forward), { operation: 'delete', parameters: { clipId: B }, placement: ON }, idFactory()).ok).toBe(true);
-    accepted(applyTimelineEdit(forward, move(B, 100, ON, { trackId: MAIN }), ORIGIN));
-    expect(arrange(forward).hasConflicts).toBe(false);
-    expect(starts(readTimelineDocument(forward), MAIN)).toEqual([[A, 0, 48], [B, 48, 24]]);
+    expect(planTimelineEdit(readTimelineDocument(forward), { operation: 'delete', parameters: { clipId: B }, placement: ON }, idFactory())).toEqual({ ok: false, reason: 'target_missing' });
+    expect(applyTimelineEdit(forward, move(B, 100, ON, { trackId: MAIN }), ORIGIN)).toEqual({ ok: false, reason: 'target_missing' });
+    accepted(applyTimelineEdit(forward, setRange(A, 0, 0, 24, ON), ORIGIN));
+    expect(starts(readTimelineDocument(forward), MAIN)).toEqual([[A, 0, 24]]);
   });
 
-  it('derives invalid_range for an out-of-source clip left by concurrent trims and a partial undo', () => {
+  it('plays an out-of-source clip left by concurrent trims and a partial undo to its source end, and accepts only ranges inside the source', () => {
     const K = cid(5);
     const initial = Y.encodeStateAsUpdate(docFrom(timeline([fixtureClip(K, MAIN, 0, 24, { sourceId: SHORT_SOURCE.id, sourceInFrame: 24 })], undefined, [SHORT_SOURCE])));
     const left = trackedDoc(initial);
@@ -694,14 +695,14 @@ describe('Timeline concurrent edits across two replicas', () => {
     for (const doc of [left, right]) {
       const value = readTimelineDocument(doc);
       expect(value.clips[K]).toMatchObject({ sourceInFrame: 24, durationFrames: 48 });
-      expect(arrange(doc).conflicts).toEqual([expect.objectContaining({ clipId: K, reasons: [expect.objectContaining({ code: 'invalid_range' })] })]);
+      expect(arrange(doc)[K]).toMatchObject({ sourceInFrame: 24, durationFrames: 24 });
     }
     const bytes = Y.encodeStateAsUpdate(left);
     expect(applyTimelineEdit(left, setRange(K, 0, 24, 60, ON), ORIGIN)).toEqual({ ok: false, reason: 'invalid_range' });
     expect(applyTimelineEdit(left, setRange(K, 0, 20, 48, ON), ORIGIN)).toEqual({ ok: false, reason: 'invalid_range' });
     expect(Y.encodeStateAsUpdate(left)).toEqual(bytes);
     accepted(applyTimelineEdit(left, setRange(K, 0, 0, 48, ON), ORIGIN));
-    expect(arrange(left).hasConflicts).toBe(false);
+    expect(arrange(left)[K]).toMatchObject({ sourceInFrame: 0, durationFrames: 48 });
   });
 });
 
@@ -728,16 +729,11 @@ describe('Removing damaged records and the read entry (inner#1708 F1b)', () => {
     return doc;
   }
 
-  it('removes one damaged clip record in one transaction with the given origin (inner#1708 N2)', () => {
+  it('still lists a damaged clip record as damaged in the shared read, which the page no longer offers to remove (inner#1709 design §3.5)', () => {
     const doc = damagedDoc();
-    const origins: unknown[] = [];
-    doc.on('afterTransaction', (transaction: Y.Transaction) => { origins.push(transaction.origin); });
-    removeTimelineClip(doc, BAD_CLIP, ORIGIN);
-    expect(origins).toEqual([ORIGIN]);
-    expect(doc.getMap('clips').has(BAD_CLIP)).toBe(false);
-    expect(doc.getMap('clips').has(clip.id)).toBe(true);
-    expect(readTimelineContent(doc).damaged).toEqual({ clips: [] });
+    expect(readTimelineContent(doc).damaged).toEqual({ clips: [BAD_CLIP] });
     expect(readTimelineContent(doc).document.tracks[BAD_TRACK]).toBe(undefined);
+    expect(readTimelineContent(doc).document.clips[clip.id]).toEqual(clip);
   });
 
   it('reads through the shared space-content entry that integration tests use, and edits only in web', () => {
@@ -842,57 +838,11 @@ describe('Timeline edits sweep unreferenced sources (inner#1708 L2)', () => {
       { operation: 'delete_track', parameters: { trackId: 'v3' }, placement: OFF },
     ];
     for (const command of commands) {
-      const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], [{ id: MAIN, kind: 'visual', order: 0 }, { id: V2, kind: 'visual', order: 1 }, { id: 'v3', kind: 'visual', order: 2 }]));
+      const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], [track(MAIN, 0), track(V2, 1), track('v3', 2)]));
       doc.transact(() => doc.getMap('sources').set(SHORT_SOURCE.id, SHORT_SOURCE), 'setup');
       accepted(applyTimelineEdit(doc, command, ORIGIN));
       expect(storedSources(doc), command.operation).toEqual(referencedSources(doc));
     }
-  });
-});
-
-describe('Removing a clip record and its source (inner#1708 L3, N2)', () => {
-  const X = cid(61);
-  const Y2 = cid(62);
-  const DAMAGED = cid(63);
-
-  it('deletes the source only the removed damaged record named, in the same transaction', () => {
-    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], undefined, [SOURCE, SHORT_SOURCE]));
-    damagedClip(doc, DAMAGED, SHORT_SOURCE.id);
-    const seen = recordTransactions(doc);
-    removeTimelineClip(doc, DAMAGED, ORIGIN);
-    expect(seen).toEqual([{ origin: ORIGIN, sources: true }]);
-    expect(storedSources(doc)).toEqual([SOURCE.id]);
-  });
-
-  it('keeps the source another valid clip still references', () => {
-    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10), fixtureClip(Y2, V2, 100, 10)]));
-    removeTimelineClip(doc, X, ORIGIN);
-    expect(storedSources(doc)).toEqual([SOURCE.id]);
-  });
-
-  it('keeps the source a damaged record still names', () => {
-    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10), fixtureClip(Y2, V2, 100, 10, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE, SHORT_SOURCE]));
-    damagedClip(doc, DAMAGED, SHORT_SOURCE.id);
-    removeTimelineClip(doc, Y2, ORIGIN);
-    expect(storedSources(doc)).toEqual([SOURCE.id, SHORT_SOURCE.id].sort());
-  });
-
-  it('opens no transaction for an absent clip, even with an orphan source present', () => {
-    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], undefined, [SOURCE, SHORT_SOURCE]));
-    const seen = recordTransactions(doc);
-    let updates = 0;
-    doc.on('update', () => { updates += 1; });
-    removeTimelineClip(doc, cid(64), ORIGIN);
-    expect(seen).toEqual([]);
-    expect(updates).toBe(0);
-    expect(storedSources(doc)).toEqual([SOURCE.id, SHORT_SOURCE.id].sort());
-  });
-
-  it('adds no undo step for an absent clip', () => {
-    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], undefined, [SOURCE, SHORT_SOURCE]));
-    const undo = undoManager(doc, ORIGIN);
-    removeTimelineClip(doc, cid(64), ORIGIN);
-    expect(undo.undoStack).toHaveLength(0);
   });
 });
 
@@ -1085,16 +1035,13 @@ describe('Clip records naming an Object.prototype key as their source (inner#170
   const ODD = cid(142);
   const NAMES = ['constructor', 'toString', 'hasOwnProperty', '__proto__'] as const;
 
-  it.each(NAMES)('edits and removes other clips completely next to a record naming %s', (name) => {
+  it.each(NAMES)('edits and deletes other clips completely next to a record naming %s', (name) => {
     const doc = docFrom(timeline([fixtureClip(X, MAIN, 0, 20), fixtureClip(Y2, MAIN, 20, 20)]));
     damagedClip(doc, ODD, name);
     expect(() => applyTimelineEdit(doc, move(X, 60, OFF), ORIGIN)).not.toThrow();
     expect(readTimelineDocument(doc).clips[X]?.startFrame).toBe(60);
-    expect(() => removeTimelineClip(doc, Y2, ORIGIN)).not.toThrow();
+    expect(applyTimelineEdit(doc, { operation: 'delete', parameters: { clipId: Y2 }, placement: OFF }, ORIGIN).ok).toBe(true);
     expect(doc.getMap('clips').has(Y2)).toBe(false);
-    expect(storedSources(doc)).toEqual([SOURCE.id]);
-    expect(() => removeTimelineClip(doc, ODD, ORIGIN)).not.toThrow();
-    expect(doc.getMap('clips').has(ODD)).toBe(false);
     expect(storedSources(doc)).toEqual([SOURCE.id]);
   });
 
@@ -1126,17 +1073,15 @@ describe('Edits around a source that cannot be read (inner#1708 F1)', () => {
     expect(storedSources(doc)).toEqual([SOURCE.id]);
   });
 
-  it.each(BAD_VALUES)('flags, edits around and sweeps with its clip a referenced source stored as %s', (_name, value) => {
+  it.each(BAD_VALUES)('leaves out of the view, and edits around, a clip whose source is stored as %s (inner#1709 design §3.5)', (_name, value) => {
     const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10), fixtureClip(BAD, V2, 50, 10, { sourceId: BAD_SOURCE })]));
     doc.transact(() => doc.getMap('sources').set(BAD_SOURCE, value), 'peer');
     expect(() => readTimelineDocument(doc)).not.toThrow();
-    const conflict = resolveTimelineArrangement(readTimelineDocument(doc)).conflicts.find((item) => item.clipId === BAD);
-    expect(conflict?.reasons.map((reason) => reason.code)).toContain('missing_source');
+    expect(Object.keys(arrangeTimelineClips(readTimelineDocument(doc), EMPTY_TIMELINE_WEB_RESOLUTION))).toEqual([X]);
     expect(applyTimelineEdit(doc, move(X, 30, OFF), ORIGIN).ok).toBe(true);
     expect(readTimelineDocument(doc).clips[X]?.startFrame).toBe(30);
-    expect(applyTimelineEdit(doc, { operation: 'delete', parameters: { clipId: BAD }, placement: OFF }, ORIGIN).ok).toBe(true);
-    expect(doc.getMap('clips').has(BAD)).toBe(false);
-    expect(storedSources(doc)).toEqual([SOURCE.id]);
+    expect(applyTimelineEdit(doc, { operation: 'delete', parameters: { clipId: BAD }, placement: OFF }, ORIGIN)).toEqual({ ok: false, reason: 'target_missing' });
+    expect(doc.getMap('clips').has(BAD)).toBe(true);
   });
 });
 
@@ -1166,14 +1111,7 @@ describe('A clip record stored under a key other than its id (inner#1708 Q1)', (
     expect(content.damaged.clips).toEqual([KEY]);
     expect(content.document.clips[B]).toBe(undefined);
     expect(content.document.clips[KEY]).toBe(undefined);
-    expect(resolveTimelineArrangement(content.document).readyClipIds).toEqual([A, C].sort());
-  });
-
-  it('removes it by its key and sweeps the source only it named', () => {
-    const doc = misfiled();
-    removeTimelineClip(doc, KEY, ORIGIN);
-    expect(doc.getMap('clips').has(KEY)).toBe(false);
-    expect(storedSources(doc)).toEqual([SOURCE.id]);
+    expect(Object.keys(arrangeTimelineClips(content.document, EMPTY_TIMELINE_WEB_RESOLUTION)).sort()).toEqual([A, C].sort());
   });
 
   it('packs the magnetic main track without leaving its gap when another clip is deleted', () => {
@@ -1186,7 +1124,7 @@ describe('A clip record stored under a key other than its id (inner#1708 Q1)', (
     }, 'peer');
     expect(applyTimelineEdit(doc, { operation: 'delete', parameters: { clipId: A }, placement: ON }, ORIGIN).ok).toBe(true);
     const document = readTimelineDocument(doc);
-    const ready = new Set(resolveTimelineArrangement(document).readyClipIds);
+    const ready = new Set(Object.keys(arrangeTimelineClips(document, EMPTY_TIMELINE_WEB_RESOLUTION)));
     let at = 0;
     for (const [id, startFrame, durationFrames] of starts(document, MAIN)) {
       if (!ready.has(id)) continue;
@@ -1235,13 +1173,6 @@ describe('A clip naming its source through a Y.Text counts as a reference (inner
     const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 10)]));
     clipWithTextSource(doc, fixtureClip(T, V2, 0, 10));
     expect(readTimelineDocument(doc).clips[T]).toEqual(fixtureClip(T, V2, 0, 10));
-  });
-
-  it('keeps the source when removeTimelineClip removes the other clip naming it', () => {
-    const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 10)]));
-    clipWithTextSource(doc, fixtureClip(T, V2, 0, 10));
-    removeTimelineClip(doc, A, ORIGIN);
-    expect(storedSources(doc)).toEqual([SOURCE.id]);
   });
 
   it('keeps the source when an applyTimelineEdit delete removes the other clip naming it', () => {
@@ -1415,7 +1346,7 @@ describe('applyTimelineEdit writes set_frame and converts leftover pixel clips f
     expect(storedTransform(doc, P)).toEqual(FRACTION_PIP);
     expect(readTimelineDocument(doc).clips[P]?.transform).toEqual(FRACTION_PIP);
     expect(readTimelineDocument(doc).settings).toEqual({ width: 1080, height: 1920, fps: settings.fps });
-    expect(doc.getMap('timeline').get('schemaVersion')).toBe(2);
+    expect(doc.getMap('timeline').get('schemaVersion')).toBe(3);
   });
 
   it('converts the leftover in an untracked transaction before the edit, so undo takes back only the edit', () => {
@@ -1431,26 +1362,26 @@ describe('applyTimelineEdit writes set_frame and converts leftover pixel clips f
     undo.undo();
     expect(readTimelineDocument(doc).clips[A]?.startFrame).toBe(0);
     expect(storedTransform(doc, P)).toEqual(FRACTION_PIP);
-    expect(doc.getMap('timeline').get('schemaVersion')).toBe(2);
+    expect(doc.getMap('timeline').get('schemaVersion')).toBe(3);
     expect(undo.undoStack).toHaveLength(0);
   });
 
-  it('converts a leftover pixel clip in a version-2 document too, leaving the version alone', () => {
+  it('converts a leftover pixel clip in a version-2 document too, and marks it version 3 (inner#1709 design §2.1)', () => {
     const doc = withPixelClip(PIXEL_PIP, 2);
     accepted(applyTimelineEdit(doc, setFrame('1:1'), ORIGIN));
     expect(storedTransform(doc, P)).toEqual(FRACTION_PIP);
-    expect(doc.getMap('timeline').get('schemaVersion')).toBe(2);
+    expect(doc.getMap('timeline').get('schemaVersion')).toBe(3);
   });
 
-  it('makes a version-1 document version 2 when an edit writes a frame-fraction clip into it', () => {
+  it('makes a version-1 document version 3 when an edit writes into it (inner#1709 design §2.1)', () => {
     const doc = docFrom(timeline([]));
     doc.transact(() => doc.getMap('timeline').set('schemaVersion', 1), 'legacy-web');
     accepted(applyTimelineEdit(doc, addVideo(fixtureClip(A, MAIN, 0, 48), OFF), ORIGIN));
     expect(storedTransform(doc, A)).toEqual(IDENTITY);
-    expect(doc.getMap('timeline').get('schemaVersion')).toBe(2);
+    expect(doc.getMap('timeline').get('schemaVersion')).toBe(3);
   });
 
-  it('writes in one transaction, with no conversion, for a version-2 document holding no pixel clip', () => {
+  it('writes in one transaction, with no conversion, for a version-3 document holding no pixel clip', () => {
     const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 48), fixtureClip(P, V2, 10, 20, { transform: FRACTION_PIP })]));
     const origins: unknown[] = [];
     doc.on('afterTransaction', (transaction: Y.Transaction) => { origins.push(transaction.origin); });

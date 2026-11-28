@@ -60,7 +60,7 @@ afterEach(() => { client.clear(); evictTimelineEditSession(NAME); clearAllDocSiz
 async function place(asset: ProjectRegisteredAsset = ASSET): Promise<number> {
   resolveAsset.mockResolvedValue(asset);
   const doc = getDoc(NAME);
-  const seeded = seededDoc(timeline([], [{ id: MAIN, kind: 'visual', order: 0 }], []));
+  const seeded = seededDoc(timeline([], [{ id: MAIN, order: 0 }], []));
   Y.applyUpdate(doc, Y.encodeStateAsUpdate(seeded), 'remote');
   seeded.destroy();
   const session = getTimelineEditSession(doc, NAME);
@@ -74,7 +74,9 @@ async function place(asset: ProjectRegisteredAsset = ASSET): Promise<number> {
   await draft.confirm(ON);
   const sources = Object.values(readTimelineDocument(doc).sources);
   expect(sources).toHaveLength(1);
-  return Number(sources[0].durationSeconds);
+  const source = sources[0]!;
+  if (source.kind !== 'video') throw new Error(`expected a video source, got ${source.kind}`);
+  return Number(source.durationSeconds);
 }
 
 describe('a Project video without a registered duration (frames-split §7.8)', () => {

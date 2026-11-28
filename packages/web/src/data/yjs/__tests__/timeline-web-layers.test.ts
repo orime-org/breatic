@@ -4,10 +4,11 @@
 /**
  * Stacking web-animation copies with video in the preview (inner#1711 design §7.3, breatic#1410 design §6.1).
  *
- * `visibleTimelineClipsAt(document, readyIds, frame)` is every ready clip covering the frame, bottom-up by track
- * rank; a higher video no longer hides what is under it, since a layer may be moved or scaled off what it covers.
- * `nextTimelinePlaybackBoundary` stops where a ready clip starts and where a web copy showing at the frame ends, under a
- * higher video or not; a video's end is not a boundary, since the lanes left play on.
+ * `visibleTimelineClipsAt(document, frame)` reads the view document (inner#1709 design §3.5) and is the clip each track
+ * draws at the frame, bottom-up by track rank; a higher video no longer hides what is under it, since a layer may be
+ * moved or scaled off what it covers. `nextTimelinePlaybackBoundary(document, frame, endFrame)` stops where a clip
+ * starts and where a web copy showing at the frame ends, under a higher video or not; a video's end is not a boundary,
+ * since the lanes left play on.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -20,26 +21,24 @@ import { SRC_B, boundTo, webClip } from '@web/data/yjs/__tests__/timeline-web-fi
 const TRACKS = [track(MAIN, 0), track(V2, 1), track(V3, 2), track(V4, 3)];
 
 /**
- * A document whose every clip is ready.
+ * A view document of the clips.
  * @param clips - The clips.
- * @returns The document and its ready set.
+ * @returns The document.
  * @throws {Error} When the fixture is invalid.
  */
-function stack(clips: TimelineClip[]): { document: TimelineDocumentV1; ready: Set<string> } {
-  return { document: timeline(clips, TRACKS), ready: new Set(clips.map((item) => item.id)) };
+function stack(clips: TimelineClip[]): { document: TimelineDocumentV1 } {
+  return { document: timeline(clips, TRACKS) };
 }
 
 /**
  * The ids visible at a frame, bottom-up.
- * @param clips - The ready clips.
+ * @param clips - The clips.
  * @param frame - The frame.
- * @param ready - Overrides the ready set.
  * @returns The ids.
  * @throws {Error} When the fixture is invalid.
  */
-function visibleIds(clips: TimelineClip[], frame: number, ready?: Set<string>): string[] {
-  const { document, ready: all } = stack(clips);
-  return visibleTimelineClipsAt(document, ready ?? all, frame).map((item) => item.id);
+function visibleIds(clips: TimelineClip[], frame: number): string[] {
+  return visibleTimelineClipsAt(stack(clips).document, frame).map((item) => item.id);
 }
 
 describe('visibleTimelineClipsAt', () => {
@@ -64,47 +63,46 @@ describe('visibleTimelineClipsAt', () => {
     expect(visibleIds([webClip(cid(4), V4, 0, 48), webClip(cid(2), V2, 0, 48)], 10)).toEqual([cid(2), cid(4)]);
   });
 
-  it('leaves out clips that are not ready or do not cover the frame', () => {
+  it('leaves out clips that do not cover the frame', () => {
     const clips = [clip(cid(1), MAIN, 0, 48), webClip(cid(2), V2, 0, 48), webClip(cid(3), V3, 20, 10)];
-    expect(visibleIds(clips, 10, new Set([cid(1), cid(3)]))).toEqual([cid(1)]);
     expect(visibleIds(clips, 30)).toEqual([cid(1), cid(2)]);
   });
 });
 
 describe('nextTimelinePlaybackBoundary with web copies', () => {
   it('stops where a web copy above the video ends', () => {
-    const { document, ready } = stack([clip(cid(1), MAIN, 0, 100), webClip(cid(2), V2, 0, 48)]);
-    expect(nextTimelinePlaybackBoundary(document, ready, 0, 100)).toBe(48);
+    const { document } = stack([clip(cid(1), MAIN, 0, 100), webClip(cid(2), V2, 0, 48)]);
+    expect(nextTimelinePlaybackBoundary(document, 0, 100)).toBe(48);
   });
 
   it('stops where a web copy above the video starts', () => {
-    const { document, ready } = stack([clip(cid(1), MAIN, 0, 100), webClip(cid(2), V2, 30, 10)]);
-    expect(nextTimelinePlaybackBoundary(document, ready, 0, 100)).toBe(30);
+    const { document } = stack([clip(cid(1), MAIN, 0, 100), webClip(cid(2), V2, 30, 10)]);
+    expect(nextTimelinePlaybackBoundary(document, 0, 100)).toBe(30);
   });
 
   it('stops at the edges of a web copy under a higher video', () => {
-    const { document, ready } = stack([clip(cid(1), V3, 0, 100), webClip(cid(2), V2, 0, 48), webClip(cid(3), V2, 60, 10)]);
-    expect(nextTimelinePlaybackBoundary(document, ready, 0, 100)).toBe(48);
-    expect(nextTimelinePlaybackBoundary(document, ready, 48, 100)).toBe(60);
-    expect(nextTimelinePlaybackBoundary(document, ready, 60, 100)).toBe(70);
-    expect(nextTimelinePlaybackBoundary(document, ready, 70, 100)).toBe(100);
+    const { document } = stack([clip(cid(1), V3, 0, 100), webClip(cid(2), V2, 0, 48), webClip(cid(3), V2, 60, 10)]);
+    expect(nextTimelinePlaybackBoundary(document, 0, 100)).toBe(48);
+    expect(nextTimelinePlaybackBoundary(document, 48, 100)).toBe(60);
+    expect(nextTimelinePlaybackBoundary(document, 60, 100)).toBe(70);
+    expect(nextTimelinePlaybackBoundary(document, 70, 100)).toBe(100);
   });
 
   it('stops at the end of the only web copy when there is no video', () => {
-    const { document, ready } = stack([webClip(cid(2), V2, 0, 48)]);
-    expect(nextTimelinePlaybackBoundary(document, ready, 0, 100)).toBe(48);
+    const { document } = stack([webClip(cid(2), V2, 0, 48)]);
+    expect(nextTimelinePlaybackBoundary(document, 0, 100)).toBe(48);
   });
 
   it('does not stop where a video ends: the next start or the end frame comes first', () => {
-    const { document, ready } = stack([clip(cid(1), MAIN, 0, 48), clip(cid(2), V3, 0, 100), webClip(cid(3), V2, 60, 10)]);
-    expect(nextTimelinePlaybackBoundary(document, ready, 0, 120)).toBe(60);
-    expect(nextTimelinePlaybackBoundary(document, ready, 70, 120)).toBe(120);
+    const { document } = stack([clip(cid(1), MAIN, 0, 48), clip(cid(2), V3, 0, 100), webClip(cid(3), V2, 60, 10)]);
+    expect(nextTimelinePlaybackBoundary(document, 0, 120)).toBe(60);
+    expect(nextTimelinePlaybackBoundary(document, 70, 120)).toBe(120);
   });
 
   it('stops where a web copy showing at the frame ends, and not at the end of one that is not showing', () => {
-    const { document, ready } = stack([clip(cid(1), MAIN, 0, 100), webClip(cid(2), V2, 10, 30)]);
-    expect(nextTimelinePlaybackBoundary(document, ready, 10, 100)).toBe(40);
-    expect(nextTimelinePlaybackBoundary(document, ready, 39, 100)).toBe(40);
-    expect(nextTimelinePlaybackBoundary(document, ready, 40, 100)).toBe(100);
+    const { document } = stack([clip(cid(1), MAIN, 0, 100), webClip(cid(2), V2, 10, 30)]);
+    expect(nextTimelinePlaybackBoundary(document, 10, 100)).toBe(40);
+    expect(nextTimelinePlaybackBoundary(document, 39, 100)).toBe(40);
+    expect(nextTimelinePlaybackBoundary(document, 40, 100)).toBe(100);
   });
 });

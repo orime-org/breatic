@@ -6,9 +6,10 @@
  *
  * An `upload` clip is measured like a video whose source is the file the browser read: its extent is
  * `{ timebase: settings.fps, extentFrames: durationToFrames(upload.durationSeconds, fps), durationSeconds }`. It never
- * lacks a source, so it is never `missing_source` or `source_unresolved`; overlap, a missing or audio track and a range
- * past its duration are conflicts exactly as for a video. Every edit plans it as a video clip, and a web-animation
- * copy added over it goes above it, so the copy stays visible once the placeholder turns into a video.
+ * lacks a source, so it is always in the clip view while its track exists (inner#1709 design §3.5); a range past its
+ * duration plays to the file's end and an overlap is settled per frame exactly as for a video. Every edit plans it as
+ * a video clip, and a web-animation copy added over it goes above it, so the copy stays visible once the placeholder
+ * turns into a video.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -16,7 +17,7 @@ import fc from 'fast-check';
 import * as Y from 'yjs';
 import type { TimelineDocumentV1 } from '@breatic/shared';
 
-import { resolveTimelineArrangement, resolveTimelineClipExtent } from '@web/data/yjs/timeline-arrangement';
+import { arrangeTimelineClips, pickTimelineClipAt, resolveTimelineClipExtent } from '@web/data/yjs/timeline-arrangement';
 import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
 import { TimelineEditCommandSchema, planTimelineEdit, type TimelineEditCommand, type TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { visibleTimelineClipsAt } from '@web/data/yjs/timeline-layers';
@@ -67,16 +68,6 @@ function reason(result: TimelineEditPlan): string {
   return result.ok ? 'ok' : result.reason;
 }
 
-/**
- * The arrangement's conflict codes for one clip.
- * @param document - The document.
- * @param clipId - The clip.
- * @returns Its reason codes.
- * @throws {never} Never.
- */
-function codes(document: TimelineDocumentV1, clipId: string): string[] {
-  return resolveTimelineArrangement(document, RESOLUTION).placements.find((item) => item.clipId === clipId)?.reasons.map((item) => item.code) ?? [];
-}
 
 const move = (clipId: string, startFrame: number, target: { trackId?: string } = {}): TimelineEditCommand =>
   ({ operation: 'move', parameters: { clipId, startFrame, ...target }, placement: OFF });
@@ -91,7 +82,7 @@ describe('resolveTimelineClipExtent for an upload placeholder', () => {
 
   it('rounds a fractional duration up to the frame whose sample starts before the end', () => {
     const doc = timeline([], undefined, []);
-    const placeholder = uploadClip(cid(1), V2, 0, 10, { upload: { uploadId: UPLOAD_ID, name: UPLOAD_NAME, durationSeconds: 2.01 } });
+    const placeholder = uploadClip(cid(1), V2, 0, 10, { upload: { uploadId: UPLOAD_ID, name: UPLOAD_NAME, kind: 'video', durationSeconds: 2.01 } });
     expect(resolveTimelineClipExtent(doc, RESOLUTION, placeholder)).toMatchObject({ timebase: FPS, extentFrames: 49 });
   });
 
@@ -101,35 +92,27 @@ describe('resolveTimelineClipExtent for an upload placeholder', () => {
   });
 });
 
-describe('resolveTimelineArrangement with upload placeholders', () => {
-  it('counts a placeholder inside its duration as ready, with no sources in the document', () => {
+describe('the clip view with upload placeholders (inner#1709 design §3.5)', () => {
+  it('keeps a placeholder with no sources in the document', () => {
     const doc = timeline([uploadClip(cid(1), MAIN, 0), uploadClip(cid(2), V2, 100, 30, { sourceInFrame: 30 })], undefined, []);
-    expect(resolveTimelineArrangement(doc).readyClipIds).toEqual([cid(1), cid(2)]);
+    expect(Object.keys(arrangeTimelineClips(doc, RESOLUTION)).sort()).toEqual([cid(1), cid(2)]);
   });
 
-  it('never reports a placeholder as missing_source or source_unresolved', () => {
-    const doc = timeline([uploadClip(cid(1), V2, 0, 70, { sourceInFrame: 10 })], undefined, []);
-    const all = codes(doc, cid(1));
-    expect(all).not.toContain('missing_source');
-    expect(all).not.toContain('source_unresolved');
-  });
-
-  it('reports a placeholder reading past its duration as invalid_range', () => {
+  it('plays a placeholder reading past its duration to the end of its file', () => {
     const doc = timeline([uploadClip(cid(1), V2, 0, 40, { sourceInFrame: 30 })], undefined, []);
-    expect(codes(doc, cid(1))).toEqual(['invalid_range']);
+    expect(arrangeTimelineClips(doc, RESOLUTION)[cid(1)]?.durationFrames).toBe(UPLOAD_FRAMES - 30);
   });
 
-  it('reports a placeholder and a video overlapping on one track as an overlap, both ways', () => {
+  it('lets the later-starting of a placeholder and a video overlapping on one track play where they overlap', () => {
     const doc = timeline([clip(cid(1), V2, 0, 48), uploadClip(cid(2), V2, 20)]);
-    expect(codes(doc, cid(1))).toEqual(['overlap']);
-    expect(codes(doc, cid(2))).toEqual(['overlap']);
+    const view = arrangeTimelineClips(doc, RESOLUTION);
+    expect(pickTimelineClipAt(view, V2, 19)?.id).toBe(cid(1));
+    expect(pickTimelineClipAt(view, V2, 20)?.id).toBe(cid(2));
   });
 
-  it('reports a placeholder on a missing track or an audio track like a video', () => {
-    const tracks = [track(MAIN, 0), { id: 'audio-1', kind: 'audio' as const, order: 1 }];
-    const doc = timeline([uploadClip(cid(1), 'gone', 0), uploadClip(cid(2), 'audio-1', 0)], tracks, []);
-    expect(codes(doc, cid(1))).toEqual(['missing_track']);
-    expect(codes(doc, cid(2))).toEqual(['incompatible_track']);
+  it('leaves out a placeholder on a removed track', () => {
+    const doc = timeline([uploadClip(cid(1), 'gone', 0)], [track(MAIN, 0)], []);
+    expect(arrangeTimelineClips(doc, RESOLUTION)).toEqual({});
   });
 });
 
@@ -140,7 +123,7 @@ describe('add_upload', () => {
   });
 
   it('refuses a placeholder with bad upload fields through the command schema', () => {
-    const bad = uploadClip(cid(1), V2, 0, UPLOAD_FRAMES, { upload: { uploadId: 'not-a-uuid', name: UPLOAD_NAME, durationSeconds: UPLOAD_SECONDS } });
+    const bad = uploadClip(cid(1), V2, 0, UPLOAD_FRAMES, { upload: { uploadId: 'not-a-uuid', name: UPLOAD_NAME, kind: 'video', durationSeconds: UPLOAD_SECONDS } });
     expect(TimelineEditCommandSchema.safeParse(addUpload(bad, OFF)).success).toBe(false);
   });
 
@@ -153,10 +136,10 @@ describe('add_upload', () => {
     expect(result.next.sources).toEqual(doc.sources);
   });
 
-  it('creates the new top track the command names, like add_video', () => {
+  it('creates the new top track the command names, like add_media', () => {
     const result = accepted(plan(timeline([]), addUpload(uploadClip(cid(1), MAIN, 0), OFF, NEW_TRACK)));
     expect(result.next.clips[cid(1)]).toMatchObject({ kind: 'upload', trackId: NEW_TRACK });
-    expect(result.next.tracks[NEW_TRACK]).toEqual({ id: NEW_TRACK, kind: 'visual', order: 2 });
+    expect(result.next.tracks[NEW_TRACK]).toEqual({ id: NEW_TRACK, order: 2 });
   });
 
   it('refuses an id that is already taken', () => {
@@ -167,7 +150,7 @@ describe('add_upload', () => {
     expect(reason(plan(timeline([]), addUpload(uploadClip(cid(1), V2, 0, UPLOAD_FRAMES + 1), OFF)))).toBe('invalid_range');
   });
 
-  it('plans exactly as add_video would for a video of the same length', () => {
+  it('plans exactly as add_media would for a video of the same length', () => {
     const cases = [
       { placement: OFF, trackId: V2, startFrame: 30 },
       { placement: OFF, trackId: MAIN, startFrame: 20 },
@@ -180,7 +163,7 @@ describe('add_upload', () => {
       const placeholder = uploadClip(cid(1), trackId, startFrame);
       const { kind: _kind, upload: _upload, ...fields } = placeholder;
       const video = { ...fields, kind: 'video' as const, sourceId: sameSource.id };
-      const viaVideo = accepted(plan(doc, { operation: 'add_video', parameters: { source: sameSource, clip: video }, placement }));
+      const viaVideo = accepted(plan(doc, { operation: 'add_media', parameters: { source: sameSource, clip: video }, placement }));
       const viaUpload = accepted(plan(doc, addUpload(placeholder, placement)));
       const layout = (next: TimelineDocumentV1): unknown => Object.values(next.clips).map(({ id, trackId: track, startFrame: start, sourceInFrame, durationFrames }) => ({ id, track, start, sourceInFrame, durationFrames }))
         .sort((a, b) => (a.id < b.id ? -1 : 1));
@@ -222,7 +205,7 @@ describe('editing an upload placeholder plans it as a video', () => {
   it('duplicates it under a new id with the same upload', () => {
     const doc = timeline([uploadClip(cid(1), V2, 0, 20)], undefined, []);
     const result = accepted(plan(doc, { operation: 'duplicate', parameters: { clipId: cid(1), newClipId: cid(2) }, placement: OFF }));
-    expect(result.next.clips[cid(2)]).toMatchObject({ kind: 'upload', startFrame: 20, durationFrames: 20, upload: { uploadId: UPLOAD_ID, name: UPLOAD_NAME, durationSeconds: UPLOAD_SECONDS } });
+    expect(result.next.clips[cid(2)]).toMatchObject({ kind: 'upload', startFrame: 20, durationFrames: 20, upload: { uploadId: UPLOAD_ID, name: UPLOAD_NAME, kind: 'video', durationSeconds: UPLOAD_SECONDS } });
     expect(result.next.clips[cid(1)]).toEqual(doc.clips[cid(1)]);
   });
 
@@ -243,7 +226,7 @@ describe('editing an upload placeholder plans it as a video', () => {
   });
 
   it('keeps two uploads apart when one is duplicated', () => {
-    const other = uploadClip(cid(2), V3, 0, 30, { upload: { uploadId: OTHER_UPLOAD_ID, name: 'other.mov', durationSeconds: 3 } });
+    const other = uploadClip(cid(2), V3, 0, 30, { upload: { uploadId: OTHER_UPLOAD_ID, name: 'other.mov', kind: 'video', durationSeconds: 3 } });
     const doc = timeline([uploadClip(cid(1), V2, 0, 20), other], [track(MAIN, 0), track(V2, 1), track(V3, 2)], []);
     const result = accepted(plan(doc, { operation: 'duplicate', parameters: { clipId: cid(2), newClipId: cid(3) }, placement: OFF }));
     expect(result.next.clips[cid(3)]).toMatchObject({ upload: { uploadId: OTHER_UPLOAD_ID } });
@@ -269,9 +252,9 @@ describe('placeWebAnimationClip treats a placeholder as a video', () => {
     if (placeholder?.kind !== 'upload') throw new Error('Expected the placeholder to stay');
     const { kind: _kind, upload: _upload, ...fields } = placeholder;
     const converted: TimelineDocumentV1 = { ...result.next, sources: { [SOURCE.id]: SOURCE }, clips: { ...result.next.clips, [cid(9)]: { ...fields, kind: 'video', sourceId: SOURCE.id } } };
-    const ready = new Set(resolveTimelineArrangement(converted, RESOLUTION).readyClipIds);
+    const view = { ...converted, clips: arrangeTimelineClips(converted, RESOLUTION) };
     expect(result.next.clips[cid(1)]?.trackId).toBe(V4);
-    expect(visibleTimelineClipsAt(converted, ready, 20).map((item) => item.id)).toEqual([cid(8), cid(9), cid(1)]);
+    expect(visibleTimelineClipsAt(view, 20).map((item) => item.id)).toEqual([cid(8), cid(9), cid(1)]);
   });
 
   it('creates a new top track when the placeholder holds the highest track', () => {

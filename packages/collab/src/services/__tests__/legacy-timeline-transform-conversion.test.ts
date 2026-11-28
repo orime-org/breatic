@@ -4,7 +4,7 @@
 /**
  * #1502 design §5: when collab loads a Timeline document, clips whose transform is stored in canvas pixels (`x`, `y`,
  * the format before #1502) are stored again as offsets in frame widths and heights (`frameX`, `frameY`) of the
- * document's current frame, and a version 1 document becomes version 2, under a per-document lock, in one
+ * document's current frame, and a version 1 or 2 document becomes version 3 (inner#1709), under a per-document lock, in one
  * transaction, without moving any layer on screen.
  */
 
@@ -56,7 +56,7 @@ afterEach(() => {
  * @param frame.height - Frame height.
  * @returns The document.
  */
-function timelineDoc(version: 1 | 2, frame: { width: number; height: number } = FRAMES["16:9"]): Y.Doc {
+function timelineDoc(version: 1 | 2 | 3, frame: { width: number; height: number } = FRAMES["16:9"]): Y.Doc {
   const doc = new Y.Doc();
   docs.push(doc);
   initializeTimelineDocument(doc, { ...frame, fps: { num: 24, den: 1 } });
@@ -128,8 +128,8 @@ function convert(document: Y.Doc, takeLock: (key: string) => Promise<boolean> = 
 }
 
 describe("which loaded Timeline documents are converted (#1502 design §5)", () => {
-  it("does not take the lock or write for a version 2 document without pixel clips", async () => {
-    const doc = timelineDoc(2);
+  it("does not take the lock or write for a version 3 document without pixel clips", async () => {
+    const doc = timelineDoc(3);
     storeClip(doc, FRACTION_CLIP, { frameX: 0.35, frameY: -0.35 });
     const before = Y.encodeStateAsUpdate(doc);
     const updates = recordUpdates(doc);
@@ -153,7 +153,7 @@ describe("which loaded Timeline documents are converted (#1502 design §5)", () 
     expect(doc.share.has("timeline")).toBe(false);
   });
 
-  it("writes schemaVersion 2 to a version 1 document even when it holds no pixel clip, in one transaction", async () => {
+  it("writes schemaVersion 3 to a version 1 document even when it holds no pixel clip, in one transaction", async () => {
     const doc = timelineDoc(1);
     const updates = recordUpdates(doc);
     const takeLock = vi.fn(async () => true);
@@ -161,13 +161,13 @@ describe("which loaded Timeline documents are converted (#1502 design §5)", () 
     expect(await convert(doc, takeLock)).toBe(0);
 
     expect(takeLock).toHaveBeenCalledTimes(1);
-    expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(3);
     expect(updates).toEqual([LEGACY_TIMELINE_TRANSFORM_CONVERSION_ORIGIN]);
   });
 });
 
 describe("converting pixel clips on load (#1502 design §5)", () => {
-  it("stores pixel clips as offsets of the current frame and version 2 in one transaction, leaving fraction clips alone", async () => {
+  it("stores pixel clips as offsets of the current frame and version 3 in one transaction, leaving fraction clips alone", async () => {
     const doc = timelineDoc(1, FRAMES["9:16"]);
     storeClip(doc, PIXEL_CLIP, { x: 108, y: -192 });
     storeClip(doc, FRACTION_CLIP, { frameX: 0.35, frameY: -0.35 });
@@ -177,7 +177,7 @@ describe("converting pixel clips on load (#1502 design §5)", () => {
 
     expect(storedTransform(doc, PIXEL_CLIP)).toEqual({ frameX: 0.1, frameY: -0.1, ...SCALE });
     expect(storedTransform(doc, FRACTION_CLIP)).toEqual({ frameX: 0.35, frameY: -0.35, ...SCALE });
-    expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(3);
     expect(updates).toEqual([LEGACY_TIMELINE_TRANSFORM_CONVERSION_ORIGIN]);
   });
 
@@ -216,7 +216,7 @@ describe("converting pixel clips on load (#1502 design §5)", () => {
 
     expect(storedTransform(later, LATE_CLIP)).toEqual({ frameX: -0.5, frameY: 0.5, ...SCALE });
     expect(storedTransform(later, PIXEL_CLIP)).toEqual({ frameX: 0.1, frameY: -0.1, ...SCALE });
-    expect(later.getMap("timeline").get("schemaVersion")).toBe(2);
+    expect(later.getMap("timeline").get("schemaVersion")).toBe(3);
   });
 
   it("leaves the document as it was when reading the stored copy under the lock fails", async () => {
@@ -286,13 +286,13 @@ describe("converting under the document's lock (#1502 design §5)", () => {
 
     expect(converted).toBe(0);
     expect(storedTransform(loadedByB, PIXEL_CLIP)).toEqual({ frameX: 0.1, frameY: -0.1, ...SCALE });
-    expect(loadedByB.getMap("timeline").get("schemaVersion")).toBe(2);
+    expect(loadedByB.getMap("timeline").get("schemaVersion")).toBe(3);
     expect(Y.decodeStateVector(Y.encodeStateVector(loadedByB)).has(loadedByB.clientID)).toBe(false);
   });
 });
 
 describe("what any converted document holds (#1502 design §5)", () => {
-  it("moves no layer, leaves no pixel clip, is version 2, and changes nothing the second time", async () => {
+  it("moves no layer, leaves no pixel clip, is version 3, and changes nothing the second time", async () => {
     const offset = fc.oneof(
       fc.record({ x: fc.integer({ min: -20000, max: 20000 }), y: fc.integer({ min: -20000, max: 20000 }) }),
       fc.record({ frameX: fc.double({ min: -10, max: 10, noNaN: true }), frameY: fc.double({ min: -10, max: 10, noNaN: true }) }),
@@ -308,7 +308,7 @@ describe("what any converted document holds (#1502 design §5)", () => {
         const once = Y.encodeStateAsUpdate(doc);
 
         expect(readTimelineDocument(doc).clips).toEqual(shown);
-        expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
+        expect(doc.getMap("timeline").get("schemaVersion")).toBe(3);
         doc.getMap("clips").forEach((record) => {
           expect(Object.keys((record as Y.Map<unknown>).get("transform") as object).sort()).toEqual(["frameX", "frameY", "rotation", "scaleX", "scaleY"]);
         });

@@ -5,27 +5,29 @@
  * Invariants of upload placeholders through edits, undo, redo and conversion (#1434 design §5, TDD-MANDATE).
  *
  * The Timeline document is on the Yjs collaboration critical path. For any interleaving of the user's edits, undo,
- * redo and the upload's conversion (`convertTimelineUpload`, as the controller runs it again whenever a placeholder of
- * the finished upload reappears):
+ * redo and the upload's conversion (the shared `applyTimelineUpload` collab runs for the upload's event, inner#1709
+ * design §4.3; here the event may also arrive again, and the registered kind may differ from the placeholder's):
  * - every clip record passes `TimelineClipSchema`;
  * - the conversion never changes a clip's track or start frame;
- * - after the conversion every converted clip is a video whose source is in the document and holds its range.
+ * - after the conversion every converted clip is of the registered kind, names a source in the document and, for a
+ *   video or sound, holds its range; a picture's in-point is 0.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
-import { TimelineClipSchema } from '@breatic/shared';
+import { TimelineClipSchema, type TimelineClip, type TimelineVideoSource } from '@breatic/shared';
+import { applyTimelineUpload } from '@breatic/shared/space-content';
 
 import { _resetForTests } from '@web/data/yjs/manager';
-import { convertTimelineUpload, readTimelineDocument, type TimelineRegisteredVideo } from '@web/data/yjs/timeline-document';
+import { readTimelineDocument } from '@web/data/yjs/timeline-document';
 import { evictTimelineEditSession, getTimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
 import { validateTimelineRange } from '@web/data/yjs/timeline-time';
 import {
   FPS, MAIN, OFF, ON, V2, V3, cid, clip, idFactory, seededDoc, timeline, track,
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
-import { UPLOAD_ID, VIDEO_URL, addUpload, clipRecords, registeredVideo, uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
+import { UPLOAD_ID, addUpload, clipRecords, completedUpload, uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
 
 const NAME = 'project-p/timeline-upload-property';
 
@@ -83,8 +85,8 @@ afterEach(() => {
 });
 
 describe('upload placeholders under any interleaving (fast-check)', () => {
-  it('keeps every record valid, and converts in place into videos inside their source', () => {
-    const asset = fc.constantFrom<TimelineRegisteredVideo>(registeredVideo(1.5), registeredVideo(2.5), registeredVideo(5), registeredVideo(null));
+  it('keeps every record valid, and converts in place into clips of the registered kind inside their source', () => {
+    const asset = fc.constantFrom(completedUpload(1.5), completedUpload(2.5), completedUpload(5), completedUpload(null), completedUpload(5, 'audio'), completedUpload(null, 'image'));
     fc.assert(fc.property(asset, fc.array(step, { minLength: 1, maxLength: 14 }), (registered, steps) => {
       const doc = seededDoc(timeline([clip(cid(90), MAIN, 0, 48)], [track(MAIN, 0), track(V2, 1), track(V3, 2)]));
       const session = getTimelineEditSession(doc, NAME);
@@ -113,17 +115,17 @@ describe('upload placeholders under any interleaving (fast-check)', () => {
           else if (next.kind === 'redo') session.redo();
           else if (next.kind === 'convert') {
             const before = placeholderPlacements(doc);
-            convertTimelineUpload(doc, UPLOAD_ID, registered);
+            applyTimelineUpload(doc, registered);
             expect(placeholderPlacements(doc).size).toBe(0);
             const read = readTimelineDocument(doc);
             for (const [id, placed] of before) {
-              const converted = read.clips[id];
+              const converted = read.clips[id] as (TimelineClip & { sourceId?: string }) | undefined;
               if (converted === undefined) continue;
-              expect(converted, `conversion moved clip ${id}`).toMatchObject({ kind: 'video', ...placed });
-              if (converted.kind !== 'video') continue;
-              const source = read.sources[converted.sourceId];
-              expect(source, `converted clip ${id} has no source`).toMatchObject({ url: VIDEO_URL });
-              if (source !== undefined) expect(validateTimelineRange(converted, source, FPS), `converted clip ${id} reads past its source`).toBe(true);
+              expect(converted, `conversion moved clip ${id}`).toMatchObject({ kind: registered.result.kind, ...placed });
+              const source = read.sources[converted.sourceId ?? ''];
+              expect(source, `converted clip ${id} has no source`).toMatchObject({ url: registered.result.url });
+              if (registered.result.kind === 'image') expect(converted.sourceInFrame).toBe(0);
+              else if (source !== undefined) expect(validateTimelineRange(converted, source as TimelineVideoSource, FPS), `converted clip ${id} reads past its source`).toBe(true);
             }
           }
           expectRecordsValid(doc, next);

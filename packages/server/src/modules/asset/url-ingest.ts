@@ -22,7 +22,7 @@ import {
   getStorageConfig,
   logger,
 } from "@breatic/core";
-import { announceDocumentUploadProcessing, extFromUrl, ingestReportService, labelForUrl } from "@breatic/domain";
+import { announceSpaceUploadProcessing, extFromUrl, ingestReportService, labelForUrl } from "@breatic/domain";
 import { INGEST_NOT_STARTED } from "@breatic/shared";
 
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
@@ -46,7 +46,7 @@ export interface UrlIngestRequest {
   readonly spaceId: string;
   /** The node the result goes to; absent for a document body's block. */
   readonly nodeId?: string;
-  /** The Document body block the result goes to, by its `uploadId` (breatic#1574). */
+  /** The Document body block the result goes to, by its `uploadId` (breatic#1574); a fetched address lands only there. */
   readonly documentUploadId?: string;
   readonly userId: string;
 }
@@ -91,7 +91,7 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
       taskType: "url",
       ext: extFromUrl(url),
       expiresAt: new Date(Date.now() + ingest.ticket_expires_seconds * 1000),
-      context: { ...(nodeId !== undefined && { nodeId }), ...(documentUploadId !== undefined && { documentUploadId }), spaceId, source: "url" },
+      context: { ...(nodeId !== undefined && { nodeId }), ...(documentUploadId !== undefined && { spaceUploadId: documentUploadId, spaceUploadTarget: "document" as const }), spaceId, source: "url" },
     },
     {
       // Every task has the same two hours (inner#1367); the transfer is
@@ -136,9 +136,11 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
   // A Document block shows every member the wait; its ending arrives with the fetch, so losing this only costs that
   // display (breatic#1574).
   try {
-    if (documentUploadId !== undefined) await announceDocumentUploadProcessing({ projectId, spaceId, uploadId: documentUploadId });
+    if (documentUploadId !== undefined) {
+      await announceSpaceUploadProcessing({ target: "document", projectId, spaceId, uploadId: documentUploadId });
+    }
   } catch (err) {
-    logger.error({ err, key: opened.key, projectId }, "document_upload_processing_publish_failed");
+    logger.error({ err, key: opened.key, projectId }, "space_upload_processing_publish_failed");
   }
   return opened;
 }

@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import {
-  durationToFrames, type TimelineClip, type TimelineDocumentV1, type TimelineRate, type TimelineUploadClip, type TimelineVideoSource,
+  isPresentableTimelineClip, timelineUploadExtent, type TimelineClip, type TimelineDocumentV1, type TimelineRate, type TimelineSource,
   type TimelineWebResolution,
 } from '@breatic/shared';
 
+export { timelineUploadExtent } from '@breatic/shared';
+
 import { compareTimelineIds } from '@web/data/yjs/timeline-order';
-import { timelineClipIntervalValid, validateTimelineRange, type TimelineSourceExtent } from '@web/data/yjs/timeline-time';
+import { timelineSourceRoom, type TimelineSourceExtent } from '@web/data/yjs/timeline-time';
 
 /** A resolution that knows no reference. */
 export const EMPTY_TIMELINE_WEB_RESOLUTION: TimelineWebResolution = Object.freeze({ sources: Object.freeze({}), executions: Object.freeze({}) });
@@ -27,36 +29,28 @@ export function timelineWebSourceOf(web: TimelineWebResolution, clip: Extract<Ti
   return execution?.status === 'succeeded' ? execution.resultSourceVersionId : null;
 }
 
-/**
- * The extent an upload placeholder is measured against: the file the browser read, conformed like a registered video.
- * @param fps - The document frame rate.
- * @param clip - The placeholder.
- * @returns The extent, or undefined when the duration is too long to count in frames.
- * @throws {never} Never.
- */
-export function timelineUploadExtent(fps: TimelineRate, clip: TimelineUploadClip): TimelineSourceExtent | undefined {
-  try {
-    const { durationSeconds } = clip.upload;
-    return { timebase: fps, extentFrames: durationToFrames(durationSeconds, fps), durationSeconds: String(durationSeconds) };
-  } catch {
-    // A duration whose frame count is not a safe integer cannot be measured, like a missing source.
-    return undefined;
-  }
-}
+/** A picture or a text has no end of its own (inner#1709). */
+const UNBOUNDED = Object.freeze({ extentFrames: Number.MAX_SAFE_INTEGER });
 
 /**
- * The extent a clip's frames are measured against (design §3.2): a video's registered source; an upload placeholder's
- * local file; a web copy's bound source version; a placeholder's result once its execution succeeded, otherwise the
+ * The extent a clip's frames are measured against (design §3.2, inner#1709): a video's or sound's
+ * registered source; no upper bound for a picture or a text; an upload placeholder's local file (no upper bound for a
+ * picture); a web copy's bound source version; a placeholder's result once its execution succeeded, otherwise the
  * length its execution accepted.
- * @param document - The document, for video sources.
+ * @param document - The document, for its sources and frame rate.
  * @param web - The resolution of web references.
  * @param clip - The clip.
- * @returns The extent, or undefined when the source is missing or the reference is unresolved.
+ * @returns The extent, or undefined when the source record is missing or of another kind, or the reference is unresolved.
  * @throws {never} Never.
  */
 export function resolveTimelineClipExtent(document: TimelineDocumentV1, web: TimelineWebResolution, clip: TimelineClip): TimelineSourceExtent | undefined {
-  if (clip.kind === 'video') return document.sources[clip.sourceId];
+  if (clip.kind === 'text') return { ...UNBOUNDED, timebase: document.settings.fps };
   if (clip.kind === 'upload') return timelineUploadExtent(document.settings.fps, clip);
+  if (clip.kind !== 'web-animation') {
+    const source = Object.hasOwn(document.sources, clip.sourceId) ? document.sources[clip.sourceId] : undefined;
+    if (source?.kind !== clip.kind) return undefined;
+    return source.kind === 'image' ? { ...UNBOUNDED, timebase: document.settings.fps } : source;
+  }
   const sourceId = timelineWebSourceOf(web, clip);
   const source = sourceId === null ? undefined : web.sources[sourceId];
   if (source !== undefined) return { timebase: source.fps, extentFrames: source.durationFrames };
@@ -65,97 +59,70 @@ export function resolveTimelineClipExtent(document: TimelineDocumentV1, web: Tim
   return execution === undefined ? undefined : { timebase: execution.fps, extentFrames: execution.acceptedDurationFrames };
 }
 
-/** One stable diagnostic, retained alongside the unmodified placement. */
-export interface TimelineArrangementReason {
-  code: 'overlap' | 'missing_track' | 'incompatible_track' | 'invalid_range' | 'missing_source' | 'source_unresolved';
-  relatedClipIds: string[];
-  startFrame: number | null;
-  endFrame: number | null;
-}
-
-/** One current clip's derived readiness. */
-export interface TimelinePlacement { clipId: string; status: 'ready' | 'conflict'; reasons: TimelineArrangementReason[] }
-
-/** A deterministic view of the complete current arrangement. */
-export interface TimelineArrangement { placements: TimelinePlacement[]; conflicts: TimelinePlacement[]; readyClipIds: string[]; hasConflicts: boolean }
-
 /**
- * The registered video a clip shows, for reading its asset; web-animation and upload clips have none.
+ * The registered source a clip shows, for reading its asset: a video, picture or sound; text, web-animation and upload
+ * clips have none.
  * @param sources - The document's sources.
  * @param clip - The placement.
  * @returns Its source, or undefined when it has none.
  * @throws {never} Never.
  */
-export function timelineClipSource(sources: Record<string, TimelineVideoSource>, clip: TimelineClip): TimelineVideoSource | undefined {
-  return clip.kind === 'video' ? sources[clip.sourceId] : undefined;
+export function timelineClipSource(sources: Record<string, TimelineSource>, clip: TimelineClip): TimelineSource | undefined {
+  return 'sourceId' in clip && Object.hasOwn(sources, clip.sourceId) ? sources[clip.sourceId] : undefined;
 }
 
 /**
- * Diagnose the complete merged layout without moving or removing clips.
- * @param document - The current document; a clip outside its source is invalid_range, one whose video is gone is
- *   missing_source, and a web copy whose reference the resolution does not know is source_unresolved.
- * @param web - The resolution of the document's web references.
- * @returns Stable readiness and conflict classifications.
+ * The clip view (inner#1709): only the clips that can be shown, each at the length it plays. A clip
+ * longer than its source is cut to the frames the source holds; one whose range is unknown (a web copy still waiting)
+ * keeps its length; one that plays no frame at all is left out.
+ * @param document - The stored document.
+ * @param web - The resolution of web references.
+ * @returns The clips by id.
  * @throws {never} Never.
  */
-export function resolveTimelineArrangement(document: TimelineDocumentV1, web: TimelineWebResolution = EMPTY_TIMELINE_WEB_RESOLUTION): TimelineArrangement {
-  const tracks = new Map(Object.values(document.tracks).map((track) => [track.id, track]));
-  const records = Object.values(document.clips).sort((a, b) => compareTimelineIds(a.id, b.id)).map((clip) => {
-    const endFrame = clip.startFrame + clip.durationFrames;
-    const reasons: TimelineArrangementReason[] = [];
-    const detail = { relatedClipIds: [], startFrame: displayFrame(clip.startFrame), endFrame: displayFrame(endFrame) };
-    const track = tracks.get(clip.trackId);
-    if (!track) reasons.push({ code: 'missing_track', ...detail });
-    else if (track.kind !== 'visual') reasons.push({ code: 'incompatible_track', ...detail });
-    const source = resolveTimelineClipExtent(document, web, clip);
-    if (source === undefined) reasons.push({ code: clip.kind === 'web-animation' ? 'source_unresolved' : 'missing_source', ...detail });
-    if (!timelineClipIntervalValid(clip) || outsideSource(clip, source, document)) reasons.push({ code: 'invalid_range', ...detail });
-    return { clip, endFrame, reasons };
-  });
-
-  for (let left = 0; left < records.length; left += 1) {
-    const a = records[left];
-    if (!a || a.reasons.some((reason) => reason.code !== 'overlap')) continue;
-    for (let right = left + 1; right < records.length; right += 1) {
-      const b = records[right];
-      if (!b || b.reasons.some((reason) => reason.code !== 'overlap') || a.clip.trackId !== b.clip.trackId
-        || a.clip.startFrame >= b.endFrame || b.clip.startFrame >= a.endFrame) continue;
-      const startFrame = Math.max(a.clip.startFrame, b.clip.startFrame);
-      const endFrame = Math.min(a.endFrame, b.endFrame);
-      a.reasons.push({ code: 'overlap', relatedClipIds: [b.clip.id], startFrame, endFrame });
-      b.reasons.push({ code: 'overlap', relatedClipIds: [a.clip.id], startFrame, endFrame });
-    }
+export function arrangeTimelineClips(document: TimelineDocumentV1, web: TimelineWebResolution): Record<string, TimelineClip> {
+  const view: Record<string, TimelineClip> = {};
+  for (const [id, clip] of Object.entries(document.clips)) {
+    if (!isPresentableTimelineClip(document, clip)) continue;
+    const extent = resolveTimelineClipExtent(document, web, clip);
+    const room = extent === undefined ? clip.durationFrames : playedFrames(clip, extent, document.settings.fps);
+    if (room <= 0) continue;
+    view[id] = room < clip.durationFrames ? { ...clip, durationFrames: room } : clip;
   }
-
-  const placements: TimelinePlacement[] = records.map(({ clip, reasons }) => ({
-    clipId: clip.id,
-    status: reasons.length > 0 ? 'conflict' : 'ready',
-    reasons: reasons.sort((a, b) => compareTimelineIds(a.code, b.code)
-      || compareTimelineIds(a.relatedClipIds[0] ?? '', b.relatedClipIds[0] ?? '')
-      || (a.startFrame ?? 0) - (b.startFrame ?? 0) || (a.endFrame ?? 0) - (b.endFrame ?? 0)),
-  }));
-  const conflicts = placements.filter((placement) => placement.status === 'conflict');
-  return { placements, conflicts, readyClipIds: placements.filter((placement) => placement.status === 'ready').map((placement) => placement.clipId), hasConflicts: conflicts.length > 0 };
+  return view;
 }
 
 /**
- * Whether a clip samples outside its source.
- * @param clip - The placement.
- * @param source - Its source, when the document has it.
- * @param document - The document, for its frame rate.
- * @returns True only when the source is present and the range is invalid for it.
+ * The frames of a clip that sample inside its source.
+ * @param clip - The clip.
+ * @param extent - Its source extent.
+ * @param fps - The Timeline frame rate.
+ * @returns The played frames, 0 when the clip's rates cannot be read.
  * @throws {never} Never.
  */
-function outsideSource(clip: TimelineClip, source: TimelineSourceExtent | undefined, document: TimelineDocumentV1): boolean {
-  return source !== undefined && !validateTimelineRange(clip, source, document.settings.fps);
+function playedFrames(clip: TimelineClip, extent: TimelineSourceExtent, fps: TimelineRate): number {
+  try {
+    return timelineSourceRoom(clip, extent, fps);
+  } catch (err) {
+    if (err instanceof RangeError) return 0;
+    throw err;
+  }
 }
 
 /**
- * Keep an invalid finite bound available for the conflict's visible diagnosis.
- * @param frame - The raw frame bound.
- * @returns The bound, or null when it cannot be displayed as a number.
+ * The one clip of a track that plays at a frame (inner#1709): of the clips covering it, the one starting
+ * last, ties by id with the smaller id on top.
+ * @param clips - The view's clips.
+ * @param trackId - The track.
+ * @param frame - The Timeline frame.
+ * @returns The clip, or undefined when none covers the frame.
  * @throws {never} Never.
  */
-function displayFrame(frame: number): number | null {
-  return Number.isFinite(frame) ? frame : null;
+export function pickTimelineClipAt(clips: Readonly<Record<string, TimelineClip>>, trackId: string, frame: number): TimelineClip | undefined {
+  let picked: TimelineClip | undefined;
+  for (const clip of Object.values(clips)) {
+    if (clip.trackId !== trackId || frame < clip.startFrame || frame >= clip.startFrame + clip.durationFrames) continue;
+    if (picked === undefined || clip.startFrame > picked.startFrame || (clip.startFrame === picked.startFrame && compareTimelineIds(clip.id, picked.id) < 0)) picked = clip;
+  }
+  return picked;
 }
