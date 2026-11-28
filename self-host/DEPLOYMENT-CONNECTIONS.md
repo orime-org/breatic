@@ -28,6 +28,14 @@ Use `rediss://<username>:<encoded-password>@<private-host>:<tls-port>/<db>` for 
 
 TLS uses normal certificate verification; do not disable it. If the provider requires a private CA, mount that CA and configure the Node process trust store (for example `NODE_EXTRA_CA_CERTS`) before starting every affected service. No separate `REDIS_PASSWORD` variable is introduced. Keep Redis private and use `noeviction`; select a service supporting the existing logical databases and commands. Redis Cluster cannot be substituted for this configuration just by changing the hostname.
 
+## Collab's database login
+
+Collab connects to the product database only with its own login, named in `COLLAB_DATABASE_URL`; server and worker keep using `DATABASE_URL`. Both URLs must point at the same server and database. The login holds the role `collab_writer`, which the migrations create: it can read every product table and write only `project_activities`, `account_activity_events`, `project_edits` and `projects.duplicate_completed_at`.
+
+Run the migration command (`pnpm db:migrate`, or the `migrate` service under Docker) with `COLLAB_DATABASE_URL` set. After the migrations it creates the login, or updates its password to the one in the URL, and grants it `collab_writer`. The password reaches the database only as a SCRAM-SHA-256 verifier. The migrating account (`DATABASE_URL`) therefore needs to be able to create roles and grant `collab_writer`; the account that ran the migrations has both. The command refuses a URL that names the migrating account, `collab_writer` itself, or an existing role that is not collab's (one with an administrative attribute, without `collab_writer`, or set to `NOINHERIT`), and a URL that reaches another database.
+
+At startup collab compares everything its login can write with that list and exits with `collab_write_scope_mismatch` when they differ. Besides table and column grants, it reports any `SECURITY DEFINER` function outside the system schemas, any rule on a table collab writes, any sequence it can advance, any role it can switch to other than `collab_writer`, any administrative attribute on those roles, and `CREATE` on a schema or the database. Remove or move such objects before upgrading a database that has them.
+
 ## SMTP sender
 
 With `EMAIL_BACKEND=smtp`, `SMTP_USER` and `SMTP_PASSWORD` authenticate to the relay. Set `SMTP_FROM` to a verified sending address, optionally including a display name, such as `Breatic <noreply@example.com>`. It controls the message From header and Nodemailer's default envelope sender; it does not change the login username. Surrounding whitespace is removed. Missing or blank values preserve the previous behavior of using `SMTP_USER`, which is only suitable when that username is itself a valid sending address.

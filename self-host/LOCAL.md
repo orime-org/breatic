@@ -73,11 +73,14 @@ Keep container-internal connection addresses:
 ```dotenv
 DATABASE_URL=postgres://breatic:breatic@postgres:5432/breatic
 YJS_DATABASE_URL=postgres://breatic:breatic@postgres:5432/breatic_yjs
+COLLAB_DATABASE_URL=postgres://breatic_collab:<your password>@postgres:5432/breatic
 REDIS_URL=redis://redis:6379/0
 REDIS_QUEUE_URL=redis://redis:6379/1
 REDIS_STREAM_URL=redis://redis:6379/2
 REDIS_COLLAB_URL=redis://redis:6379/3
 ```
+
+`COLLAB_DATABASE_URL` is collab's own login on the same database as `DATABASE_URL`; pick its password yourself. The `migrate` service creates the login and keeps its password in step with this URL on every run, and collab does not start without it.
 
 **Do not replace these hosts with `localhost`**: inside an application container, localhost means that container itself. Keep the template's internal application ports. The web entry point defaults to loopback, as do the database, Redis and API host ports. LAN clients should reach the application through nginx only.
 

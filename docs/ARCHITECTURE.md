@@ -62,7 +62,7 @@ config/ locales/ (git-tracked)
 | Service | Port | 端口来源 | Responsibility |
 |---|---|---|---|
 | API | 3000 | `PORT` | HTTP 请求 + Agent 聊天 SSE + Text mini-tool SSE |
-| Collab | 1234 | `COLLAB_PORT`(跟另两个服务端口一样在 core env schema;`collab.yaml` 只剩行为参数)| Yjs 文档同步 + PG 持久化 + Redis 跨实例 + 消费 Redis Streams 写 canvas 节点 |
+| Collab | 1234 | `COLLAB_PORT`(跟另两个服务端口一样在 core env schema;`collab.yaml` 只剩行为参数)| Yjs 文档同步 + PG 持久化 + Redis 跨实例 + 消费 Redis Streams 写 canvas 节点;连产品库只用自己的账号 `COLLAB_DATABASE_URL`(角色 `collab_writer`,只写 `COLLAB_WRITE_SCOPE` 列的 4 处),启动时 `checkWriteScope` 核对写权限、不符就退出;不开任何队列(`forbidQueues`、dependency-cruiser `collab-no-bullmq`) |
 | Worker | — | — | BullMQ 任务执行 → 存 DB → Redis Streams publish NodeEvent → Collab 写 Yjs;另发 server 放进 `mail` 队列的通知邮件;配了 Google Ads 时上传 `ads-conversion` 队列里的转化(Data Manager API,最多尝试 5 次,结局写回 `ads_conversion_uploads`) |
 
 三个 healthz 端口(3001 / 1235 / 9101)同样从 env 读(`SERVER_HEALTH_PORT` / `COLLAB_HEALTH_PORT` / `WORKER_HEALTH_PORT`)。**同一台机器上跑多个 worktree 时这些默认值会互撞**,尤其 BullMQ 队列共享会让一个 worktree 的任务被另一个的 worker 执行 —— 整套偏移方式见 `.env.dev` 顶部的 "Running several worktrees at once"。
@@ -645,7 +645,7 @@ pnpm db:journal-repair    # 拉到迁移时间戳修正后每个库跑一次(先
 pnpm test / typecheck / lint
 ```
 
-启动时先 `checkInfraReady()` 验证 PG/Redis 可达;连不上立即退出(避免无声挂死)。Migration 是独立步骤,不绑在 dev 启动里。
+启动时先 `checkInfraReady()` 验证 PG/Redis 可达;连不上立即退出(避免无声挂死)。Migration 是独立步骤,不绑在 dev 启动里;迁移命令跑完迁移后按 `COLLAB_DATABASE_URL` 建或更新 collab 的登录账号并授 `collab_writer`(`ensureCollabLogin`,密码只以 SCRAM 校验值发给库),再确认两条连接串连到同一个库。
 
 ## 产品镜像发布
 

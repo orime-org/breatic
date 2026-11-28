@@ -73,11 +73,14 @@ REDIS_KEY_PREFIX=personal
 ```dotenv
 DATABASE_URL=postgres://breatic:breatic@postgres:5432/breatic
 YJS_DATABASE_URL=postgres://breatic:breatic@postgres:5432/breatic_yjs
+COLLAB_DATABASE_URL=postgres://breatic_collab:<你的密码>@postgres:5432/breatic
 REDIS_URL=redis://redis:6379/0
 REDIS_QUEUE_URL=redis://redis:6379/1
 REDIS_STREAM_URL=redis://redis:6379/2
 REDIS_COLLAB_URL=redis://redis:6379/3
 ```
+
+`COLLAB_DATABASE_URL` 是 collab 在 `DATABASE_URL` 同一个数据库上的专用账号，密码自己定。`migrate` 服务会建好这个账号，每次运行都把密码同步成这条连接串里的值；没有它 collab 不会启动。
 
 **不能把这些地址改成 `localhost`**：在应用容器里，localhost 是容器自身。保留模板里的应用内部端口。主站默认只监听本机；数据库、Redis 和 API 的主机端口也只绑定回环地址，不向局域网开放。局域网用户只通过 Nginx 访问。
 

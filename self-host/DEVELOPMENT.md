@@ -63,6 +63,7 @@ VITE_DEV_PORT=8000
 ALLOWED_ORIGINS=http://localhost:8000
 DATABASE_URL=postgres://breatic:breatic@localhost:5432/breatic
 YJS_DATABASE_URL=postgres://breatic:breatic@localhost:5432/breatic_yjs
+COLLAB_DATABASE_URL=postgres://breatic_collab:breatic_collab@localhost:5432/breatic
 REDIS_URL=redis://localhost:6379/0
 REDIS_QUEUE_URL=redis://localhost:6379/1
 REDIS_STREAM_URL=redis://localhost:6379/2
@@ -206,7 +207,7 @@ pnpm db:migrate
 pnpm db:check-watermark
 ```
 
-Migration should report business-database success followed by Yjs-database success and exit successfully. The watermark check must also succeed. Running only `pnpm install` before migrating fails because `packages/core/dist/index.js` has not been built.
+Migration should report business-database success, then Yjs-database success, then `✓ collab login ready`, and exit successfully. That last step creates collab's own login from `COLLAB_DATABASE_URL`, which can write only the few tables collab owns; collab does not start without it. The watermark check must also succeed. Running only `pnpm install` before migrating fails because `packages/core/dist/index.js` has not been built.
 
 These steps target a new database. Back up existing data before upgrading. For historical migration-timestamp problems, read the report from `pnpm db:journal-repair` before deciding to repair; do not experiment with existing migration records.
 
