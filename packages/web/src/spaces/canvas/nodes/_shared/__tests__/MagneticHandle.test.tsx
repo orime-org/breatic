@@ -556,10 +556,12 @@ function dragFrom(from: { node: string; side: 'source' | 'target' } | null): voi
 
 // inner#2216: during a connection drag every handle's 36px zone stands down
 // (`.canvas-connecting` in index.css) except a plus zone marked
-// `handle-plus-zone`. Only a plus the drag can end on is marked: the opposite
-// side of where the drag started, on another node. A live zone that could not
-// take the wire would swallow it from a neighbour's handle.
-describe('MagneticHandle — the plus zone stays pressable only for a drag it can take', () => {
+// `handle-plus-zone`, which a plus gets for any drag that starts on another
+// node; a drag from its own node cannot end on it. Same-type handles are left
+// to xyflow, which keeps `connectionindicator` off them during a drag, so
+// they take no pointer (`::before` inherits that); jsdom sees no CSS, so the
+// smoke cases in selection-add-node.spec.ts cover that hit testing.
+describe('MagneticHandle — the plus zone stays pressable for a drag from another node', () => {
   it('marks an emphasized target for a drag from another node\'s source, and drops it when the drag ends', () => {
     const handle = mountInNode('target');
     expect(handle.classList.contains('handle-plus-zone')).toBe(false);
@@ -569,24 +571,16 @@ describe('MagneticHandle — the plus zone stays pressable only for a drag it ca
     expect(handle.classList.contains('handle-plus-zone')).toBe(false);
   });
 
-  it('leaves an emphasized target unmarked for a drag from a target', () => {
-    const handle = mountInNode('target');
-    dragFrom({ node: 'other', side: 'target' });
-    expect(handle.classList.contains('handle-plus-zone')).toBe(false);
-  });
-
   it('leaves an emphasized target unmarked for a drag from its own node', () => {
     const handle = mountInNode('target');
     dragFrom({ node: 'own', side: 'source' });
     expect(handle.classList.contains('handle-plus-zone')).toBe(false);
   });
 
-  it('marks an emphasized source for a drag from another node\'s target only', () => {
+  it('marks an emphasized source for a drag from another node, not from its own', () => {
     const handle = mountInNode('source');
     dragFrom({ node: 'other', side: 'target' });
     expect(handle.classList.contains('handle-plus-zone')).toBe(true);
-    dragFrom({ node: 'other', side: 'source' });
-    expect(handle.classList.contains('handle-plus-zone')).toBe(false);
     dragFrom({ node: 'own', side: 'target' });
     expect(handle.classList.contains('handle-plus-zone')).toBe(false);
   });

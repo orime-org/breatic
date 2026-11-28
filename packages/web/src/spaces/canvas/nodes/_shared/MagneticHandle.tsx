@@ -133,14 +133,15 @@ export function MagneticHandle({
   // in index.css), which elementFromPoint's style flush picks up immediately.
   const connecting = useStore((s) => s.connection.inProgress);
   // The plus zone that stays pressable during a drag (`handle-plus-zone`):
-  // only one this drag can end on, the opposite side of where it started on
-  // another node. xyflow takes the handle under the pointer before the
-  // closest one, so a live zone that could not take the wire would swallow
-  // it from a neighbour's handle; this one only covers handles the drag
-  // cannot end on either.
+  // only one on a node other than the drag's own. xyflow takes the handle
+  // under the pointer before the closest one, so a live zone that could not
+  // take the wire would swallow it from a neighbour's handle. xyflow already
+  // turns pointer events off on every handle of the drag's own type
+  // (`connectionindicator` is left off them), except the start handle, which
+  // keeps them (`connectingfrom`); the start node is left out here.
   const nodeId = useNodeId();
   const takesDrop = useStore(
-    (s) => plus && s.connection.inProgress && s.connection.fromHandle.type !== type && s.connection.fromNode.id !== nodeId,
+    (s) => plus && s.connection.inProgress && s.connection.fromNode.id !== nodeId,
   );
 
   /** Springs the dot back to the border (home) — leave / drag-start / dead. */
