@@ -4744,6 +4744,17 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     expect(css).not.toMatch(/\.canvas-connecting \.react-flow__handle::before\s*\{/);
   });
 
+  // inner#2216: xyflow paints the marquee and the NodesSelection rect from
+  // `--xy-selection-*` (blue `-default` fallbacks in its style.css); the canvas
+  // gives them the selected colour in both themes, in the same rule that
+  // colours the edges, which outranks the library's later sheet.
+  it('colours the marquee and selection rect with the selected tokens inside the canvas edge colour rule', () => {
+    const block = /\.react-flow\.react-flow\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(block).toContain('--xy-edge-stroke-default');
+    expect(block).toMatch(/--xy-selection-background-color:\s*var\(--color-status-selected-bg\);/);
+    expect(block).toMatch(/--xy-selection-border:\s*1px dotted var\(--color-status-selected-border\);/);
+  });
+
   it('hides the NodesSelection rect during a pick (marquee dead-zone neutralizer)', () => {
     // Round-3: the Shift marquee stays enabled during a pick (gating
     // selectionKeyCode latches xyflow's key state mid-hold), so the

@@ -746,6 +746,34 @@ async function expectRectAround(page: Page, ids: readonly string[]): Promise<voi
 // inner#2216: building from the selection plus clears xyflow's marquee rect
 // for its one new node, but a duplicate or a paste of a marquee selection
 // keeps it: the copies come out selected inside the rect, ready to drag.
+// inner#2216: the selection rect wears the canvas's selected colour, not
+// xyflow's default blue, in whichever theme the page is in.
+test('a marquee over two nodes: the selection rect is filled with the selected colour, not xyflow\'s blue', async ({ page }) => {
+  const first = crypto.randomUUID();
+  const second = crypto.randomUUID();
+  await seedNode(first, 'image', undefined, 0, 0);
+  await seedNode(second, 'image', undefined, 360, 0);
+  await fit(page);
+  await zoomTo(page, 50);
+
+  await marqueeOver(page, [first, second]);
+  const fill = await visibleSpace(page).locator('.react-flow__nodesselection-rect').evaluate((el) => getComputedStyle(el).backgroundColor);
+  // The token resolved where the rect is drawn: a probe inside the canvas.
+  const selectedBg = await visibleSpace(page).locator('.react-flow').first().evaluate((flow) => {
+    const probe = document.createElement('div');
+    probe.style.backgroundColor = 'var(--color-status-selected-bg)';
+    flow.appendChild(probe);
+    const value = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return value;
+  });
+  expect(fill, 'not xyflow\'s default blue').not.toBe('rgba(0, 89, 220, 0.08)');
+  // Tailwind drops an @theme token no utility uses, and an unset token reads
+  // as transparent here: the rect would then match a probe of nothing.
+  expect(selectedBg, 'the token resolves to a colour').not.toBe('rgba(0, 0, 0, 0)');
+  expect(fill, 'the selected background token').toBe(selectedBg);
+});
+
 test('a marquee over two nodes and Cmd/Ctrl+D: the selection rect surrounds the copies', async ({ page }) => {
   const first = crypto.randomUUID();
   const second = crypto.randomUUID();
