@@ -180,7 +180,7 @@ describe("ensureCollabLogin", () => {
 
   it("refuses a collab URL that names the admin account and leaves the admin password alone", async () => {
     const adminUser = new URL(ADMIN_URL).username;
-    await expect(ensureCollabLogin(ADMIN_URL, urlFor(adminUser, "hijacked"))).rejects.toThrow();
+    await expect(ensureCollabLogin(ADMIN_URL, urlFor(adminUser, "hijacked"))).rejects.toThrow("not DATABASE_URL's account");
     expect(await loginOf(ADMIN_URL)).toBe(adminUser);
   });
 
@@ -197,20 +197,72 @@ describe("ensureCollabLogin", () => {
     expect(await loginOf(raw)).toBe(name);
   });
 
-  const existing: [string, string][] = [
-    ["a superuser", "SUPERUSER"],
-    ["a role that can create roles", "CREATEROLE"],
-    ["a role that bypasses row security", "BYPASSRLS"],
-    ["a plain login that is not collab's", ""],
-  ];
-  for (const [label, attribute] of existing) {
-    it(`refuses an existing role that is ${label} and keeps its password`, async () => {
+  for (const attribute of ["SUPERUSER", "CREATEROLE", "CREATEDB", "REPLICATION", "BYPASSRLS"]) {
+    it(`refuses an existing ${attribute} role that holds collab_writer and keeps its password`, async () => {
       const name = freshRole("other_login");
       await admin.unsafe(`CREATE ROLE ${name} LOGIN PASSWORD 'kept-pw' ${attribute}`);
-      await expect(ensureCollabLogin(ADMIN_URL, urlFor(name, "taken-pw"))).rejects.toThrow("COLLAB_DATABASE_URL");
+      await admin.unsafe(`GRANT collab_writer TO ${name}`);
+      await expect(ensureCollabLogin(ADMIN_URL, urlFor(name, "taken-pw"))).rejects.toThrow("administrative attribute");
       expect(await loginOf(urlFor(name, "kept-pw"))).toBe(name);
     });
   }
+
+  it("refuses an existing plain login that does not hold collab_writer and keeps its password", async () => {
+    const name = freshRole("other_login");
+    await admin.unsafe(`CREATE ROLE ${name} LOGIN PASSWORD 'kept-pw'`);
+    await expect(ensureCollabLogin(ADMIN_URL, urlFor(name, "taken-pw"))).rejects.toThrow("does not hold collab_writer");
+    expect(await loginOf(urlFor(name, "kept-pw"))).toBe(name);
+  });
+
+  it("refuses an existing NOINHERIT member of collab_writer, which would get none of its privileges", async () => {
+    const name = freshRole("other_login");
+    await admin.unsafe(`CREATE ROLE ${name} LOGIN NOINHERIT PASSWORD 'kept-pw'`);
+    await admin.unsafe(`GRANT collab_writer TO ${name}`);
+    await expect(ensureCollabLogin(ADMIN_URL, urlFor(name, "taken-pw"))).rejects.toThrow("does not inherit collab_writer");
+    expect(await loginOf(urlFor(name, "kept-pw"))).toBe(name);
+  });
+
+  it("refuses collab_writer itself as the login, which stays unable to log in", async () => {
+    await expect(ensureCollabLogin(ADMIN_URL, urlFor("collab_writer", "writer-pw"))).rejects.toThrow("collab_writer");
+    const [row] = await admin<{ login: boolean }[]>`SELECT rolcanlogin AS login FROM pg_roles WHERE rolname = 'collab_writer'`;
+    expect(row).toEqual({ login: false });
+  });
+
+  it("leaves no role behind when granting collab_writer fails", async () => {
+    const migrator = freshRole("migrator");
+    await admin.unsafe(`CREATE ROLE ${migrator} LOGIN CREATEROLE PASSWORD 'migrator-pw'`);
+    const name = freshRole("collab_login");
+    await expect(ensureCollabLogin(urlFor(migrator, "migrator-pw"), urlFor(name, "half-pw"))).rejects.toThrow("collab_writer");
+    const rows = await admin`SELECT 1 FROM pg_roles WHERE rolname = ${name}`;
+    expect(rows).toHaveLength(0);
+  });
+
+  it("takes a password holding a lone percent sign and a character URLs escape, as the driver does", async () => {
+    const name = freshRole("collab_login");
+    const url = new URL(ADMIN_URL);
+    const raw = `${url.protocol}//${name}:50%off^@${url.host}${url.pathname}`;
+    await ensureCollabLogin(ADMIN_URL, raw);
+    expect(await loginOf(raw)).toBe(name);
+  });
+
+  it("accepts the same database when the two sessions use different time zones", async () => {
+    const name = freshRole("collab_login");
+    const zoned = new URL(ADMIN_URL);
+    zoned.searchParams.set("TimeZone", "Asia/Singapore");
+    expect(await ensureCollabLogin(zoned.toString(), urlFor(name, "zoned-pw"))).toEqual({ user: name });
+  });
+
+  it("sends the database a SCRAM verifier, never the password itself", async () => {
+    const name = freshRole("collab_login");
+    const md5Admin = new URL(ADMIN_URL);
+    // A plain password would be stored as md5 under this setting; a verifier is stored as sent.
+    md5Admin.searchParams.set("password_encryption", "md5");
+    const url = urlFor(name, "verifier-pw");
+    await ensureCollabLogin(md5Admin.toString(), url);
+    const [row] = await admin<{ p: string }[]>`SELECT rolpassword AS p FROM pg_authid WHERE rolname = ${name}`;
+    expect(row!.p.startsWith("SCRAM-SHA-256$4096:")).toBe(true);
+    expect(await loginOf(url)).toBe(name);
+  });
 
   it("refuses a collab URL that reaches another database than DATABASE_URL", async () => {
     const name = freshRole("collab_login");
@@ -310,7 +362,16 @@ describe("checkWriteScope", () => {
     ["a role it can switch to",
       [`CREATE ROLE side_role_${tag} NOLOGIN`, `GRANT side_role_${tag} TO %I WITH INHERIT FALSE`],
       [`DROP ROLE IF EXISTS side_role_${tag}`], `side_role_${tag}`],
+    ["a SECURITY DEFINER function it cannot call, as aggregates and event triggers still run it",
+      [`CREATE FUNCTION public.hidden_${tag}() RETURNS int LANGUAGE sql SECURITY DEFINER AS 'SELECT 1'`,
+        `REVOKE EXECUTE ON FUNCTION public.hidden_${tag}() FROM PUBLIC`],
+      [`DROP FUNCTION IF EXISTS public.hidden_${tag}()`], `hidden_${tag}`],
     ["the CREATEROLE attribute", ["ALTER ROLE %I CREATEROLE"], [], "CREATEROLE"],
+    ["the CREATEDB attribute", ["ALTER ROLE %I CREATEDB"], [], "CREATEDB"],
+    ["the REPLICATION attribute", ["ALTER ROLE %I REPLICATION"], [], "REPLICATION"],
+    ["the BYPASSRLS attribute", ["ALTER ROLE %I BYPASSRLS"], [], "BYPASSRLS"],
+    ["an attribute of collab_writer, which the login takes on with SET ROLE",
+      ["ALTER ROLE collab_writer CREATEROLE"], ["ALTER ROLE collab_writer NOCREATEROLE"], "collab_writer"],
     ["CREATE on the public schema", ["GRANT CREATE ON SCHEMA public TO %I"], [], "public"],
   ];
   for (const [label, setup, teardown, named] of escapes) {
@@ -320,6 +381,11 @@ describe("checkWriteScope", () => {
       expect(violations.every((v) => v.includes(named))).toBe(true);
     });
   }
+
+  it("reports the SUPERUSER attribute", async () => {
+    const violations = await violationsWith(["ALTER ROLE %I SUPERUSER"], []);
+    expect(violations.some((v) => v.includes("SUPERUSER"))).toBe(true);
+  });
 
   it("reports CREATE on the database", async () => {
     const [row] = await admin<{ db: string }[]>`SELECT current_database() AS db`;

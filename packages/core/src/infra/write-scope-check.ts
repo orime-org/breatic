@@ -9,11 +9,12 @@
  * table and column by column; nothing may be deleted, truncated, triggered or
  * referenced. Beyond the product tables it covers every way PostgreSQL lets a
  * login write, in every schema outside the system ones: views, materialized
- * views and foreign tables, sequences, SECURITY DEFINER functions (they run as
- * their owner) whether called or fired as a trigger on a table the login
- * writes, rules on such a table (they run as the table's owner), roles the
- * login can switch to, the login's own attributes, and CREATE on a schema or
- * the database. Objects come from `pg_catalog`, since `information_schema`
+ * views and foreign tables, sequences, every SECURITY DEFINER function (it runs
+ * as its owner, and triggers, aggregates, event triggers and type I/O run it
+ * without the caller's EXECUTE), rules on a table the login writes (they run
+ * as the table's owner), roles the login can switch to, the attributes of the
+ * login and of every role it can switch to (SET ROLE takes them on), and
+ * CREATE on a schema or the database. Objects come from `pg_catalog`, since `information_schema`
  * lists only what the connection already has a privilege on. The check
  * returns what it found; the caller logs and exits.
  */
@@ -35,18 +36,17 @@ interface RelationRow {
   anyUpdate: boolean;
 }
 
-interface LoginRow {
+interface RoleAttributesRow {
+  role: string;
   rolsuper: boolean;
   rolcreaterole: boolean;
   rolcreatedb: boolean;
   rolreplication: boolean;
   rolbypassrls: boolean;
-  db: string;
-  createDb: boolean;
 }
 
-/** The login attributes that let a login act beyond its grants. */
-const LOGIN_ATTRIBUTES: [keyof LoginRow, string][] = [
+/** The role attributes that let a login act beyond its grants. */
+const ROLE_ATTRIBUTES: [keyof RoleAttributesRow, string][] = [
   ["rolsuper", "SUPERUSER"],
   ["rolcreaterole", "CREATEROLE"],
   ["rolcreatedb", "CREATEDB"],
@@ -95,10 +95,6 @@ export async function checkWriteScope(expected: CollabWriteScope, sql: Sql = raw
     SELECT p.oid::regprocedure::text AS f
     FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
     WHERE p.prosecdef AND n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
-      AND (has_function_privilege(p.oid, 'EXECUTE') OR EXISTS (
-        SELECT 1 FROM pg_catalog.pg_trigger t
-        WHERE t.tgfoid = p.oid AND (has_table_privilege(t.tgrelid, 'INSERT,UPDATE,DELETE,TRUNCATE')
-          OR has_any_column_privilege(t.tgrelid, 'INSERT,UPDATE'))))
     ORDER BY 1`;
   const rules = await sql<{ r: string; t: string }[]>`
     SELECT r.rulename AS r, c.oid::regclass::text AS t
@@ -116,10 +112,12 @@ export async function checkWriteScope(expected: CollabWriteScope, sql: Sql = raw
     SELECT nspname AS s FROM pg_catalog.pg_namespace
     WHERE nspname !~ '^pg_' AND nspname <> 'information_schema' AND has_schema_privilege(oid, 'CREATE')
     ORDER BY 1`;
-  const [login] = await sql<LoginRow[]>`
-    SELECT rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls,
-      current_database() AS db, has_database_privilege(current_database(), 'CREATE') AS "createDb"
-    FROM pg_catalog.pg_roles WHERE rolname = current_user`;
+  const attributes = await sql<RoleAttributesRow[]>`
+    SELECT rolname AS role, rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls
+    FROM pg_catalog.pg_roles WHERE pg_has_role(current_user, oid, 'MEMBER')
+    ORDER BY 1`;
+  const [database] = await sql<{ db: string; createDb: boolean }[]>`
+    SELECT current_database() AS db, has_database_privilege(current_database(), 'CREATE') AS "createDb"`;
 
   const violations: string[] = [];
   const present = new Set(relations.filter((row) => row.productTable).map((row) => row.name));
@@ -153,16 +151,16 @@ export async function checkWriteScope(expected: CollabWriteScope, sql: Sql = raw
   }
   for (const { s } of sequences) violations.push(`sequence ${s}: USAGE or UPDATE granted, expected none`);
   for (const { f } of definers) {
-    violations.push(`function ${f}: SECURITY DEFINER, runnable by this login or fired by a table it writes`);
+    violations.push(`function ${f}: SECURITY DEFINER, runs as its owner, expected none`);
   }
   for (const { r, t } of rules) violations.push(`rule ${r} on ${t}: runs as the table's owner when this login writes it`);
   for (const { r } of roles) violations.push(`role ${r}: this login is a member, expected only ${COLLAB_WRITER_ROLE}`);
   for (const { s } of schemas) violations.push(`schema ${s}: CREATE granted, expected none`);
-  if (login !== undefined) {
-    for (const [key, name] of LOGIN_ATTRIBUTES) {
-      if (login[key] === true) violations.push(`login attribute ${name}: set, expected none`);
+  for (const row of attributes) {
+    for (const [key, name] of ROLE_ATTRIBUTES) {
+      if (row[key] === true) violations.push(`role ${row.role}: attribute ${name} set, expected none`);
     }
-    if (login.createDb) violations.push(`database ${login.db}: CREATE granted, expected none`);
   }
+  if (database?.createDb === true) violations.push(`database ${database.db}: CREATE granted, expected none`);
   return violations;
 }
