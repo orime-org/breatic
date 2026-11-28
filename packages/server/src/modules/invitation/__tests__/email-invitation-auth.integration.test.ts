@@ -14,7 +14,7 @@ vi.mock("@breatic/core", async (importOriginal) => ({
 
 import { initCore, loadLocales, sendMail } from "@breatic/core";
 import { getDecisionWindowMs } from "@server/config/limits.js";
-import { getUserByToken, loginEmail, loginOrCreateGoogle } from "@server/modules/auth/auth.service.js";
+import { getUserByToken, loginEmail, resolveGoogleAccount } from "@server/modules/auth/auth.service.js";
 import { startSignup, verifySignupCode } from "@server/modules/auth/signup-code.service.js";
 import {
   invitationRows,
@@ -173,12 +173,11 @@ describe("real authentication claims Project and Studio mailbox invitations", ()
     const email = pending[0]!.fixture.email;
     const googleId = crypto.randomUUID();
     const before = Date.now();
-    const result = await loginOrCreateGoogle(googleId, email, true);
+    const result = await resolveGoogleAccount(googleId, email, true);
     const after = Date.now();
 
     expect(result.created).toBe(true);
     expect(result.user).toMatchObject({ email, googleId, emailVerified: true });
-    expect(await getUserByToken(result.token)).toMatchObject({ id: result.user.id, email, emailVerified: true });
     await expectClaimed(pending, result.user.id, before, after);
   });
 
@@ -186,22 +185,20 @@ describe("real authentication claims Project and Studio mailbox invitations", ()
     const pending = await pendingPair();
     const email = pending[0]!.fixture.email;
     const googleId = crypto.randomUUID();
-    const unverified = await loginOrCreateGoogle(googleId, email, false);
+    const unverified = await resolveGoogleAccount(googleId, email, false);
 
     expect(unverified.created).toBe(true);
     expect(unverified.user).toMatchObject({ email, googleId, emailVerified: false });
-    expect(await getUserByToken(unverified.token)).toMatchObject({ id: unverified.user.id, emailVerified: false });
     await expectUnclaimed(pending);
     for (const { scope, fixture } of pending) {
       expect(await membershipCount(sql, scope, fixture, unverified.user.id)).toBe(0);
     }
 
     const before = Date.now();
-    const verified = await loginOrCreateGoogle(googleId, email, true);
+    const verified = await resolveGoogleAccount(googleId, email, true);
     const after = Date.now();
     expect(verified.created).toBe(false);
     expect(verified.user).toMatchObject({ id: unverified.user.id, email, googleId, emailVerified: true });
-    expect(await getUserByToken(verified.token)).toMatchObject({ id: unverified.user.id, emailVerified: true });
     await expectClaimed(pending, verified.user.id, before, after);
   });
 

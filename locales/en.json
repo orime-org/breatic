@@ -39,7 +39,6 @@
       "logout_success": "Logged out",
       "logout_others_success": "Signed out of your other devices",
       "not_authenticated": "Not authenticated",
-      "google_oauth_unconfigured": "Google sign-in is not available on this server",
       "invalid_google_credential": "Could not verify your Google account",
       "desktop_exchange_invalid": "This sign-in link is no longer valid. Sign in again.",
       "google_email_unverified": "Your Google account email is not verified",
@@ -3410,6 +3409,13 @@
     "email": "Email",
     "password": "Password",
     "or": "or",
+    "google": {
+      "continue": "Continue with Google",
+      "cancelled": "Google sign-in was cancelled. Try again or use email.",
+      "expired": "Google sign-in expired. Please try again.",
+      "rateLimited": "Too many attempts. Please try again later.",
+      "unavailable": "Google sign-in is unavailable right now. Please use email."
+    },
     "invalidEmail": "Please enter a valid email address.",
     "passwordTooShort": "Password must be at least 8 characters.",
     "passwordShow": "Show password",
@@ -3422,8 +3428,6 @@
       "signUp": "Sign up",
       "noAccount": "Don't have an account?",
       "forgotPassword": "Forgot password?",
-      "googleLoading": "Loading Google sign-in…",
-      "googleFailed": "Google sign-in is unavailable. Please refresh the page or use email sign-in.",
       "failed": "Sign-in failed. Please try again."
     },
     "register": {
@@ -3515,7 +3519,6 @@
       "googleOnly": "Used when signing up with Google"
     },
     "desktop": {
-      "continueWithGoogle": "Continue with Google",
       "waitingBrowser": "Continue in your browser",
       "cancel": "Cancel",
       "exchangeFailed": "Sign-in did not finish. Try again.",

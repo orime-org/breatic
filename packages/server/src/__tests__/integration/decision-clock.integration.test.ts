@@ -71,8 +71,8 @@ async function pendingRequest(table: RequestTable, projectId: string): Promise<R
  * @throws {Error} When fixture creation or a real service fails.
  */
 async function seedRelatedRequests(fixture: InvitationFixture): Promise<RequestRef[]> {
-  const member = await users.createUser({ locale: "en", email: `${crypto.randomUUID()}@example.test`, emailVerified: true });
-  const guest = await users.createUser({ locale: "en", email: `${crypto.randomUUID()}@example.test`, emailVerified: true });
+  const member = await users.createUser({ locale: "en", influencerCode: "official", email: `${crypto.randomUUID()}@example.test`, emailVerified: true });
+  const guest = await users.createUser({ locale: "en", influencerCode: "official", email: `${crypto.randomUUID()}@example.test`, emailVerified: true });
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${fixture.studioId}, ${member.id}, 'maintainer'), (${fixture.studioId}, ${guest.id}, 'guest')
@@ -169,13 +169,13 @@ describe("request failure reasons use the execution clock after Project lock wai
         let invitationId: string;
         let userId: string | null = null;
         if (recipient === "ordinary") {
-          const user = await users.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+          const user = await users.createUser({ locale: "en", influencerCode: "official", email: fixture.email, emailVerified: true });
           userId = user.id;
           invitationId = (await projectInvites.createInvite(fixture.projectId, fixture.adminId, fixture.email, "viewer")).invitationId;
         } else {
           invitationId = (await seedEmailInvitation(sql, "project", fixture)).id;
           if (recipient === "converted") {
-            const user = await users.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+            const user = await users.createUser({ locale: "en", influencerCode: "official", email: fixture.email, emailVerified: true });
             userId = user.id;
             await claimInvitation("project", invitationId, fixture.projectId, user.id);
           }
@@ -225,7 +225,7 @@ describe("request failure reasons use the execution clock after Project lock wai
   for (const crossesExpiry of [true, false]) {
     it(`settles a join request as ${crossesExpiry ? "expired after acceptance waits across its deadline" : "invalidated when acceptance precedes its deadline"}`, async () => {
       const fixture = await seedInvitationFixture(sql);
-      const user = await users.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+      const user = await users.createUser({ locale: "en", influencerCode: "official", email: fixture.email, emailVerified: true });
       await sql`
         INSERT INTO studio_members (studio_id, user_id, role) VALUES (${fixture.studioId}, ${user.id}, 'guest')
       `;

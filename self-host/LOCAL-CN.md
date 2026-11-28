@@ -109,7 +109,7 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 ```json
 [
   {
-    "AllowedOrigins": ["http://localhost"],
+    "AllowedOrigins": ["*"],
     "AllowedMethods": ["GET", "HEAD"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag"],
@@ -118,7 +118,7 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 ]
 ```
 
-R2 的 GET CORS 用于读取、裁剪图片；上传 Worker 另有一份来源配置，两者都要维护。操作参考 [R2 CORS](https://developers.cloudflare.com/r2/buckets/cors/)。
+R2 的 GET CORS 用于读取、裁剪图片。读取不带凭证，文件本来就公开，所以允许任意来源读取；同一条规则对所有站点和所有缓存副本都适用。上传 Worker 有自己的来源配置（`wrangler.toml` 的 `ALLOWED_ORIGINS`）。操作参考 [R2 CORS](https://developers.cloudflare.com/r2/buckets/cors/)。
 
 ### 4.2 准备正式发布配置
 
@@ -339,7 +339,7 @@ ALLOWED_ORIGINS=https://192.168.1.50,https://localhost
 
 `0.0.0.0` 监听主机所有 IPv4 网卡；在主机防火墙中仅允许可信局域网访问 80/443，不做路由器公网端口转发。如果只需一个网卡，也可以将 `WEB_BIND_ADDRESS` 设为该网卡内网 IP。
 
-在 `wrangler.toml` 的 `[env.production.vars]` 中把 `ALLOWED_ORIGINS` 更新为同样的来源列表并重新执行 `pnpm --filter @breatic/ingest deploy:worker`。同时把 R2 CORS 的 `AllowedOrigins` 更新为这两个 HTTPS 来源。域名、协议和端口要精确一致，没有末尾 `/`，不需要把每位用户电脑的 IP 加进去。
+在 `wrangler.toml` 的 `[env.production.vars]` 中把 `ALLOWED_ORIGINS` 更新为同样的来源列表并重新执行 `pnpm --filter @breatic/ingest deploy:worker`。R2 CORS 已允许任意来源读取，不用改。域名、协议和端口要精确一致，没有末尾 `/`，不需要把每位用户电脑的 IP 加进去。
 
 让容器读取新 `.env`，并让 Nginx 重新选择证书配置：
 
@@ -397,6 +397,6 @@ Cloudflare 日志可在发布机器运行 `pnpm --filter @breatic/ingest exec wr
 
 ## Google 登录（可选）
 
-创建 Google OAuth「Web 应用」Client ID，将前端的完整来源（协议、域名、端口，不含路径）添加到授权 JavaScript 来源；开发通常为 `http://localhost:8000`。在 `.env` 设置 `GOOGLE_CLIENT_ID`，前端和后端必须相同。官方按钮使用弹窗返回 ID Token，后端验签后发会话 Cookie；不需要 Client Secret，也不需要后端 redirect URI。未配置时隐藏按钮。
+创建 Google OAuth「Web 应用」Client，在「已获授权的重定向 URI」里每个部署登记一个：设了 `COOKIE_DOMAIN` 时是 `<ALLOWED_ORIGINS 第一项>/api/v1/auth/google/callback`，没设时是每个要用 Google 登录的来源各一个 `<来源>/api/v1/auth/google/callback`（API 单独一个主机时，用 `API_PUBLIC_URL` 代替 `<来源>/api/v1`）。本地部署登记 `http://localhost/api/v1/auth/google/callback`。在 `.env` 设置 `GOOGLE_CLIENT_ID` 和 `GOOGLE_CLIENT_SECRET`，两项都只给服务端读，两项都设了登录页和注册页才显示按钮。
 
-开发修改变量后重启前后端。Docker 前端必须重新构建，例如 `docker build -f Dockerfile.web --build-arg GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com -t breatic-web:google .`，然后将 Compose 的 web 服务镜像改为该镜像再启动；只修改容器环境不会改变已构建页面。Google 在线 SDK/账号页面需要客户端网络可访问；无法访问时仍可使用邮箱登录。普通 HTTP 局域网 IP 不符合 Google Web 来源要求，请用允许的 localhost 或 HTTPS 来源。
+Google 登录经服务端整页跳转，改这两项只需重启服务端，不用重新构建前端。Google 不接受裸 IP 作重定向地址（localhost 除外），请用 localhost 或 HTTPS 域名。Google 不可达时仍可用邮箱登录。

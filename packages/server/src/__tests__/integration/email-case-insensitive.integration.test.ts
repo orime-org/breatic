@@ -124,8 +124,8 @@ describe("an address is one account whatever its case", () => {
   it("signs in the existing account when Google reports the address in another case", async () => {
     const { stored } = addressPair();
     const user = await register(stored);
-    const { loginOrCreateGoogle } = await import("@server/modules/auth/auth.service.js");
-    const result = await loginOrCreateGoogle(crypto.randomUUID(), stored.toUpperCase(), true);
+    const { resolveGoogleAccount } = await import("@server/modules/auth/auth.service.js");
+    const result = await resolveGoogleAccount(crypto.randomUUID(), stored.toUpperCase(), true);
     createdIds.push(result.user.id);
     expect(result.user.id).toBe(user.id);
     expect(result.user.emailVerified).toBe(true);
