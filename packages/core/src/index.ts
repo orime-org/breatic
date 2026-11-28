@@ -129,8 +129,8 @@ export {
 } from "@core/infra/idle-socket-dispatcher.js";
 export type { GracefulShutdownDeps } from "@core/infra/graceful-shutdown.js";
 export { checkInfraReady } from "@core/infra/connectivity-check.js";
-export { InfraNotReadyError } from "@core/infra/errors.js";
-export { createQueue, createQueueEvents, createWorker, defaultJobOpts, closeQueues } from "@core/infra/queue.js";
+export { InfraNotReadyError, QueuesForbiddenError } from "@core/infra/errors.js";
+export { createQueue, createQueueEvents, createWorker, defaultJobOpts, closeQueues, forbidQueues, forbiddenQueueAttempts } from "@core/infra/queue.js";
 export {
   coverKeyFor,
   getStorageAdapter,

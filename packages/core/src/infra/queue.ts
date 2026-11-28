@@ -13,6 +13,7 @@ import type { Processor, ConnectionOptions } from "bullmq";
 import { env } from "@core/config/env.js";
 import { getWorkerConfig, workerConcurrencyFor } from "@core/config/worker.js";
 import { jitterBackoffStrategy } from "@core/infra/retry.js";
+import { QueuesForbiddenError } from "@core/infra/errors.js";
 
 /**
  * Parse REDIS_QUEUE_URL into BullMQ-compatible connection options.
@@ -43,12 +44,46 @@ const _queues: Queue[] = [];
 const _workers: Worker[] = [];
 const _queueEvents: QueueEvents[] = [];
 
+let forbidden = false;
+let refused = 0;
+
+/**
+ * Make every later queue, queue-events or worker factory call in this process
+ * throw. collab calls it at startup, since it never enqueues or consumes a job
+ * (inner#2043).
+ */
+export function forbidQueues(): void {
+  forbidden = true;
+}
+
+/**
+ * How many factory calls {@link forbidQueues} refused, counted even when the
+ * caller caught the error, so a test can see a swallowed attempt.
+ * @returns The count.
+ */
+export function forbiddenQueueAttempts(): number {
+  return refused;
+}
+
+/**
+ * Refuse a factory call once queues are forbidden.
+ * @param name - The queue asked for.
+ * @throws {QueuesForbiddenError} When {@link forbidQueues} ran.
+ */
+function assertQueuesAllowed(name: string): void {
+  if (!forbidden) return;
+  refused += 1;
+  throw new QueuesForbiddenError(name);
+}
+
 /**
  * Create a BullMQ queue.
  * @param name - Queue name
  * @returns A new BullMQ Queue instance
+ * @throws {QueuesForbiddenError} When this process forbade queues.
  */
 export function createQueue(name: string): Queue {
+  assertQueuesAllowed(name);
   const queue = new Queue(name, { connection: parseRedisUrl() });
   _queues.push(queue);
   return queue;
@@ -64,8 +99,10 @@ export function createQueue(name: string): Queue {
  * crashed is still cleaned up by another live instance (#1580 #6).
  * @param name - Queue name to observe.
  * @returns A new BullMQ QueueEvents instance.
+ * @throws {QueuesForbiddenError} When this process forbade queues.
  */
 export function createQueueEvents(name: string): QueueEvents {
+  assertQueuesAllowed(name);
   const queueEvents = new QueueEvents(name, { connection: parseRedisUrl() });
   _queueEvents.push(queueEvents);
   return queueEvents;
@@ -90,12 +127,14 @@ export function createQueueEvents(name: string): QueueEvents {
  *   their own, so a job's `attempts` does not bound them: a queue whose jobs
  *   must be delivered once has to say zero here as well.
  * @returns A new BullMQ Worker instance
+ * @throws {QueuesForbiddenError} When this process forbade queues.
  */
 export function createWorker<T>(
   name: string,
   processor: Processor<T>,
   options: { maxStalledCount?: number } = {},
 ): Worker<T> {
+  assertQueuesAllowed(name);
   const cfg = getWorkerConfig();
   const worker = new Worker<T>(name, processor, {
     connection: parseRedisUrl(),

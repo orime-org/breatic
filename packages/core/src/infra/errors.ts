@@ -51,3 +51,18 @@ export class InfraNotReadyError extends Error {
     this.cause = cause;
   }
 }
+
+/**
+ * Thrown by core's queue factories after `forbidQueues()` ran in this
+ * process: collab never opens a queue (inner#2043).
+ */
+export class QueuesForbiddenError extends Error {
+  /**
+   * Construct the refusal for one queue.
+   * @param queue - The queue that was asked for.
+   */
+  constructor(queue: string) {
+    super(`queues are forbidden in this process; refused to open "${queue}"`);
+    this.name = "QueuesForbiddenError";
+  }
+}
