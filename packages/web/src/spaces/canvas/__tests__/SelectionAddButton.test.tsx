@@ -55,6 +55,28 @@ describe('SelectionAddButton', () => {
     expect(onOpenChange).toHaveBeenCalledWith(true);
   });
 
+  // inner#2216: the plus is the same round chip as the canvas scissors
+  // (edges/ScissorsEdge.tsx): raised with a shadow, its glyph muted at rest
+  // and full strength on hover.
+  it('looks like the scissors chip: shadow, muted glyph that strengthens on hover, popover fill', () => {
+    setup({ open: false });
+    const plus = screen.getByTestId('selection-add-button');
+    for (const name of [
+      'shadow',
+      'text-muted-foreground',
+      'hover-enabled:text-foreground',
+      'bg-popover',
+      'hover-enabled:bg-accent',
+      'border',
+      'border-border',
+      'rounded-full',
+      'size-6',
+    ]) {
+      expect(plus.classList.contains(name), name).toBe(true);
+    }
+    expect(plus.classList.contains('text-foreground'), 'no full-strength glyph at rest').toBe(false);
+  });
+
   it('lists the four types, a separator, then Add to Agent', () => {
     setup();
     const rows = Array.from(document.querySelectorAll('[role="menuitem"], [role="separator"]')).map((el) =>

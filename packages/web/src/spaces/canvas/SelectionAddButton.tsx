@@ -69,7 +69,7 @@ export const SelectionAddButton = React.memo(function SelectionAddButton({
           size={null}
           type='button'
           data-testid='selection-add-button'
-          className='flex size-6 select-none items-center justify-center rounded-full border border-border bg-popover text-foreground hover-enabled:bg-accent'
+          className='flex size-6 select-none items-center justify-center rounded-full border border-border bg-popover text-muted-foreground shadow hover-enabled:bg-accent hover-enabled:text-foreground'
         >
           <Plus className='size-4' aria-hidden='true' />
         </Button>
