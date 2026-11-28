@@ -164,7 +164,7 @@ export interface TemplateTriggers {
   offerWhen: readonly string[];
 }
 
-/** One shot of a template generate node in the multi_shot mode; its words are `…shot.<n>` in the locale, counted from 1. */
+/** One shot of a template generate node on Multi-shot; its words are `…shot.<n>` in the locale, counted from 1. */
 export interface TemplateShot {
   /** Whole seconds. */
   seconds: number;
@@ -189,7 +189,7 @@ export interface TemplateGenerateNode {
   model: string;
   /** Only the params the template fixes. */
   params: Readonly<Record<string, unknown>>;
-  /** The shots it generates, in order: given in the multi_shot mode only, where they stand in for the prompt. */
+  /** The shots it generates, in order: given only where its model takes shots in its mode, they stand in for the prompt. */
   shots?: readonly TemplateShot[];
   /**
    * The lines of a dialogue, in order: given on a model whose speakers stand

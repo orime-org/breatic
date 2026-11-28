@@ -17,7 +17,7 @@
 import {
   GENERATION_TEMPLATES,
   markedSegments,
-  MULTI_SHOT_MODE,
+  storyboardSpec,
   t,
   templateMarkTargets,
   templateNodeDefaults,
@@ -27,7 +27,7 @@ import {
   type TemplateNodeKey,
 } from "@breatic/shared";
 
-import { onDialogueSide } from "@domain/agent/tools/proposal-dialogue.js";
+import { onDialogueSide, proposalModelEntry } from "@domain/agent/tools/proposal-dialogue.js";
 import { fixOn, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { poolSentence } from "@domain/agent/tools/proposal-routing.js";
 import { GET_GENERATION_TEMPLATE } from "@domain/agent/tools/tool-names.js";
@@ -53,7 +53,7 @@ export type TemplateExpansion = { ok: true; node: ProposalNode } | Refusal;
 export type SentWords = { name: "shots" | "lines" | "prompt"; mentions: string; write: string; placed: string };
 
 /**
- * The words a generate node takes as it is sent: shots in multi_shot, lines on
+ * The words a generate node takes as it is sent: shots on a node that carries them, lines on
  * the dialogue side of a model whose speakers stand in for its voice
  * (inner#1825 design 8.5), a prompt otherwise, whatever form the template's
  * own words have.
@@ -61,8 +61,8 @@ export type SentWords = { name: "shots" | "lines" | "prompt"; mentions: string; 
  * @returns How refusals and fixes name those words.
  * @throws {never} Never.
  */
-export function sentWords(node: Pick<ProposalNode, "mode" | "model" | "params">): SentWords {
-  if (node.mode === MULTI_SHOT_MODE) return { name: "shots", mentions: "the shots @", write: "write the shots.", placed: " in a shot" };
+export function sentWords(node: Pick<ProposalNode, "mode" | "model" | "params"> & { readonly shots?: unknown }): SentWords {
+  if (node.shots !== undefined) return { name: "shots", mentions: "the shots @", write: "write the shots.", placed: " in a shot" };
   if (onDialogueSide(node)) return { name: "lines", mentions: "the lines @", write: "write the lines.", placed: " in a line" };
   return { name: "prompt", mentions: "the prompt @s", write: "write a prompt.", placed: "" };
 }
@@ -183,7 +183,11 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     // The pool is the template's own model's; a node settling another model
     // is told how its nodes go in once it has a prompt to check.
     const keeps = own?.role === "generate" && filled.mode === own.mode && filled.model === own.model;
-    const words = sentWords(filled);
+    // A shot-list node goes on writing its shots wherever its model takes shots, as HOW_TO_SEND says,
+    // unless the model plans its own shots from a prompt (auto_shots, refused beside shots).
+    const board = own?.role === "generate" && own.shots !== undefined ? storyboardSpec(proposalModelEntry(filled)?.params ?? {}, filled.mode ?? "") : undefined;
+    const shotsHere = board !== undefined && !(board.autoParam !== undefined && filled.params?.[board.autoParam] === true);
+    const words = sentWords(shotsHere && own?.role === "generate" ? { ...filled, shots: own.shots } : filled);
     const pool = keeps ? ` Each node ${words.mentions} goes into the pool. ${poolSentence(rest.name)}` : "";
     const form = own?.role !== "generate" ? "prompt" : own.shots !== undefined ? "shots" : own.lines !== undefined ? "lines" : "prompt";
     const styled = template.styles !== undefined && own?.role === "generate" && own.styleWords !== undefined

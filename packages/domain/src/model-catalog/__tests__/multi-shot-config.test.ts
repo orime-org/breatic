@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The multi-shot mode, read off the real config: which models run it, and how
- * each one takes its shots — Kling through its own `multi_prompt` field, the
- * rest written into the prompt one timed line per shot.
+ * Multi-shot as a control inside the modes, read off the real config: which
+ * mode each model can write shots in, how it takes them (Kling through its own
+ * `multi_prompt` field, the rest written into the prompt one timed line per
+ * shot), and which model each mode opens on now that there is no separate
+ * multi-shot mode (inner#2192).
  */
 
 import { initCore } from "@breatic/core";
-import { modelLabel, storyboardSpec, type ParamDescriptor } from "@breatic/shared";
+import { modelLabel, storyboardSpec, VIDEO_GENERATION_MODES, type ParamDescriptor } from "@breatic/shared";
 import { describe, it, expect, beforeAll } from "vitest";
 
 import { getFullModelConfig, type FullModelEntry } from "../model-catalog.js";
@@ -17,25 +19,25 @@ beforeAll(() => {
   initCore(process.env);
 });
 
-const KLING: ReadonlyArray<readonly [string, string]> = [
-  ["kling-v3.0-4k-text-to-video", "t2v"],
-  ["kling-video-o3-4k-image-to-video", "i2v"],
+/** Each model that takes shots, with the modes it takes them in. */
+const SHOT_MODES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ["gemini-omni-1.1-flash-text-to-video", ["t2v"]],
+  ["wan-3.0-text-to-video", ["t2v"]],
+  ["seedance-2.5-text-to-video", ["t2v", "ref"]],
+  ["minimax-h3-text-to-video", ["t2v"]],
+  ["kling-v3.0-4k-text-to-video", ["t2v"]],
+  ["gemini-omni-1.1-flash-image-to-video", ["i2v"]],
+  ["minimax-h3-image-to-video", ["i2v"]],
+  ["wan-3.0-image-to-video", ["i2v"]],
+  ["seedance-2.5-image-to-video", ["i2v"]],
+  ["kling-video-o3-4k-image-to-video", ["i2v"]],
+  ["minimax-h3-reference-to-video", ["ref"]],
+  ["gemini-omni-1.1-flash-reference-to-video", ["ref"]],
+  ["wan-3.0-reference-to-video", ["ref"]],
+  ["happyhorse-1.1-reference-to-video", ["ref"]],
 ];
 
-const PROMPT_WRITTEN = [
-  "seedance-2.5-text-to-video",
-  "seedance-2.5-image-to-video",
-  "gemini-omni-1.1-flash-text-to-video",
-  "gemini-omni-1.1-flash-image-to-video",
-  "gemini-omni-1.1-flash-reference-to-video",
-  "wan-3.0-text-to-video",
-  "wan-3.0-image-to-video",
-  "wan-3.0-reference-to-video",
-  "minimax-h3-text-to-video",
-  "minimax-h3-image-to-video",
-  "minimax-h3-reference-to-video",
-  "happyhorse-1.1-reference-to-video",
-];
+const KLING = new Set(["kling-v3.0-4k-text-to-video", "kling-video-o3-4k-image-to-video"]);
 
 /**
  * The video bucket's entry for a model name.
@@ -50,6 +52,24 @@ function videoEntry(name: string): FullModelEntry {
 }
 
 /**
+ * A model's params as the shared helpers read them.
+ * @param name - Model id.
+ * @returns Its declared params.
+ */
+function paramsOf(name: string): Record<string, ParamDescriptor> {
+  return (videoEntry(name).params ?? {}) as Record<string, ParamDescriptor>;
+}
+
+/**
+ * The modes a model serves.
+ * @param entry - The model's config entry.
+ * @returns Its modes.
+ */
+function modesOf(entry: FullModelEntry): string[] {
+  return [entry.mode ?? []].flat();
+}
+
+/**
  * The longest total a model's duration control offers.
  * @param entry - The model's config entry.
  * @returns Its largest value, or its max for a range.
@@ -60,95 +80,115 @@ function longest(entry: FullModelEntry): number {
   return values.length > 0 ? Math.max(...values) : (duration?.max ?? 0);
 }
 
-describe("the models the multi-shot mode offers", () => {
-  it("is exactly the two Kling models and the twelve that take their shots in the prompt", () => {
-    const running = getFullModelConfig("video")
-      .models.filter((m) => [m.mode].flat().includes("multi_shot"))
-      .map((m) => m.name)
-      .sort();
-    expect(running).toEqual([...KLING.map(([name]) => name), ...PROMPT_WRITTEN].sort());
+describe("there is no multi-shot mode", () => {
+  it("is not a video generation mode", () => {
+    expect(VIDEO_GENERATION_MODES).not.toContain("multi_shot");
   });
 
-  it.each(PROMPT_WRITTEN)("%s writes each shot into the prompt with its running seconds", (name) => {
+  it("is served by no model and named by no source group", () => {
+    for (const entry of getFullModelConfig("video").models) {
+      expect(modesOf(entry), entry.name).not.toContain("multi_shot");
+      for (const group of entry.source_groups ?? []) expect(group.mode, entry.name).not.toBe("multi_shot");
+    }
+  });
+});
+
+describe("the modes a model can write shots in", () => {
+  it("is exactly these fourteen models", () => {
+    const taking = getFullModelConfig("video")
+      .models.filter((m) => modesOf(m).some((mode) => storyboardSpec(paramsOf(m.name), mode) !== undefined))
+      .map((m) => m.name)
+      .sort();
+    expect(taking).toEqual(SHOT_MODES.map(([name]) => name).sort());
+  });
+
+  it.each(SHOT_MODES)("%s takes shots in %j and in no other mode it serves", (name, modes) => {
     const entry = videoEntry(name);
-    const spec = storyboardSpec((entry.params ?? {}) as Record<string, ParamDescriptor>, "multi_shot");
-    expect(spec).toMatchObject({
+    for (const mode of modesOf(entry)) {
+      expect(storyboardSpec(paramsOf(name), mode) !== undefined, `${name} in ${mode}`).toBe(modes.includes(mode));
+    }
+  });
+
+  it.each(SHOT_MODES.filter(([name]) => !KLING.has(name)))("%s writes each shot into the prompt with its running seconds", (name, modes) => {
+    const entry = videoEntry(name);
+    expect(storyboardSpec(paramsOf(name), modes[0]!)).toMatchObject({
       shotsParam: "shots",
       fixed: {},
       secondsField: "duration",
       totalParam: "duration",
       maxShots: 6,
       intoPrompt: "Shot {n} [{start}-{end}s]: {prompt}",
+      autoParam: undefined,
     });
-    const seconds = entry.params?.shots?.fields?.duration?.values;
-    expect(seconds).toEqual(Array.from({ length: longest(entry) }, (_, index) => index + 1));
+    expect(entry.params?.shots?.fields?.duration?.values).toEqual(Array.from({ length: longest(entry) }, (_, index) => index + 1));
   });
 
-  it.each(KLING)("%s sends its shots in multi_prompt under the customize tier", (name) => {
-    const params = (videoEntry(name).params ?? {}) as Record<string, ParamDescriptor>;
-    expect(storyboardSpec(params, "multi_shot")).toMatchObject({
+  it.each(SHOT_MODES.filter(([name]) => KLING.has(name)))("%s sends its shots in multi_prompt and offers its own auto level", (name, modes) => {
+    const params = paramsOf(name);
+    expect(storyboardSpec(params, modes[0]!)).toMatchObject({
       shotsParam: "multi_prompt",
       fixed: { shot_type: "customize" },
       totalParam: "duration",
       maxShots: 6,
       intoPrompt: undefined,
+      autoParam: "auto_shots",
     });
-    expect(params.shot_type?.values).toEqual(["customize"]);
-  });
-
-  it.each(KLING)("%s offers auto multi-shot as a switch only in %s", (name, mode) => {
-    expect(videoEntry(name).params?.auto_shots).toMatchObject({
-      values: [true, false],
-      default: false,
-      absent_value: false,
-      modes: [mode],
-      fill: "panel",
-    });
+    expect(params.auto_shots).toMatchObject({ values: [true, false], default: false, absent_value: false, modes: [...modes], fill: "panel" });
   });
 });
 
-describe("the names the multi-shot mode shows", () => {
+describe("Seedance 2.5 in text and reference to video", () => {
+  const SOURCES = ["images", "videos", "audios", "style_images"] as const;
+
+  it("serves text to video and reference to video", () => {
+    expect(modesOf(videoEntry("seedance-2.5-text-to-video")).sort()).toEqual(["ref", "t2v"]);
+  });
+
+  it.each(SOURCES)("takes %s only in reference to video", (source) => {
+    expect(paramsOf("seedance-2.5-text-to-video")[source]?.modes).toEqual(["ref"]);
+  });
+
+  it("needs at least one source in reference to video, a style picture counting as one", () => {
+    expect(videoEntry("seedance-2.5-text-to-video").source_groups).toEqual([{ mode: "ref", any_of: [...SOURCES] }]);
+  });
+});
+
+describe("the model each mode opens on", () => {
+  // The panel opens a mode on the first model the catalog lists for it, so an
+  // entry placed ahead of these would change what every user sees.
+  it.each([
+    ["t2v", "gemini-omni-1.1-flash-text-to-video"],
+    ["i2v", "gemini-omni-1.1-flash-image-to-video"],
+    ["first_last", "gemini-omni-1.1-flash-image-to-video"],
+    ["ref", "minimax-h3-reference-to-video"],
+  ])("%s opens on %s", (mode, name) => {
+    const first = getFullModelConfig("video").models.find((m) => modesOf(m).includes(mode));
+    expect(first?.name).toBe(name);
+  });
+
+  it("lists Seedance 2.5 last in reference to video", () => {
+    const ref = getFullModelConfig("video").models.filter((m) => modesOf(m).includes("ref")).map((m) => m.name);
+    expect(ref.at(-1)).toBe("seedance-2.5-text-to-video");
+  });
+});
+
+describe("the names each mode shows", () => {
   /**
    * Each model a mode offers, by the name its list shows.
    * @param mode - The mode.
    * @returns The names, by model id.
    */
   function labelsIn(mode: string): Record<string, string> {
-    const peers = getFullModelConfig("video").models.filter((m) => [m.mode].flat().includes(mode));
+    const peers = getFullModelConfig("video").models.filter((m) => modesOf(m).includes(mode));
     const named = peers.map((m) => ({ ...m, display_name: m.display_name ?? m.name }));
     return Object.fromEntries(named.map((m) => [m.name, modelLabel(m, named)]));
   }
 
-  it("tells a model's text, image and reference versions apart where all three appear", () => {
-    expect(labelsIn("multi_shot")).toMatchObject({
-      "gemini-omni-1.1-flash-text-to-video": "Gemini Omni 1.1 Flash Text-to-Video",
-      "gemini-omni-1.1-flash-image-to-video": "Gemini Omni 1.1 Flash Image-to-Video",
-      "gemini-omni-1.1-flash-reference-to-video": "Gemini Omni 1.1 Flash Reference",
-      "kling-v3.0-4k-text-to-video": "Kling 3.0 4K",
-      "happyhorse-1.1-reference-to-video": "HappyHorse 1.1",
-      "seedance-2.5-text-to-video": "Seedance 2.5 Text-to-Video",
-      "seedance-2.5-image-to-video": "Seedance 2.5 Image-to-Video",
-    });
-  });
-
-  it("names each version by the vendor's name alone in a mode where it appears once", () => {
-    expect(labelsIn("i2v")["gemini-omni-1.1-flash-image-to-video"]).toBe("Gemini Omni 1.1 Flash");
-    expect(labelsIn("ref")["wan-3.0-reference-to-video"]).toBe("Wan 3.0");
-    expect(labelsIn("first_last")["flux-3-start-end-to-video"]).toBe("FLUX 3");
-    expect(labelsIn("i2v")["seedance-2.5-image-to-video"]).toBe("Seedance 2.5");
-    expect(labelsIn("t2v")["seedance-2.5-text-to-video"]).toBe("Seedance 2.5");
-  });
-});
-
-describe("which model each mode Seedance 2.5 image-to-video joins opens with", () => {
-  // The panel opens a mode on the first model the catalog lists for it, so a
-  // new entry placed ahead of these would change what every user sees.
-  it.each([
-    ["i2v", "gemini-omni-1.1-flash-image-to-video"],
-    ["first_last", "gemini-omni-1.1-flash-image-to-video"],
-    ["multi_shot", "gemini-omni-1.1-flash-text-to-video"],
-  ])("%s opens on %s", (mode, name) => {
-    const first = getFullModelConfig("video").models.find((m) => [m.mode].flat().includes(mode));
-    expect(first?.name).toBe(name);
+  it.each(["t2v", "i2v", "first_last", "ref"])("%s names each model once, by the vendor's name alone", (mode) => {
+    const labels = labelsIn(mode);
+    expect(new Set(Object.values(labels)).size).toBe(Object.keys(labels).length);
+    for (const [name, label] of Object.entries(labels)) {
+      expect(label, name).toBe(videoEntry(name).display_name);
+    }
   });
 });

@@ -36,10 +36,10 @@ function video(name: string, mode: string[], params: Record<string, ParamDescrip
   };
 }
 
-const kling = video('kling', ['t2v', 'multi_shot'], {
-  multi_prompt: { description: '', default: null, type: 'items', max_items: 6, modes: ['multi_shot'], fill: 'storyboard', fields: { prompt: { type: 'text' }, duration: { values: [1, 2] } } },
-  shot_type: { description: '', default: null, values: ['customize'], modes: ['multi_shot'], fill: 'storyboard' },
-  auto_shots: { description: '', label: 'Auto multi-shot', default: false, values: [true, false], modes: ['t2v'], fill: 'panel' },
+const kling = video('kling', ['t2v', 'i2v'], {
+  multi_prompt: { description: '', default: null, type: 'items', max_items: 6, modes: ['t2v'], fill: 'storyboard', fields: { prompt: { type: 'text' }, duration: { values: [1, 2] } } },
+  shot_type: { description: '', default: null, values: ['customize'], modes: ['t2v'], fill: 'storyboard' },
+  auto_shots: { description: '', label: 'Auto multi-shot', default: false, values: [true, false], modes: ['t2v'], fill: 'panel', shots_auto: true },
 });
 const minimax = video('minimax', ['t2v']);
 const STYLE: ParamDescriptor = {
@@ -96,9 +96,9 @@ describe('what a node would run right now', () => {
     const content = { handling: false, model: 'kling', paramsByModel: { kling: { duration: 3, auto_shots: true } } };
     const inT2v = currentGeneration('video', { ...content, mode: 't2v' }, catalog, noVoice);
     expect(inT2v?.params).toMatchObject({ duration: 3, auto_shots: true });
-    const inMultiShot = currentGeneration('video', { ...content, mode: 'multi_shot' }, catalog, noVoice);
-    expect(inMultiShot).toMatchObject({ mode: 'multi_shot', model: 'kling', params: { duration: 3 } });
-    expect(inMultiShot?.params).not.toHaveProperty('auto_shots');
+    const inI2v = currentGeneration('video', { ...content, mode: 'i2v' }, catalog, noVoice);
+    expect(inI2v).toMatchObject({ mode: 'i2v', model: 'kling', params: { duration: 3 } });
+    expect(inI2v?.params).not.toHaveProperty('auto_shots');
   });
 
   it('sends the first listed voice when nobody picked one, as the audio panel does', () => {

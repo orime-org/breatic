@@ -35,6 +35,7 @@ import {
   setNodeModel,
   setNodeName,
   setNodeParent,
+  setNodeShots,
   setNodeTemplateNode,
   writeSnapshotNodes,
   type CanvasNodeView,
@@ -647,6 +648,8 @@ export function useNodeCreation(
                 k === 0 ? [{ ref: edge.fromIndex }] : [{ text: '\n' }, { ref: edge.fromIndex }],
               );
               if (lyricsBox) writeProposalPrompt(lyricsBox, lyricsLines, mentionOf);
+              // A video proposal carrying shots is on Multi-shot, one without on Single shot (inner#2192).
+              if (node.type === 'video') setNodeShots(projectId, spaceId, id, node.shots !== undefined);
               // A model drawing no prompt box shows nothing written there; the
               // card lists its marks instead.
               if (node.takesPrompt === false) return;

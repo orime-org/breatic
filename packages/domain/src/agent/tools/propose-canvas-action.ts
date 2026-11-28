@@ -591,11 +591,12 @@ function wiredParams(proposal: CanvasProposal, node: ProposalNode, index: number
   const declared = chosenModelOf(node)?.params ?? {};
   const counts = new Map<string, number>();
   const intos = [
-    ...proposal.edges.flatMap((edge) => (edge.toIndex === index && edge.into !== undefined ? [edge.into] : [])),
-    ...Object.entries(node.fills ?? {}).flatMap(([slot, from]) => from.map(() => slot)),
+    ...proposal.edges.flatMap((edge) => (edge.toIndex === index && edge.into !== undefined ? [{ into: edge.into, kind: proposal.nodes[edge.fromIndex]?.type }] : [])),
+    ...Object.entries(node.fills ?? {}).flatMap(([slot, from]) => from.map(() => ({ into: slot, kind: undefined }))),
   ];
-  for (const into of intos) {
-    const name = into === "pool" ? Object.keys(declared).find((key) => declared[key]?.fromReferencePool === true) : into;
+  for (const { into, kind } of intos) {
+    // The pool sends each source under the param of its own kind, as the panel does.
+    const name = into === "pool" ? Object.keys(declared).find((key) => declared[key]?.fromReferencePool === true && declared[key]?.accepts === kind) : into;
     if (name !== undefined) counts.set(name, (counts.get(name) ?? 0) + 1);
   }
   for (const [name, count] of counts) {

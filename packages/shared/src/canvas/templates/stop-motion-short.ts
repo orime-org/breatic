@@ -8,7 +8,7 @@ export const STOP_MOTION_SHORT: GenerationTemplate = {
   id: "stop-motion-short",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "1:1", duration: 8, generate_audio: true } },
+    { key: "result", role: "generate", type: "video", mode: "ref", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "1:1", duration: 8, generate_audio: true } },
   ],
   edges: [],
   inputs: [{ key: "subject", type: "image" }],

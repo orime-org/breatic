@@ -131,7 +131,7 @@ const proposalNode = z
         "What to generate, or a written node's words, in the language the user " +
           "writes in. Write it up from what the user asked for; copy their words exactly only when they ask for that. " +
           "A ref or a mark is a segment of its own, never typed into a text segment. " +
-          "Every node going into the pool gets a ref where the prompt, or in multi_shot a shot, speaks of it, and a note too " +
+          "Every node going into the pool gets a ref where the prompt, or on a node with shots a shot, speaks of it, and a note too " +
           "when it lands empty; a node going into a slot by an edge takes a note of its own (a slot " +
           "filled through fills takes none, the lyrics box takes none), and so does " +
           "an empty node no edge sends into a generation (unwired, or wired only as a link to a model that " +
@@ -149,7 +149,7 @@ const proposalNode = z
       .min(1)
       .optional()
       .describe(
-        "role generate only, in mode multi_shot and nowhere else: each " +
+        "role generate only, on a model whose line says it takes shots in this mode: the video written out shot by shot, each " +
           "shot's own prompt and whole seconds, which add up to the duration. " +
           "The main prompt is not sent then, so leave it out; refs and notes go in a shot too",
       ),

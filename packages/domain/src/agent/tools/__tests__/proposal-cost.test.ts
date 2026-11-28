@@ -442,5 +442,32 @@ describe("the params a proposed run is judged on (inner#1953)", () => {
 
     expect(sentParams(proposal, clip, 1, { duration: 5 })).toMatchObject({ duration: 5, elements: ["wired 1"] });
   });
+
+  it("puts each pooled source under the pool param of its own kind, so a pooled picture is no audio", async () => {
+    const proposal = inputSchema.parse({
+      nodes: [
+        { role: "source", type: "image", name: "Heroine" },
+        { role: "source", type: "audio", name: "Theme" },
+        { role: "generate", type: "video", name: "Shots", mode: "ref", model: "minimax-h3-reference-to-video", params: { duration: 8 }, prompt: [{ ref: 0 }, { text: " walks through the hall to " }, { ref: 1 }, { text: "." }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 2, into: "pool" }, { fromIndex: 1, toIndex: 2, into: "pool" }],
+      rationale: "One sequence of the heroine.",
+      groupName: "Sequence",
+    });
+    const shots = proposal.nodes[2] as ProposalNode;
+
+    expect(sentParams(proposal, shots, 2, { duration: 8 })).toMatchObject({ images: ["wired 1"], audios: ["wired 1"] });
+    const pictureOnly = inputSchema.parse({
+      nodes: [
+        { role: "source", type: "image", name: "Heroine" },
+        { role: "generate", type: "video", name: "Shots", mode: "ref", model: "minimax-h3-reference-to-video", params: { duration: 8 }, prompt: [{ ref: 0 }, { slot: { kind: "note", label: "Put her picture in first" } }, { text: " walks through the hall." }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
+      rationale: "One sequence of the heroine.",
+      groupName: "Sequence",
+    });
+    const answer = await checkedAnswerFor(pictureOnly);
+    expect(answer.placed ? "placed" : answer.reason).toBe("placed");
+  });
 });
 

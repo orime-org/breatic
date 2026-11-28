@@ -5,7 +5,7 @@ import { CreditLine } from '@web/spaces/canvas/_shared/CreditLine';
 import { ArrowUp, X } from 'lucide-react';
 import * as React from 'react';
 
-import type { GenerationTemplate, ModelEntry, ReferenceKind } from '@breatic/shared';
+import type { GenerationTemplate, ModelEntry, ReferenceKind, ShotsChoice } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -18,6 +18,7 @@ import { CameraCommandPicker } from '@web/spaces/canvas/generate/CameraCommandPi
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
+import { ShotsPicker } from '@web/spaces/canvas/generate/ShotsPicker';
 import { VideoGenerateToolbar } from '@web/spaces/canvas/generate/VideoGenerateToolbar';
 import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
 import { TextFullscreenButton } from '@web/spaces/canvas/nodes/_shared/TextFullscreenButton';
@@ -99,7 +100,7 @@ interface VideoGeneratePanelProps {
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert one reference as an `@` chip in the prompt. */
   onInsertReference: (item: ReferenceRailItem) => void;
-  /** Writes bracketed camera commands into the prompt box (Multi-Shot: the open shot). */
+  /** Writes bracketed camera commands into the prompt box (on Multi-shot, the open shot). */
   onInsertCameraCommands: (text: string) => void;
   /** The source slots the active mode collects, in display order. */
   slots: readonly VideoSlot[];
@@ -136,10 +137,16 @@ interface VideoGeneratePanelProps {
   /** The collaborative prompt editor, injected by the container (TipTap + Yjs). */
   promptSlot: React.ReactNode;
   /**
-   * The fewest seconds the total may be set to in the multi-shot mode: one
-   * per shot. Undefined outside that mode.
+   * The fewest seconds the total may be set to on Multi-shot: one per shot.
+   * Undefined otherwise.
    */
   durationFloor?: number;
+  /** The Shots choice the node is on; undefined where the model takes no shots in the mode, and no control is drawn. */
+  shots: ShotsChoice | undefined;
+  /** Whether the model can plan the shots itself, which offers Auto multi-shot. */
+  shotsAuto: boolean;
+  /** Pick a Shots choice. */
+  onSelectShots: (choice: ShotsChoice) => void;
   /** Close the panel without generating. */
   onExit: () => void;
   /** Opens the shown prompt box full screen (inner#2115); none while the panel shows no box. */
@@ -209,6 +216,9 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   executeRefusal,
   promptSlot,
   durationFloor,
+  shots,
+  shotsAuto,
+  onSelectShots,
   onExit,
   onOpenPromptFullscreen,
   catalogModels,
@@ -299,6 +309,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
             durationFloor={durationFloor}
           />
         ) : null}
+        {shots !== undefined ? <ShotsPicker value={shots} auto={shotsAuto} onSelect={onSelectShots} /> : null}
         {currentModel?.camera_commands && currentModel.camera_commands.length > 0 ? (
           <CameraCommandPicker commands={currentModel.camera_commands} onInsert={onInsertCameraCommands} />
         ) : null}

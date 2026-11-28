@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { catalog, coveredValues, shipped } from "../../config/__tests__/shipped.js";
 import { missingRequired, type SchemaSnapshot } from "../../config/upstream-schema.js";
-import { takes, type SampleRun } from "./reseller-bodies.js";
+import { hasPlainMode, takes, type SampleRun } from "./reseller-bodies.js";
 
 /** The reviewed request bodies of one reseller binding (`scripts/provider-reseller-bodies.ts`). */
 interface BodySample {
@@ -61,11 +61,15 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
     expect(missing).toEqual([]);
   });
 
-  it("start from a run the application sends, carrying the material the model's first source group needs", () => {
+  it("start from a run the application sends, carrying the material the model's first source group needs where the binding takes it", async () => {
     const group = sourceGroups.get(model)?.[0];
     if (group === undefined) return;
-    const first = sample.runs[0]!.params;
-    expect(group.any_of.filter((p) => first[p] !== undefined && first[p] !== null), JSON.stringify(group)).not.toEqual([]);
+    const first = sample.runs[0]!;
+    if (group.any_of.some((p) => first.params[p] !== undefined && first.params[p] !== null)) return;
+    // Without the material, the run is of a mode that needs none, and the binding refuses the material.
+    const seeded = group.any_of[0]!;
+    expect(hasPlainMode(catalogModels.find((m) => m.name === model)!), JSON.stringify(group)).toBe(true);
+    expect(await takes(model, binding, { ...first.params, [seeded]: [`https://example.com/${seeded}`] }, first.prompt), JSON.stringify(group)).toBe(false);
   });
 
   it("start from a run carrying each param the panel always sends, the text the editor holds", () => {

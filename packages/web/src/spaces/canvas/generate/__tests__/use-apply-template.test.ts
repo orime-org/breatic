@@ -832,7 +832,7 @@ describe('useApplyTemplate', () => {
   describe('a template with a shot list (inner#1816)', () => {
     const SEEDANCE_T2V = {
       name: 'seedance-2.5-text-to-video',
-      mode: ['t2v', 'multi_shot'],
+      mode: ['t2v', 'ref'],
       params: {
         aspect_ratio: { description: '', values: ['16:9', '9:16'], default: '16:9' },
         duration: { description: '', min: 4, max: 30, default: 5 },
@@ -840,7 +840,7 @@ describe('useApplyTemplate', () => {
       },
     } as unknown as ModelEntry;
 
-    it('writes the quick tip onto the video node in multi_shot, five shots of three seconds, each with words', () => {
+    it('writes the quick tip onto the video node in ref, five shots of three seconds, each with words', () => {
       const template = GENERATION_TEMPLATES.find((one) => one.id === 'vertical-15s-quick-tip');
       expect(template).toBeDefined();
       if (!template) return;
@@ -850,7 +850,7 @@ describe('useApplyTemplate', () => {
 
       const { proposal } = placed(place);
       const anchor = proposal.nodes[0];
-      expect(anchor).toMatchObject({ role: 'generate', type: 'video', mode: 'multi_shot', model: 'seedance-2.5-text-to-video' });
+      expect(anchor).toMatchObject({ role: 'generate', type: 'video', mode: 'ref', model: 'seedance-2.5-text-to-video' });
       expect(anchor?.prompt).toBeUndefined();
       const shots = anchor?.shots ?? [];
       expect(shots.map((shot) => shot.duration)).toEqual([3, 3, 3, 3, 3]);

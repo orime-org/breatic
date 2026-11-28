@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The multi-shot mode's controls, laid out after Kling's own: a list of shots
+ * Multi-shot's controls, laid out after Kling's own: a list of shots
  * in place of the prompt box, each with its seconds and its own prompt box,
  * and under it, centred, "+ Add shot", or in its place the reason a shot
  * cannot be added.
@@ -138,7 +138,7 @@ export function nextOpenShot(
 }
 
 /**
- * The multi-shot mode's cards, one per shot, one open at a time (#1201): a
+ * Multi-shot's cards, one per shot, one open at a time (#1201): a
  * closed card is its title row with the first line of its words, and its
  * seconds and remove button work while it is closed.
  * @param root0 - Component props.

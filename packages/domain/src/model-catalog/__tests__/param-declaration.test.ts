@@ -562,17 +562,17 @@ describe("a panel parameter's default", () => {
       fill: "storyboard",
       type: "items",
       default: null,
-      modes: ["multi_shot"],
+      modes: ["t2v"],
       fields: { prompt: { type: "text" }, duration: { values: [1, 2] } },
     };
     expect(() =>
       assertParamDeclarations(
         "video",
-        modelWith({ shots: { ...shots, into_prompt: "Shot {n} [{start}-{end}s]: {prompt}" } }, ["t2v", "multi_shot"]),
+        modelWith({ shots: { ...shots, into_prompt: "Shot {n} [{start}-{end}s]: {prompt}" } }, "t2v"),
       ),
     ).not.toThrow();
     expect(() =>
-      assertParamDeclarations("video", modelWith({ shots: { ...shots, into_prompt: "Shot {n}" } }, ["t2v", "multi_shot"])),
+      assertParamDeclarations("video", modelWith({ shots: { ...shots, into_prompt: "Shot {n}" } }, "t2v")),
     ).toThrow(/a-model\.shots.*into_prompt/s);
     expect(() =>
       assertParamDeclarations(
@@ -580,6 +580,15 @@ describe("a panel parameter's default", () => {
         modelWith({ tone: { fill: "panel", values: ["a"], default: "a", into_prompt: "{prompt}" } }, "t2v"),
       ),
     ).toThrow(/a-model\.tone.*into_prompt/s);
+  });
+
+  it("lets only a true/false switch be the model's own auto multi-shot", () => {
+    expect(() =>
+      assertParamDeclarations("video", modelWith({ auto_shots: { fill: "panel", values: [true, false], default: false, label: "Auto multi-shot", shots_auto: true } }, "t2v")),
+    ).not.toThrow();
+    expect(() =>
+      assertParamDeclarations("video", modelWith({ tone: { fill: "panel", values: ["a", "b"], default: "a", label: "Tone", shots_auto: true } }, "t2v")),
+    ).toThrow(/a-model\.tone.*shots_auto/s);
   });
 });
 

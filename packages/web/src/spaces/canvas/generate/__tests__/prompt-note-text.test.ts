@@ -53,6 +53,7 @@ describe('a prompt with a note at the top, read without an editor', () => {
       maxShots: 6,
       maxChars: undefined,
       intoPrompt: 'Shot {n} [{start}-{end}s]: {prompt}',
+      autoParam: undefined,
     };
     const run = storyboardRun(spec, [{ prompt: shotPrompt('She walks in.', true), duration: 3 }], 3, [], {});
     expect(run.writtenPrompt).toBeDefined();

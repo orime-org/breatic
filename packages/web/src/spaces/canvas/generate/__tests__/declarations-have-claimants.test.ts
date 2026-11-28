@@ -262,6 +262,9 @@ function claimsFor(
     for (const control of modelControls({ params: model.params } as unknown as ModelEntry, mode)) {
       controls.add(control.name);
     }
+    // The video panel's Shots control draws the model planning its own shots (inner#2192).
+    const auto = node === 'video' ? storyboardSpec(model.params as Record<string, ParamDescriptor>, mode)?.autoParam : undefined;
+    if (auto !== undefined) controls.add(auto);
   }
   if (sceneDialogServes(model, mode)) {
     for (const [param, spec] of Object.entries(model.params)) if (spec?.accepts === 'image') slots.add(param);
@@ -468,7 +471,10 @@ describe('what the catalog declares', () => {
       if (!nodesOffering(model).includes('video')) {
         return 'declares fill: storyboard while only the video panel draws the storyboard controls';
       }
-      const spec = storyboardSpec(model.params as Record<string, ParamDescriptor>, 'multi_shot');
+      // The shots a mode of the model takes them in (inner#2192).
+      const spec = offeredModes(model)
+        .map((mode) => storyboardSpec(model.params as Record<string, ParamDescriptor>, mode))
+        .find((one) => one !== undefined);
       if (spec === undefined) return 'declares fill: storyboard without a fill: storyboard items param to hold the shots';
       if (param !== spec.shotsParam && !(param in spec.fixed)) {
         return `is a fill: storyboard param beside '${spec.shotsParam}' with more than one value, and the shots write none of them into it`;

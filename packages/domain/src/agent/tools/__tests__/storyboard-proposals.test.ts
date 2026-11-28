@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * What the agent learns about the multi-shot mode, and what it may propose in
- * it.
+ * What the agent learns about multi-shot inside the video modes, and what it
+ * may propose with it (inner#2192).
  *
  * The shot params are filled from the node's shots, not typed in `params`, so
- * the agent reaches them only through a proposal's `shots`, and only in the
- * multi-shot mode. The listing has to say so, and the check has to hold shots
- * to the same rules the panel's execute gate holds them to.
+ * the agent reaches them only through a proposal's `shots`, on a model that
+ * takes shots in the node's mode. A node with shots is a multi-shot node. The
+ * listing has to say so, and the check has to hold shots to the same rules the
+ * panel's execute gate holds them to.
  */
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
@@ -49,14 +50,14 @@ async function run<T>(canvasTool: unknown, input: unknown): Promise<T> {
 }
 
 /**
- * A lone multi-shot generation.
+ * A lone text-to-video generation on Kling.
  * @param node - What to put on the node beside its role and type.
  * @returns The proposal.
  */
 function alone(node: Partial<ProposalNode>): CanvasProposal {
   return {
     nodes: [
-      { role: "generate", type: "video", name: "The clip", mode: "multi_shot", model: KLING, params: { duration: 5 }, ...node },
+      { role: "generate", type: "video", name: "The clip", mode: "t2v", model: KLING, params: { duration: 5 }, ...node },
     ],
     edges: [],
     modelNote: "",
@@ -71,33 +72,36 @@ const twoShots = [
 ];
 
 describe("the model listing", () => {
-  it("says in the multi-shot mode that a model takes shots, and how many", async () => {
-    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "multi_shot" });
+  it("says in each mode a model takes shots in that it does, and how many", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
     const line = renderGenerationModelsForModel(answer).split("\n").find((l) => l.includes(`(${KLING})`)) ?? "";
     expect(line).toMatch(/shots/);
     expect(line).toMatch(/at most 6 shots/);
     expect(line).toMatch(/512 characters/);
   });
 
-  it("names each model as the mode's picker shows it", async () => {
-    const multiShot = renderGenerationModelsForModel(
-      await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "multi_shot" }),
-    );
-    expect(multiShot).toContain("- Gemini Omni 1.1 Flash Reference (gemini-omni-1.1-flash-reference-to-video)");
+  it("tells a single-shot node's words go in the prompt", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "ref" });
+    const rendered = renderGenerationModelsForModel(answer);
+    expect(rendered).toMatch(/goes into the reference pool/);
+    expect(rendered).not.toMatch(/goes into a shot/);
+  });
+
+  it("names each model once, as the mode's picker shows it", async () => {
     const ref = renderGenerationModelsForModel(
       await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "ref" }),
     );
     expect(ref).toContain("- Gemini Omni 1.1 Flash (gemini-omni-1.1-flash-reference-to-video)");
+    expect(ref).toContain("- Seedance 2.5 (seedance-2.5-text-to-video)");
   });
 
-  it("says nothing about shots outside the multi-shot mode", async () => {
-    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
-    const line = renderGenerationModelsForModel(answer).split("\n").find((l) => l.includes(`(${KLING})`)) ?? "";
-    expect(line).not.toMatch(/shots \(/);
+  it("says nothing about shots in a mode the model takes none in", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "first_last" });
+    expect(renderGenerationModelsForModel(answer)).not.toMatch(/Give shots/);
   });
 
   it("does not call the shot params unreachable", async () => {
-    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "multi_shot" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
     const rendered = renderGenerationModelsForModel(answer);
     expect(rendered).not.toMatch(/Nothing here reaches:[^\n]*multi_prompt/);
     expect(rendered).not.toMatch(/multi_prompt: this panel draws no control/);
@@ -115,14 +119,13 @@ describe("a multi-shot proposal", () => {
     ).toEqual({ ok: true });
   });
 
-  it("refuses the mode without shots", () => {
-    const answer = checkProposal(alone({ prompt: [{ text: "a boat, then the pond" }] }));
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/multi_shot.*shots/) });
+  it("takes a single-shot node with a prompt on a model that could take shots", () => {
+    expect(checkProposal(alone({ prompt: [{ text: "a boat, then the pond" }] }))).toEqual({ ok: true });
   });
 
-  it("refuses shots in any other mode", () => {
-    const answer = checkProposal(alone({ mode: "t2v", prompt: undefined, shots: twoShots }));
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/multi_shot/) });
+  it("refuses shots in a mode the model takes none in", () => {
+    const answer = checkProposal(alone({ mode: "first_last", model: "seedance-2.5-image-to-video", prompt: undefined, shots: twoShots }));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/takes no shots in "first_last"/) });
   });
 
   it("refuses shots whose seconds do not add up to the duration", () => {
@@ -153,10 +156,15 @@ describe("a multi-shot proposal", () => {
     expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/set by the node's shots/) });
   });
 
-  it("takes auto multi-shot as an ordinary param in text-to-video", () => {
+  it("takes auto multi-shot as an ordinary param with a prompt", () => {
     expect(
-      checkProposal(alone({ mode: "t2v", prompt: [{ text: "a boat, then the pond" }], params: { duration: 5, auto_shots: true } })),
+      checkProposal(alone({ prompt: [{ text: "a boat, then the pond" }], params: { duration: 5, auto_shots: true } })),
     ).toEqual({ ok: true });
+  });
+
+  it("refuses auto multi-shot beside shots, the two being different Shots choices", () => {
+    const answer = checkProposal(alone({ prompt: undefined, shots: twoShots, params: { duration: 5, auto_shots: true } }));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/auto_shots.*shots/) });
   });
 
   it("refuses shots on a node that does not generate", () => {

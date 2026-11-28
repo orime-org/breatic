@@ -130,9 +130,9 @@ function dataMaps(): (id: string) => Y.Map<unknown> | null {
 }
 
 /**
- * A video model serving text to video, with or without the multi-shot mode.
+ * A video model serving text to video, taking shots there or not.
  * @param name - Its id.
- * @param storyboard - Whether it takes shots in the multi-shot mode.
+ * @param storyboard - Whether it takes shots in text to video.
  * @returns The entry.
  */
 function videoModel(name: string, storyboard: boolean): ModelEntry {
@@ -140,7 +140,7 @@ function videoModel(name: string, storyboard: boolean): ModelEntry {
     name,
     display_name: name,
     modality: 'video',
-    mode: storyboard ? ['t2v', 'multi_shot'] : ['t2v'],
+    mode: ['t2v'],
     description: '',
     guide: '',
     tier: 'optional',
@@ -155,11 +155,11 @@ function videoModel(name: string, storyboard: boolean): ModelEntry {
             default: null,
             type: 'items',
             max_items: 6,
-            modes: ['multi_shot'],
+            modes: ['t2v'],
             fill: 'storyboard',
             fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5] } },
           },
-          shot_type: { description: '', default: null, values: ['customize'], modes: ['multi_shot'], fill: 'storyboard' },
+          shot_type: { description: '', default: null, values: ['customize'], modes: ['t2v'], fill: 'storyboard' },
         }
         : {}),
     },

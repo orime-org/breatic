@@ -436,10 +436,16 @@ export interface CanvasNodeFields {
      */
     prompts?: unknown;
     /**
-     * The multi-shot mode's shots — `Y.Array` of
-     * `{ id, prompt: Y.XmlFragment, duration }` at runtime.
+     * The node's shots — `Y.Array` of `{ id, prompt: Y.XmlFragment, duration }`
+     * at runtime; one list across the node's modes, sent while `multiShot` is on.
      */
     shots?: unknown;
+    /**
+     * Whether a video node writes its shots out (the Shots control's
+     * Multi-shot, inner#2192); one value across the node's modes, applied
+     * where its model takes shots.
+     */
+    multiShot?: boolean;
     /** Model id from config/models/*.yaml. */
     model?: string;
     /**

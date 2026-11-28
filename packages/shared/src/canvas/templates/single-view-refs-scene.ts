@@ -12,7 +12,7 @@ export const SINGLE_VIEW_REFS_SCENE: GenerationTemplate = {
       key: "result",
       role: "generate",
       type: "video",
-      mode: "t2v",
+      mode: "ref",
       model: "seedance-2.5-text-to-video",
       params: { aspect_ratio: "16:9", duration: 10, generate_audio: true },
     },
