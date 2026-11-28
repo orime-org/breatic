@@ -13,7 +13,7 @@ import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
 import { GroupResizer } from '@web/spaces/canvas/nodes/GroupResizer';
 import { MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
-import { countSelectedNonNotes, handlesEmphasized } from '@web/spaces/canvas/selection-add';
+import { handlesEmphasized } from '@web/spaces/canvas/selection-add';
 import {
   NodeOccupantsContext,
   NOBODY,
@@ -205,13 +205,19 @@ function makeFlowNode(
     const expanding = useCanvasSession((s) => miniToolOpenOn(props.id)(s)?.expand != null);
     // The plus on the handles (inner#2216): only the one selected node, with
     // no mini tool drawing over its picture. Unselected nodes read a constant
-    // 0, so a selection change elsewhere never re-renders them.
+    // false, so a selection change elsewhere never re-renders them; a selected
+    // one stops at the first other selected node a marquee sweeps in.
     const selected = Boolean(props.selected);
     const miniToolOpen = useCanvasSession((s) => miniToolOpenOn(props.id)(s) != null);
-    const selectedNonNoteCount = useStore((s) => (selected ? countSelectedNonNotes(s.nodes) : 0));
+    const othersSelected = useStore(
+      (s) => selected && s.nodes.some((n) => n.selected && n.id !== props.id && n.type !== 'annotation'),
+    );
+    // A marquee still being dragged has not decided the selection yet; the
+    // plus shows once it is released (same as the selection plus).
+    const marqueeDragging = useStore((s) => selected && s.userSelectionActive);
     const plusOnHandles = handlesEmphasized({
-      selected,
-      selectedNonNoteCount,
+      selected: selected && !marqueeDragging,
+      othersSelected,
       connectable: props.isConnectable,
       miniToolOpen,
     });
@@ -315,8 +321,10 @@ function makeFlowNode(
                       // `nodrag` keeps a press on a count from starting a node
                       // drag: xyflow's threshold is one pixel, so opening the list
                       // would otherwise slide the node under the cursor and write
-                      // a new position into the shared document.
-                      className='nodrag absolute left-full top-0'
+                      // a new position into the shared document. `z-22` keeps the
+                      // counts above the connection zone, which the selected
+                      // node's plus raises to `z-21` over this corner.
+                      className='nodrag absolute left-full top-0 z-22'
                       style={{
                         transform: `scale(${headerScale})`,
                         transformOrigin: 'top left',

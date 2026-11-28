@@ -37,30 +37,18 @@ const MAX_OUT = ZONE_OUT_PX - DOT_RADIUS;
 const MAX_V = ZONE_OUT_PX / 2 - DOT_RADIUS;
 /** The plus a lone selected node shows on its handles is this wide on screen. */
 const PLUS_SCREEN_PX = 20;
+/** At rest the plus's near edge stands this far out from the border, on screen. */
+const PLUS_GAP_SCREEN_PX = 4;
 
 /**
- * Stacking for an emphasized handle inside its node (inner#2216): above the
- * video node's playback-error cover (`z-20`, VideoNode) and its control bar
- * (`z-10`, MediaPlayer), which otherwise paint over the plus's inner half
- * because the handle shares the node's stacking context with them. The class
- * written below is the literal `z-21` so Tailwind can see it; the handle test
- * keeps the two in step.
+ * The press zone of an emphasized handle, `--handle-zone` canvas px square
+ * from the border outward: the plain zone's 36px on screen, so the plus
+ * sitting wholly outside the node has room to follow the pointer. `z-21`
+ * lifts it above the video node's playback-error cover (`z-20`, VideoNode)
+ * and its control bar (`z-10`, MediaPlayer), which share the node's
+ * stacking context.
  */
-export const EMPHASIZED_HANDLE_Z = 21;
-
-/**
- * The press zones of an emphasized handle, sized from `--handle-plus-r` (the
- * plus's radius in canvas px). The outward `::before` grows tall enough to
- * hold the plus; the `::after` is a circle of the plus's size centred on the
- * border, so the plus's inner half presses into a connection while the node
- * body above and below it does not (a press is clipped to the rounded edge).
- * `index.css` stands both down while a wire is dragged.
- */
-const EMPHASIZED_ZONE_CLASS =
-  'z-21 before:h-[max(36px,calc(var(--handle-plus-r)*2))] after:absolute after:top-1/2 after:h-[calc(var(--handle-plus-r)*2)] after:w-[calc(var(--handle-plus-r)*2)] after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:content-[""]';
-
-/** The plain zone's height, replaced by the emphasized one above. */
-const PLAIN_ZONE_HEIGHT = 'before:h-9';
+const EMPHASIZED_ZONE_CLASS = 'z-21 before:h-[var(--handle-zone)] before:w-[var(--handle-zone)]';
 
 /** Props for {@link MagneticHandle}. */
 interface MagneticHandleProps {
@@ -81,8 +69,10 @@ interface MagneticHandleProps {
   hidden?: boolean;
   /**
    * Whether the handle shows the plus: the node is the one selected and takes
-   * connections (inner#2216). Appearance and press area only; every gesture
-   * behaves as on the plain dot.
+   * connections (inner#2216). The plus rests just outside the border and
+   * follows the pointer inside its zone without crossing into the node; every
+   * gesture behaves as on the plain dot and the wire stays attached to the
+   * border.
    */
   emphasized?: boolean;
 }
@@ -122,11 +112,15 @@ export function MagneticHandle({
   // The node's counter-scale (1 / max(zoom, floor)), the same one the name
   // header uses, so the plus keeps its screen size down to the floor zoom.
   const scale = React.useContext(NodeScaleContext);
-  // The plus's radius in canvas px; the chase keeps the whole plus inside
-  // the 36px zone, as it keeps the 4px-radius dot.
+  // Where the visible mark's centre may go, in canvas px out from the border:
+  // the dot rests on the border; the plus rests its gap away and never
+  // crosses the border, inside a zone kept 36px on screen.
   const plusRadius = (PLUS_SCREEN_PX / 2) * scale;
-  const maxOut = plus ? ZONE_OUT_PX - plusRadius : MAX_OUT;
-  const maxV = plus ? Math.max(0, ZONE_OUT_PX / 2 - plusRadius) : MAX_V;
+  const zone = plus ? ZONE_OUT_PX * Math.max(1, scale) : ZONE_OUT_PX;
+  const restOut = plus ? PLUS_GAP_SCREEN_PX * scale + plusRadius : 0;
+  const minOut = plus ? plusRadius : 0;
+  const maxOut = plus ? zone - plusRadius : MAX_OUT;
+  const maxV = plus ? Math.max(0, zone / 2 - plusRadius) : MAX_V;
   // Whether ANY connection drag is in progress (boolean selector → this only
   // re-renders on the flip, not per pointer-move). Used to REST the dot during
   // a drag (cosmetic — a one-frame lag is invisible). The correctness-critical
@@ -179,15 +173,15 @@ export function MagneticHandle({
       const cy = rect.top + rect.height / 2;
       const rawX = (event.clientX - cx) / zoom;
       const rawY = (event.clientY - cy) / zoom;
-      // Outward only: a source dot never crosses inward past the border (into
-      // the node), a target dot never crosses outward past it.
-      const dx =
-        type === 'source' ? clamp(rawX, 0, maxOut) : clamp(rawX, -maxOut, 0);
+      // Outward only: the mark never crosses inward past the border into the
+      // node. `out` is the centre's distance out from the border.
+      const out = clamp(type === 'source' ? rawX : -rawX, minOut, maxOut);
       // `+ 0` turns a clamped -0 into 0 so the transform reads `0px`.
+      const dx = (type === 'source' ? out - restOut : restOut - out) + 0;
       const dy = clamp(rawY, -maxV, maxV) + 0;
       dot.style.transform = `translate(${dx}px, ${dy}px)`;
     },
-    [isConnectable, connecting, type, maxOut, maxV],
+    [isConnectable, connecting, type, minOut, maxOut, maxV, restOut],
   );
 
   // The 8px element is invisible (bg-transparent, border-0); the visual is the
@@ -204,37 +198,32 @@ export function MagneticHandle({
   // ::before offsets gain +4px (source left-1→left-2, target -left-8→-left-9) so
   // the 36px zone still spans exactly the border → border+36 outside. Vertically
   // centered (top-1/2 + -translate-y-1/2).
-  const zoneClass =
+  const sideZoneClass =
     type === 'source'
-      ? '!h-2 !w-2 !right-1 !border-0 !bg-transparent before:absolute before:left-2 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-[""]'
-      : '!h-2 !w-2 !left-1 !border-0 !bg-transparent before:absolute before:-left-9 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-[""]';
+      ? '!h-2 !w-2 !right-1 !border-0 !bg-transparent before:absolute before:left-2 before:top-1/2 before:-translate-y-1/2 before:content-[""]'
+      : '!h-2 !w-2 !left-1 !border-0 !bg-transparent before:absolute before:top-1/2 before:-translate-y-1/2 before:content-[""]';
+  // A target's zone ends at the border, so it starts its own width left of it.
+  const zoneClass = plus
+    ? `${sideZoneClass} ${EMPHASIZED_ZONE_CLASS}${type === 'source' ? '' : ' before:left-[calc(var(--handle-zone)*-1)]'}`
+    : `${sideZoneClass} before:h-9 before:w-9${type === 'source' ? '' : ' before:-left-9'}`;
 
   // The 8px dot, offset +4px OUTWARD from the anchor so its centre straddles the
   // border (source left-1, target -left-1) — the anchor's outer edge is the
   // border, and half the dot sits each side of it. It springs further out via
-  // transform (written by `chase`), back to this base on rest.
-  const dotBase =
-    'pointer-events-none absolute inset-y-0 w-2 rounded-full border border-border bg-muted transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]';
-  const dotClass =
-    type === 'source' ? `${dotBase} left-1` : `${dotBase} -left-1`;
-  // The emphasized dot keeps the chase box (same place, same transform) and
-  // draws nothing itself; the plus inside it is the visual.
-  const plusDotBase =
-    'pointer-events-none absolute inset-y-0 w-2 transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]';
-  const plusDotClass =
-    type === 'source' ? `${plusDotBase} left-1` : `${plusDotBase} -left-1`;
-  // The ::after circle is centred on the border: the anchor's outer edge,
-  // its right edge for a source (left-2 = 8px) and its left edge for a target.
-  const plusZoneClass = `${zoneClass.replace(PLAIN_ZONE_HEIGHT, '')} ${EMPHASIZED_ZONE_CLASS} ${
-    type === 'source' ? 'after:left-2' : 'after:left-0'
-  }`;
-  const handleClass = plus ? plusZoneClass : zoneClass;
+  // transform (written by `chase`), back to this base on rest. The emphasized
+  // dot keeps the same chase box and draws nothing itself; the plus inside it
+  // is the visual.
+  const dotClass = `pointer-events-none absolute inset-y-0 w-2 transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+    plus ? '' : 'rounded-full border border-border bg-muted '
+  }${type === 'source' ? 'left-1' : '-left-1'}`;
   const handleStyle = React.useMemo<React.CSSProperties | undefined>(
     () =>
       plus
-        ? ({ '--handle-plus-r': `${plusRadius}px` } as React.CSSProperties)
+        ? ({
+          '--handle-zone': `${zone}px`,
+        } as React.CSSProperties)
         : undefined,
-    [plus, plusRadius],
+    [plus, zone],
   );
 
   return (
@@ -248,7 +237,7 @@ export function MagneticHandle({
       onPointerMove={chase}
       onPointerLeave={rest}
       onPointerDown={rest}
-      className={hidden ? `${zoneClass} !invisible` : handleClass}
+      className={hidden ? `${zoneClass} !invisible` : zoneClass}
       style={handleStyle}
     >
       {/* Visible dot: centre straddles the border, springs toward the cursor. */}
@@ -257,15 +246,17 @@ export function MagneticHandle({
           ref={dotRef}
           data-testid='handle-dot'
           aria-hidden='true'
-          className={plus ? plusDotClass : dotClass}
+          className={dotClass}
         >
           {plus ? (
-            // Centred on the dot's centre; the counter-scale lives here so it
-            // never shares `transform` with the chase written on the dot.
+            // At rest its gap out from the border, wholly outside the node;
+            // the chase moves the dot around it.
             <span
               data-testid='handle-plus'
               className='absolute left-1/2 top-1/2 flex size-5 items-center justify-center rounded-full border border-border bg-popover text-foreground'
-              style={{ transform: `translate(-50%, -50%) scale(${scale})` }}
+              style={{
+                transform: `translate(calc(-50% + ${type === 'source' ? restOut : -restOut}px), -50%) scale(${scale})`,
+              }}
             >
               <Plus className='size-3.5' aria-hidden='true' />
             </span>

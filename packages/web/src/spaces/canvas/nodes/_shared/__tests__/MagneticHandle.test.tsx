@@ -6,7 +6,7 @@ import { act, render } from '@testing-library/react';
 import { ReactFlowProvider, useStoreApi } from '@xyflow/react';
 import * as React from 'react';
 
-import { EMPHASIZED_HANDLE_Z, MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
+import { MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 
 /** Captures the xyflow store api so a test can drive connection state. */
@@ -267,17 +267,22 @@ describe('MagneticHandle — dot rests during a connection drag', () => {
 });
 
 /**
- * Mounts an emphasized handle at a node counter-scale (1 at 100% zoom and
- * above, 2 at 50% and below).
+ * Mounts a handle at a node counter-scale (1 at 100% zoom and above, 2 at 50%
+ * and below).
  * @param scale - The NodeScaleContext value.
  * @param emphasized - Whether the handle shows the plus.
+ * @param type - Which side the handle is on.
  * @returns The handle element and its visible dot.
  */
-function mountEmphasized(scale: number, emphasized = true): { handle: HTMLElement; dot: HTMLElement } {
+function mountEmphasized(
+  scale: number,
+  emphasized = true,
+  type: 'source' | 'target' = 'source',
+): { handle: HTMLElement; dot: HTMLElement } {
   const { container } = render(
     <ReactFlowProvider>
       <NodeScaleContext.Provider value={scale}>
-        <MagneticHandle type='source' isConnectable emphasized={emphasized} />
+        <MagneticHandle type={type} isConnectable emphasized={emphasized} />
       </NodeScaleContext.Provider>
     </ReactFlowProvider>,
   );
@@ -307,11 +312,24 @@ function stubAnchorRectAt(handle: HTMLElement, zoom: number): void {
     }) as DOMRect;
 }
 
+/**
+ * The classes of an element, as a list.
+ * @param el - The element.
+ * @returns Its classes.
+ */
+function classesOf(el: Element): string[] {
+  return [...el.classList];
+}
+
+const PLAIN_DOT = ['rounded-full', 'border', 'border-border', 'bg-muted'];
+
 // inner#2216 design 4.1: on a lone selected node the dot becomes a 20px
-// screen-size plus. The handle's own pseudo-elements carry the press (the
-// ::after reaches into the node as a circle of radius r), r is handed to them
-// as a CSS variable, the handle rises above the video error layer (z-20), and
-// the chase keeps the whole plus inside the 36px zone.
+// screen-size plus standing wholly outside the node, its near edge 4 screen
+// px past the border at rest and vertically centred, while the wire still
+// attaches at the border. The press zone is the plain 36px on screen (handed
+// over as `--handle-zone`), the handle rises above the video error layer
+// (z-20) as z-21, nothing reaches into the node, and the plus follows the
+// pointer inside the zone without ever crossing the border.
 describe('MagneticHandle — emphasized (the plus on a lone selected node)', () => {
   it('draws a plus inside the visible dot', () => {
     const { dot } = mountEmphasized(1);
@@ -320,28 +338,45 @@ describe('MagneticHandle — emphasized (the plus on a lone selected node)', () 
     expect(dot.contains(plus)).toBe(true);
   });
 
-  it('hands the plus radius to the pseudo-elements: 10px at 100% zoom', () => {
-    const { handle } = mountEmphasized(1);
-    expect(handle.style.getPropertyValue('--handle-plus-r')).toBe('10px');
+  it('keeps the press zone 36px on screen: 36 canvas px at 100% zoom, 72 at 50%', () => {
+    expect(mountEmphasized(1).handle.style.getPropertyValue('--handle-zone')).toBe('36px');
+    expect(mountEmphasized(2).handle.style.getPropertyValue('--handle-zone')).toBe('72px');
   });
 
-  it('hands the plus radius to the pseudo-elements: 20 canvas px at 50% zoom', () => {
-    const { handle } = mountEmphasized(2);
-    expect(handle.style.getPropertyValue('--handle-plus-r')).toBe('20px');
+  it('lifts a source handle above the video error layer (z-20) with only the variable-sized zone, reaching nothing inward', () => {
+    const classes = classesOf(mountEmphasized(1).handle);
+    expect(classes).toContain('z-21');
+    expect(classes.filter((c) => c.startsWith('before:h-'))).toEqual(['before:h-[var(--handle-zone)]']);
+    expect(classes.filter((c) => c.startsWith('before:w-'))).toEqual(['before:w-[var(--handle-zone)]']);
+    expect(classes).toContain('before:left-2');
+    expect(classes.filter((c) => c.startsWith('before:-left-') || c.startsWith('before:left-['))).toEqual([]);
+    expect(classes.filter((c) => c.startsWith('after:'))).toEqual([]);
   });
 
-  it('gives the handle a round ::after press zone sized from the radius', () => {
-    const { handle } = mountEmphasized(1);
-    expect(handle.className).toContain('after:rounded-full');
-    expect(handle.className).toMatch(/(^|\s)after:[^\s]*--handle-plus-r/);
-    expect(handle.className).toMatch(/(^|\s)before:[^\s]*--handle-plus-r/);
+  it('starts a target handle\'s zone its own width left of the border', () => {
+    const classes = classesOf(mountEmphasized(1, true, 'target').handle);
+    expect(classes).toContain('z-21');
+    expect(classes).toContain('before:left-[calc(var(--handle-zone)*-1)]');
+    expect(classes).not.toContain('before:-left-9');
+    expect(classes.filter((c) => c.startsWith('before:h-'))).toEqual(['before:h-[var(--handle-zone)]']);
+    expect(classes.filter((c) => c.startsWith('after:'))).toEqual([]);
   });
 
-  it('lifts the handle above the video error layer (z-20)', () => {
-    expect(typeof EMPHASIZED_HANDLE_Z).toBe('number');
-    expect(EMPHASIZED_HANDLE_Z).toBeGreaterThan(20);
-    const { handle } = mountEmphasized(1);
-    expect(handle.className).toMatch(new RegExp(`(^|\\s)!?z-(\\[${EMPHASIZED_HANDLE_Z}\\]|${EMPHASIZED_HANDLE_Z})(\\s|$)`));
+  it('rests the plus 4 + 10 screen px out from a source border at 100% zoom', () => {
+    const plus = mountEmphasized(1).dot.querySelector<HTMLElement>('[data-testid="handle-plus"]');
+    expect(plus?.style.transform).toBe('translate(calc(-50% + 14px), -50%) scale(1)');
+  });
+
+  it('rests the plus out to the left of a target border, in canvas px at 50% zoom', () => {
+    const plus = mountEmphasized(2, true, 'target').dot.querySelector<HTMLElement>('[data-testid="handle-plus"]');
+    // (4 + 10) screen px at a 2x counter-scale, leftward.
+    expect(plus?.style.transform).toBe('translate(calc(-50% + -28px), -50%) scale(2)');
+  });
+
+  it('draws nothing on the emphasized dot itself: the plus is the visual', () => {
+    const { dot } = mountEmphasized(1);
+    for (const plain of PLAIN_DOT) expect(dot.classList.contains(plain), plain).toBe(false);
+    expect(dot.querySelector('[data-testid="handle-plus"]')).not.toBeNull();
   });
 
   it('keeps the handle connectable, so press, drag and click-connect stay as they are', () => {
@@ -353,25 +388,90 @@ describe('MagneticHandle — emphasized (the plus on a lone selected node)', () 
     expect(handle.className).toContain('!right-1');
   });
 
-  it('clamps the chase by the plus radius at 100% zoom: 26 out, 8 vertical', () => {
+  // Rest centre 14 out; it may go from 10 (near edge on the border) to 26
+  // (far edge at the zone's end), and 8 up or down.
+  it('chases toward a far pointer at 100% zoom: 12 further out, 8 down', () => {
     const { handle, dot } = mountEmphasized(1);
     stubAnchorRectAt(handle, 1);
     firePointer(handle, 'pointermove', 400, 400);
-    expect(dot.style.transform).toBe('translate(26px, 8px)');
+    expect(dot.style.transform).toBe('translate(12px, 8px)');
   });
 
-  it('clamps the chase by the plus radius at 50% zoom: 16 out, no vertical travel', () => {
+  it('stops with the near edge on the border when the pointer is at the border', () => {
+    const { handle, dot } = mountEmphasized(1);
+    stubAnchorRectAt(handle, 1);
+    // The source border is the anchor's right edge, x 104.
+    firePointer(handle, 'pointermove', 104, 100);
+    expect(dot.style.transform).toBe('translate(-4px, 0px)');
+    // Further into the node it goes no further.
+    firePointer(handle, 'pointermove', 0, 100);
+    expect(dot.style.transform).toBe('translate(-4px, 0px)');
+  });
+
+  it('mirrors the chase for a target: out is left, and never past its border', () => {
+    const { handle, dot } = mountEmphasized(1, true, 'target');
+    stubAnchorRectAt(handle, 1);
+    firePointer(handle, 'pointermove', 0, 100);
+    expect(dot.style.transform).toBe('translate(-12px, 0px)');
+    firePointer(handle, 'pointermove', 400, 100);
+    expect(dot.style.transform).toBe('translate(4px, 0px)');
+  });
+
+  it('chases in canvas px at 50% zoom: 24 out, 16 down', () => {
     const { handle, dot } = mountEmphasized(2);
     stubAnchorRectAt(handle, 0.5);
     firePointer(handle, 'pointermove', 400, 400);
-    expect(dot.style.transform).toBe('translate(16px, 0px)');
+    expect(dot.style.transform).toBe('translate(24px, 16px)');
   });
 
-  // Guard: every other node keeps today's dot.
-  it('keeps the plain dot without emphasis', () => {
+  it('springs back to rest when the pointer leaves', () => {
+    const { handle, dot } = mountEmphasized(1);
+    stubAnchorRectAt(handle, 1);
+    firePointer(handle, 'pointermove', 400, 400);
+    expect(dot.style.transform).not.toBe('');
+    firePointerLeave(handle);
+    expect(dot.style.transform).toBe('');
+  });
+
+  // Guard: every other node keeps today's dot and zone.
+  it('keeps the plain zone and dot classes without emphasis', () => {
+    const { handle, dot } = mountEmphasized(1, false);
+    const classes = classesOf(handle);
+    expect(classes).toContain('before:h-9');
+    expect(classes).toContain('before:w-9');
+    expect(classes).not.toContain('z-21');
+    expect(classes.filter((c) => c.startsWith('after:'))).toEqual([]);
+    expect(handle.style.getPropertyValue('--handle-zone')).toBe('');
+    for (const plain of PLAIN_DOT) expect(dot.classList.contains(plain), plain).toBe(true);
+  });
+
+  it('keeps a plain target zone 36px left of the border', () => {
+    const classes = classesOf(mountEmphasized(1, false, 'target').handle);
+    expect(classes).toContain('before:-left-9');
+    expect(classes).toContain('before:h-9');
+    expect(classes).toContain('before:w-9');
+    expect(classes.filter((c) => c.startsWith('before:left-['))).toEqual([]);
+  });
+
+  it('keeps a hidden handle plain even when emphasized', () => {
+    const { container } = render(
+      <ReactFlowProvider>
+        <MagneticHandle type='source' isConnectable emphasized hidden />
+      </ReactFlowProvider>,
+    );
+    const handle = container.querySelector('.react-flow__handle') as HTMLElement;
+    const classes = classesOf(handle);
+    expect(classes).toContain('!invisible');
+    expect(classes).toContain('before:h-9');
+    expect(classes).not.toContain('z-21');
+    expect(classes.filter((c) => c.startsWith('after:'))).toEqual([]);
+    expect(handle.style.getPropertyValue('--handle-zone')).toBe('');
+    expect(container.querySelector('[data-testid="handle-plus"]')).toBeNull();
+  });
+
+  it('keeps the plain dot chasing with its old clamps without emphasis', () => {
     const { handle, dot } = mountEmphasized(1, false);
     expect(dot.querySelector('[data-testid="handle-plus"]')).toBeNull();
-    expect(handle.style.getPropertyValue('--handle-plus-r')).toBe('');
     stubAnchorRectAt(handle, 1);
     firePointer(handle, 'pointermove', 400, 400);
     expect(dot.style.transform).toBe('translate(32px, 14px)');

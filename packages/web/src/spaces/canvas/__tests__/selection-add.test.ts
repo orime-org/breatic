@@ -10,8 +10,15 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
+import type { NodePlacement } from '@web/data/yjs/canvas-space';
 import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
-import { LAYER_STEP_PX, ROW_GAP_PX, shiftRightPastOccupied, withTaskCounts } from '@web/spaces/canvas/lib/place-flow';
+import {
+  LAYER_STEP_PX,
+  ROW_GAP_PX,
+  occupiedRects,
+  shiftRightPastOccupied,
+  withTaskCounts,
+} from '@web/spaces/canvas/lib/place-flow';
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 import { CREATABLE_NODE_TYPES, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import {
@@ -173,13 +180,13 @@ describe('resolveSelectionAdd — where the plus shows (design 4.2)', () => {
 describe('handlesEmphasized — when a node shows the plus on its handles (design 4.1)', () => {
   it('shows the plus only on the one selected, connectable node with no mini tool open', () => {
     for (const selected of [true, false]) {
-      for (const selectedNonNoteCount of [0, 1, 2, 3]) {
+      for (const othersSelected of [true, false]) {
         for (const connectable of [true, false]) {
           for (const miniToolOpen of [true, false]) {
-            const expected = selected && selectedNonNoteCount === 1 && connectable && !miniToolOpen;
+            const expected = selected && !othersSelected && connectable && !miniToolOpen;
             expect(
-              handlesEmphasized({ selected, selectedNonNoteCount, connectable, miniToolOpen }),
-              JSON.stringify({ selected, selectedNonNoteCount, connectable, miniToolOpen }),
+              handlesEmphasized({ selected, othersSelected, connectable, miniToolOpen }),
+              JSON.stringify({ selected, othersSelected, connectable, miniToolOpen }),
             ).toBe(expected);
           }
         }
@@ -212,6 +219,14 @@ describe('orderSources — reference order, top to bottom then left to right', (
 
 describe('planConnectedNode — what one pick builds (design 4.4)', () => {
   const bounds = { x: 0, y: 0, width: 288, height: 492 };
+  const nothingAround = { selectionIds: [], placements: [], measuredOf: (): undefined => undefined };
+  // A content node sitting flush with the selection's right edge, level with
+  // the new node: its task counts reach 68px past that edge, into the gap
+  // padding round the spot, so as an obstacle it pushes the new node right.
+  const flush: NodePlacement = { id: 'img', type: 'image', x: 0, y: 150 };
+  const measuredFlush = (id: string): { width: number; height: number } | undefined =>
+    id === 'img' || id === 'm1' ? { width: 288, height: 192 } : undefined;
+  const spot = { x: 360, y: 150, width: EMPTY_NODE_SIZE.width, height: EMPTY_NODE_SIZE.height };
 
   it('keeps the 72px column between the selection and the new node', () => {
     expect(LAYER_STEP_PX - EMPTY_NODE_SIZE.width).toBe(72);
@@ -219,7 +234,7 @@ describe('planConnectedNode — what one pick builds (design 4.4)', () => {
 
   it('places the new node 72px past the selection, centred on it, when nothing is in the way', () => {
     const sources = [content('img', 'image', 0, 0), content('vid', 'video', 0, 300)];
-    const plan = planConnectedNode({ type: 'image', sources, selectionBounds: bounds, obstacles: [], cap: 50 });
+    const plan = planConnectedNode({ type: 'image', sources, selectionBounds: bounds, ...nothingAround, cap: 50 });
     expect(plan).toEqual({
       kind: 'ok',
       // left edge 288 + 72 = 360, top 246 - 96 = 150; centre = left/top + half size
@@ -230,8 +245,18 @@ describe('planConnectedNode — what one pick builds (design 4.4)', () => {
 
   it('moves right past a node outside the selection that the spot would cover', () => {
     const sources = [content('img', 'image', 0, 0)];
+    // A group takes exactly its own rect, so the obstacle is this rect.
     const obstacle = { x: 400, y: 100, width: 300, height: 200 };
-    const plan = planConnectedNode({ type: 'video', sources, selectionBounds: bounds, obstacles: [obstacle], cap: 50 });
+    const placements: NodePlacement[] = [{ id: 'other', type: 'group', ...obstacle }];
+    const plan = planConnectedNode({
+      type: 'video',
+      sources,
+      selectionBounds: bounds,
+      selectionIds: ['img'],
+      placements,
+      measuredOf: () => undefined,
+      cap: 50,
+    });
     const rect = { x: 360, y: 150, width: EMPTY_NODE_SIZE.width, height: EMPTY_NODE_SIZE.height };
     const shift = shiftRightPastOccupied(withTaskCounts(rect), [obstacle], ROW_GAP_PX);
     expect(shift).toBe(388);
@@ -244,9 +269,88 @@ describe('planConnectedNode — what one pick builds (design 4.4)', () => {
 
   it('stays put when the only other node sits clear above the spot', () => {
     const sources = [content('img', 'image', 0, 0)];
-    const obstacle = { x: 360, y: -1000, width: 288, height: 192 };
-    const plan = planConnectedNode({ type: 'video', sources, selectionBounds: bounds, obstacles: [obstacle], cap: 50 });
+    const placements: NodePlacement[] = [{ id: 'other', type: 'image', x: 360, y: -1000 }];
+    const plan = planConnectedNode({
+      type: 'video',
+      sources,
+      selectionBounds: bounds,
+      selectionIds: ['img'],
+      placements,
+      measuredOf: () => undefined,
+      cap: 50,
+    });
     expect(plan).toEqual({ kind: 'ok', center: { x: 504, y: 246 }, sourceIds: ['img'] });
+  });
+
+  it('pins the fixture: the flush node would push the spot right as an obstacle', () => {
+    const shift = shiftRightPastOccupied(withTaskCounts(spot), occupiedRects([flush], measuredFlush), ROW_GAP_PX);
+    expect(shift).toBeGreaterThan(0);
+  });
+
+  it('leaves a selected node out of the obstacles: the spot stays 72px past the bounds', () => {
+    const plan = planConnectedNode({
+      type: 'video',
+      sources: [content('img', 'image', 0, 150)],
+      selectionBounds: bounds,
+      selectionIds: ['img'],
+      placements: [flush],
+      measuredOf: measuredFlush,
+      cap: 50,
+    });
+    expect(plan.kind).toBe('ok');
+    if (plan.kind !== 'ok') return;
+    expect(plan.center.x - EMPTY_NODE_SIZE.width / 2).toBe(bounds.x + bounds.width + 72);
+  });
+
+  it('leaves a selected group and the members listed with it out of the obstacles', () => {
+    const placements: NodePlacement[] = [
+      { id: 'g', type: 'group', x: 0, y: 0, width: 288, height: 492 },
+      { id: 'm1', type: 'image', x: 0, y: 150 },
+    ];
+    const plan = planConnectedNode({
+      type: 'video',
+      sources: [content('m1', 'image', 0, 150, 'g')],
+      selectionBounds: bounds,
+      selectionIds: ['g', 'm1'],
+      placements,
+      measuredOf: measuredFlush,
+      cap: 50,
+    });
+    expect(plan.kind).toBe('ok');
+    if (plan.kind !== 'ok') return;
+    expect(plan.center.x - EMPTY_NODE_SIZE.width / 2).toBe(bounds.x + bounds.width + 72);
+  });
+
+  it('still moves right past the same node when it is not in the selection', () => {
+    const shift = shiftRightPastOccupied(withTaskCounts(spot), occupiedRects([flush], measuredFlush), ROW_GAP_PX);
+    const plan = planConnectedNode({
+      type: 'video',
+      sources: [content('a', 'image', 0, 0)],
+      selectionBounds: bounds,
+      selectionIds: ['a'],
+      placements: [flush],
+      measuredOf: measuredFlush,
+      cap: 50,
+    });
+    expect(plan).toEqual({
+      kind: 'ok',
+      center: { x: spot.x + shift + EMPTY_NODE_SIZE.width / 2, y: 246 },
+      sourceIds: ['a'],
+    });
+  });
+
+  it('never moves for an unselected note in the way', () => {
+    const pin: NodePlacement = { id: 'pin', type: 'annotation', x: 360, y: 150 };
+    const plan = planConnectedNode({
+      type: 'video',
+      sources: [content('a', 'image', 0, 0)],
+      selectionBounds: bounds,
+      selectionIds: ['a'],
+      placements: [pin],
+      measuredOf: () => ({ width: 288, height: 192 }),
+      cap: 50,
+    });
+    expect(plan).toEqual({ kind: 'ok', center: { x: 504, y: 246 }, sourceIds: ['a'] });
   });
 
   it('wires only the sources that connect into the picked type, in reference order', () => {
@@ -256,7 +360,7 @@ describe('planConnectedNode — what one pick builds (design 4.4)', () => {
       content('text-mid-right', 'text', 300, 300),
       content('text-mid-left', 'text', 0, 300),
     ];
-    const plan = planConnectedNode({ type: 'image', sources, selectionBounds: bounds, obstacles: [], cap: 50 });
+    const plan = planConnectedNode({ type: 'image', sources, selectionBounds: bounds, ...nothingAround, cap: 50 });
     expect(plan.kind).toBe('ok');
     if (plan.kind !== 'ok') return;
     // audio does not feed an image node; the rest read top to bottom, left to right.
@@ -265,12 +369,12 @@ describe('planConnectedNode — what one pick builds (design 4.4)', () => {
 
   it('refuses the whole build when the connectable sources exceed the reference cap', () => {
     const sources = [content('a', 'image', 0, 0), content('b', 'image', 0, 300), content('c', 'image', 0, 600)];
-    expect(planConnectedNode({ type: 'video', sources, selectionBounds: bounds, obstacles: [], cap: 2 })).toEqual({ kind: 'full', cap: 2 });
+    expect(planConnectedNode({ type: 'video', sources, selectionBounds: bounds, ...nothingAround, cap: 2 })).toEqual({ kind: 'full', cap: 2 });
   });
 
   it('builds when the connectable sources fill the cap exactly', () => {
     const sources = [content('a', 'image', 0, 0), content('b', 'image', 0, 300), content('c', 'image', 0, 600)];
-    const plan = planConnectedNode({ type: 'video', sources, selectionBounds: bounds, obstacles: [], cap: 3 });
+    const plan = planConnectedNode({ type: 'video', sources, selectionBounds: bounds, ...nothingAround, cap: 3 });
     expect(plan.kind).toBe('ok');
     if (plan.kind !== 'ok') return;
     expect(plan.sourceIds).toEqual(['a', 'b', 'c']);
@@ -278,7 +382,7 @@ describe('planConnectedNode — what one pick builds (design 4.4)', () => {
 
   it('counts only the sources that connect against the cap', () => {
     const sources = [content('a', 'image', 0, 0), content('b', 'image', 0, 300), content('c', 'audio', 0, 600)];
-    const plan = planConnectedNode({ type: 'image', sources, selectionBounds: bounds, obstacles: [], cap: 2 });
+    const plan = planConnectedNode({ type: 'image', sources, selectionBounds: bounds, ...nothingAround, cap: 2 });
     expect(plan.kind).toBe('ok');
     if (plan.kind !== 'ok') return;
     expect(plan.sourceIds).toEqual(['a', 'b']);
@@ -286,7 +390,7 @@ describe('planConnectedNode — what one pick builds (design 4.4)', () => {
 
   it('has no cap when the cap is unknown', () => {
     const sources = Array.from({ length: 80 }, (_, i) => content(`n${i}`, 'text', 0, i * 10));
-    const plan = planConnectedNode({ type: 'video', sources, selectionBounds: bounds, obstacles: [], cap: null });
+    const plan = planConnectedNode({ type: 'video', sources, selectionBounds: bounds, ...nothingAround, cap: null });
     expect(plan.kind).toBe('ok');
     if (plan.kind !== 'ok') return;
     expect(plan.sourceIds).toHaveLength(80);
@@ -295,7 +399,7 @@ describe('planConnectedNode — what one pick builds (design 4.4)', () => {
   // Properties over any selection: the wiring is exactly the ordered,
   // connectable sources; the cap is never crossed; the spot is never left of
   // the 72px column and always level with the selection's middle.
-  it('holds its invariants for any selection, type, cap and obstacles', () => {
+  it('holds its invariants for any selection, type, cap and surrounding nodes', () => {
     const kinds = ['text', 'image', 'video', 'audio', '3d', 'web'] as const;
     const rect = fc.record({
       x: fc.integer({ min: -3000, max: 3000 }),
@@ -303,16 +407,29 @@ describe('planConnectedNode — what one pick builds (design 4.4)', () => {
       width: fc.integer({ min: 1, max: 1000 }),
       height: fc.integer({ min: 1, max: 1000 }),
     });
+    const around = fc.record({
+      type: fc.constantFrom('text', 'image', 'video', 'audio', 'group', 'annotation'),
+      selected: fc.boolean(),
+      box: rect,
+    });
     fc.assert(
       fc.property(
         fc.array(fc.record({ kind: fc.constantFrom(...kinds), x: fc.integer({ min: -3000, max: 3000 }), y: fc.integer({ min: -3000, max: 3000 }) }), { maxLength: 15 }),
         fc.constantFrom<CreatableNodeType>(...CREATABLE_NODE_TYPES),
         fc.option(fc.nat(10), { nil: null }),
         rect,
-        fc.array(rect, { maxLength: 6 }),
-        (specs, type, cap, selectionBounds, obstacles) => {
+        fc.array(around, { maxLength: 6 }),
+        (specs, type, cap, selectionBounds, others) => {
           const sources = specs.map((s, i) => content(`s${i}`, s.kind, s.x, s.y));
-          const plan = planConnectedNode({ type, sources, selectionBounds, obstacles, cap });
+          const placements: NodePlacement[] = others.map((o, i) => ({ id: `p${i}`, type: o.type, ...o.box }));
+          const selectionIds = others.flatMap((o, i) => (o.selected ? [`p${i}`] : []));
+          const box = new Map(others.map((o, i) => [`p${i}`, { width: o.box.width, height: o.box.height }]));
+          const measuredOf = (id: string): { width: number; height: number } | undefined => box.get(id);
+          const plan = planConnectedNode({ type, sources, selectionBounds, selectionIds, placements, measuredOf, cap });
+          // A selected node never moves the spot: dropping every selected
+          // placement plans the same build.
+          const unselected = placements.filter((p) => !selectionIds.includes(p.id));
+          expect(planConnectedNode({ type, sources, selectionBounds, selectionIds: [], placements: unselected, measuredOf, cap })).toEqual(plan);
           const connectable = orderSources(sources).filter((s) => canConnect(s.type, type)).map((s) => s.id);
           if (cap !== null && connectable.length > cap) {
             expect(plan).toEqual({ kind: 'full', cap });

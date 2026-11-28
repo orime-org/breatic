@@ -8,21 +8,21 @@ import type { NodeGroupInfo } from '@web/spaces/canvas/group-toolbar';
 
 /** Build a loose (un-grouped) content node info. */
 function loose(id: string): NodeGroupInfo {
-  return { id, isGroup: false };
+  return { id, type: 'image', isGroup: false };
 }
 /** Build a collapsed annotation's info: a node no Group may hold. */
 function note(id: string): NodeGroupInfo {
-  return { id, isGroup: false, isNote: true };
+  return { id, type: 'annotation', isGroup: false, isNote: true };
 }
 /** Build a Group node info (optionally locked), shaped the way production is. */
 function group(id: string, locked = false): NodeGroupInfo {
   // CanvasSpace fills every field for every node; a fixture that omits one
   // stops seeing what production actually hands the rule.
-  return { id, isGroup: true, isNote: false, locked };
+  return { id, type: 'group', isGroup: true, isNote: false, locked };
 }
 /** Build a content node that is a member of Group `parentId`. */
 function member(id: string, parentId: string): NodeGroupInfo {
-  return { id, isGroup: false, parentId };
+  return { id, type: 'image', isGroup: false, parentId };
 }
 
 describe('computeGroupToolbar — selection → floating-toolbar offer', () => {

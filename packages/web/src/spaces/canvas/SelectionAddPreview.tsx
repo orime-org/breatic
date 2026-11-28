@@ -36,9 +36,9 @@ function sameGeometry(a: PreviewGeometry, b: PreviewGeometry): boolean {
 /**
  * The preview wires drawn while the selection plus's menu is open
  * (inner#2216): one from each node a pick would wire in, from its right
- * connection point to the plus, in the plain edge colour and under every
- * node and edge (`SELECTION_ADD_PREVIEW_Z`). Nothing is written to the
- * document and nothing takes the pointer.
+ * connection point to the plus, in the plain edge colour and above the
+ * nodes (`SELECTION_ADD_PREVIEW_Z`). Nothing is written to the document and
+ * nothing takes the pointer.
  * @param root0 - Component props.
  * @param root0.anchorIds - The nodes the plus sits beside.
  * @param root0.sourceIds - The nodes a pick would wire in.

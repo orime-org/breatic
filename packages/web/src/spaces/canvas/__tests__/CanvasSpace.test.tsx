@@ -4740,15 +4740,6 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     );
   });
 
-  it('stands the emphasized handle ::after zone down while connecting (inner#2216)', () => {
-    // The plus on a lone selected node reaches into the node through the
-    // handle's ::after; it must stand down with the ::before zone, in a rule
-    // of its own so the ::before regex above keeps matching.
-    expect(css).toMatch(
-      /\.canvas-connecting \.react-flow__handle::after\s*\{[^}]*pointer-events:\s*none/,
-    );
-  });
-
   it('hides the NodesSelection rect during a pick (marquee dead-zone neutralizer)', () => {
     // Round-3: the Shift marquee stays enabled during a pick (gating
     // selectionKeyCode latches xyflow's key state mid-hold), so the
@@ -4863,8 +4854,9 @@ describe('what an Understand or Transcribe press leaves on screen', () => {
     src.indexOf('const readingRunOf'),
     src.indexOf('const onUploadInputChange'),
   );
-  // frameBuilt reads the source's box through measuredRects and the live
-  // viewport, asks viewportForBuilt where to go, and moves there.
+  // frameBuilt takes the source's box (sourceRectOf reads it through
+  // measuredRects) and the live viewport, asks viewportForBuilt where to go,
+  // and moves there.
   const framing = src.slice(
     src.indexOf('const frameBuilt'),
     src.indexOf('// ---- Node creation (library mailbox + right-click) ----'),
@@ -4875,7 +4867,7 @@ describe('what an Understand or Transcribe press leaves on screen', () => {
     // The call, not the name: a dependency array mentions it too, and a
     // press that only lists it moves nothing.
     expect(press).toContain('setSelectAfterCreate([id])');
-    expect(press).toContain('frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), host.id)');
+    expect(press).toContain('frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), sourceRectOf(host.id))');
   });
 
   it('connects both reading actions to the builder that selects and frames the result', () => {
@@ -4900,7 +4892,8 @@ describe('what an Understand or Transcribe press leaves on screen', () => {
   // viewport from the live transform. A grouped source read off
   // `node.position` would be measured a whole group-origin away.
   it('frames against the live viewport and the source node absolute box', () => {
-    expect(framing).toContain('measuredRects([sourceNodeId])');
+    expect(framing).toContain('measuredRects([nodeId])');
+    expect(framing).toContain('viewportForBuilt(built, source,');
     expect(framing).toContain('rfStoreApi.getState()');
     expect(measured).toContain('positionAbsolute');
   });

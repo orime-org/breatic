@@ -14,7 +14,7 @@ import {
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
-import { connectableCreatableTypesForAny } from '@web/spaces/canvas/lib/connect-create';
+import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
 import { CREATABLE_NODE_TYPES, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { CreatableNodeMenuItems } from '@web/spaces/canvas/nodes/_shared/CreatableNodeMenuItems';
 import { SELECTION_ADD_BUTTON_PX } from '@web/spaces/canvas/selection-add';
@@ -40,8 +40,8 @@ interface SelectionAddButtonProps {
 /**
  * The plus beside a multi-selection or a selected group (inner#2216) and its
  * menu: the four creatable types, greyed out where no selected node
- * connects into them, then Add to Agent. It sits in a `NodeToolbar`, so the
- * menu follows the canvas viewport like every overlay anchored on the canvas.
+ * connects into them, then Add to Agent. It sits in a `NodeToolbar` and the
+ * menu follows the canvas viewport.
  * @param root0 - Component props.
  * @param root0.sourceKinds - The modalities of the nodes a pick wires in.
  * @param root0.open - Whether the menu is open.
@@ -61,10 +61,10 @@ export const SelectionAddButton = React.memo(function SelectionAddButton({
 }: SelectionAddButtonProps): React.JSX.Element {
   const t = useTranslation();
   useFollowCanvasViewport(open);
-  const disabledTypes = React.useMemo(() => {
-    const offered = new Set(connectableCreatableTypesForAny(sourceKinds));
-    return CREATABLE_NODE_TYPES.filter((type) => !offered.has(type));
-  }, [sourceKinds]);
+  const disabledTypes = React.useMemo(
+    () => CREATABLE_NODE_TYPES.filter((type) => !sourceKinds.some((kind) => canConnect(kind, type))),
+    [sourceKinds],
+  );
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
@@ -79,7 +79,10 @@ export const SelectionAddButton = React.memo(function SelectionAddButton({
           <Plus className='size-4' aria-hidden='true' />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side='right' align='start' avoidCollisions={false}>
+      {/* Radix's collision handling is on: the menu is modal, so the canvas
+          cannot pan under it, and near the window's edge it flips to keep
+          every row on screen. */}
+      <DropdownMenuContent side='right' align='start'>
         <CreatableNodeMenuItems onPick={onPick} disabledTypes={disabledTypes} />
         <DropdownMenuSeparator />
         <DropdownMenuItem

@@ -15,6 +15,8 @@
 /** Minimal per-node info the toolbar rule needs (a Group + each node's membership). */
 export interface NodeGroupInfo {
   id: string;
+  /** The node's type, which the selection plus also reads (inner#2216). */
+  type: string;
   /** Whether this node is a `type='group'` Group container. */
   isGroup: boolean;
   /** Whether this node is an annotation, which no Group holds. */

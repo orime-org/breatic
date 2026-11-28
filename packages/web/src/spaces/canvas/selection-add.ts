@@ -10,9 +10,16 @@
  * the canvas maps its nodes to {@link SelectionAddNode} at the call site.
  */
 
+import type { NodePlacement } from '@web/data/yjs/canvas-space';
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
-import { LAYER_STEP_PX, ROW_GAP_PX, shiftRightPastOccupied, withTaskCounts } from '@web/spaces/canvas/lib/place-flow';
+import {
+  LAYER_STEP_PX,
+  ROW_GAP_PX,
+  occupiedRects,
+  shiftRightPastOccupied,
+  withTaskCounts,
+} from '@web/spaces/canvas/lib/place-flow';
 import type { CreatableNodeType } from '@web/spaces/canvas/node-factory';
 
 /** The node facts the selection plus reads. */
@@ -106,25 +113,12 @@ export function resolveSelectionAdd(
 }
 
 /**
- * How many selected nodes are not notes: the count both pluses read, since a
- * note never takes the plus away (same rule as {@link resolveSelectionAdd}).
- * @param nodes - The canvas nodes with their selection state.
- * @returns The count.
- * @throws {never} Never.
- */
-export function countSelectedNonNotes(nodes: ReadonlyArray<{ type?: string; selected?: boolean }>): number {
-  let count = 0;
-  for (const node of nodes) if (node.selected === true && node.type !== 'annotation') count += 1;
-  return count;
-}
-
-/**
  * Whether a node's handles show the plus: it is the one selected node once
  * notes are left out, it takes connections, and no mini tool is drawing on
  * it (those layers sit over the picture where the plus would be).
  * @param input - The node's state.
  * @param input.selected - Whether the node is selected.
- * @param input.selectedNonNoteCount - How many selected nodes are not notes.
+ * @param input.othersSelected - Whether any other non-note node is selected.
  * @param input.connectable - Whether its handles take connections.
  * @param input.miniToolOpen - Whether a mini tool is open on it.
  * @returns Whether to show the plus.
@@ -132,11 +126,11 @@ export function countSelectedNonNotes(nodes: ReadonlyArray<{ type?: string; sele
  */
 export function handlesEmphasized(input: {
   selected: boolean;
-  selectedNonNoteCount: number;
+  othersSelected: boolean;
   connectable: boolean;
   miniToolOpen: boolean;
 }): boolean {
-  return input.selected && input.selectedNonNoteCount === 1 && input.connectable && !input.miniToolOpen;
+  return input.selected && !input.othersSelected && input.connectable && !input.miniToolOpen;
 }
 
 /**
@@ -224,14 +218,16 @@ export function previewWires(sources: readonly SelectionAddNode[], bounds: Rect,
  * Plans one pick: the sources that connect into the picked type in reference
  * order, refused whole when they exceed the reference cap, and the new
  * node's centre one column right of the selection, level with its middle,
- * moved right past anything in the way. The caller leaves the selection out
- * of `obstacles`: every node carries its task counts 68 canvas px past its
- * right edge, and the 72px column clears that on its own.
+ * moved right past anything in the way. The selection itself is no obstacle:
+ * every node carries its task counts 68 canvas px past its right edge, and
+ * the 72px column clears that on its own.
  * @param input - What the pick sees.
  * @param input.type - The picked node type.
  * @param input.sources - The candidate upstream nodes.
  * @param input.selectionBounds - The selection's bounds.
- * @param input.obstacles - Rects of the nodes outside the selection.
+ * @param input.selectionIds - The selected nodes and the members they wire.
+ * @param input.placements - Every node on the canvas.
+ * @param input.measuredOf - A node's measured size, when known.
  * @param input.cap - The reference pool cap, or null when unknown.
  * @returns The plan.
  * @throws {never} Never.
@@ -240,7 +236,9 @@ export function planConnectedNode(input: {
   type: CreatableNodeType;
   sources: readonly SelectionAddNode[];
   selectionBounds: Rect;
-  obstacles: readonly Rect[];
+  selectionIds: readonly string[];
+  placements: readonly NodePlacement[];
+  measuredOf: (id: string) => { width: number; height: number } | undefined;
   cap: number | null;
 }): ConnectedNodePlan {
   const sourceIds = orderSources(input.sources)
@@ -253,7 +251,12 @@ export function planConnectedNode(input: {
     y: bounds.y + bounds.height / 2 - EMPTY_NODE_SIZE.height / 2,
     ...EMPTY_NODE_SIZE,
   };
-  const dx = shiftRightPastOccupied(withTaskCounts(rect), input.obstacles, ROW_GAP_PX);
+  const selected = new Set(input.selectionIds);
+  const obstacles = occupiedRects(
+    input.placements.filter((placement) => !selected.has(placement.id)),
+    input.measuredOf,
+  );
+  const dx = shiftRightPastOccupied(withTaskCounts(rect), obstacles, ROW_GAP_PX);
   return {
     kind: 'ok',
     center: { x: rect.x + dx + rect.width / 2, y: rect.y + rect.height / 2 },

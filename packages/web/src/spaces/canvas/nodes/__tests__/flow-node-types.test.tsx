@@ -655,7 +655,8 @@ describe('a stored image zoomed past its preview', () => {
 
 // inner#2216 design 4.1: the handles of a node show the plus only while it is
 // the one selected non-note node on the canvas, connectable, and no mini tool
-// is open on it. The wrapper counts the selection from the xyflow store.
+// is open on it. The wrapper asks the xyflow store whether any other non-note
+// node is selected.
 describe('the plus on a lone selected node’s handles', () => {
   afterEach(() => {
     storeApi = null;
@@ -667,10 +668,12 @@ describe('the plus on a lone selected node’s handles', () => {
    * selection set to the given nodes.
    * @param others - Other nodes on the canvas, with their type and selection.
    * @param connectable - Whether the node takes connections.
+   * @param extra - More of the view the wrapper hands the body.
    */
   function renderSelected(
     others: ReadonlyArray<{ id: string; type: string; selected: boolean }>,
     connectable = true,
+    extra: Record<string, unknown> = {},
   ): void {
     const Image = FLOW_NODE_TYPES.image;
     render(
@@ -684,7 +687,7 @@ describe('the plus on a lone selected node’s handles', () => {
               {...({
                 id: 'n1',
                 type: 'image',
-                data: { handling: false, name: 'N', content: 'https://cdn.invalid/a.png' },
+                data: { handling: false, name: 'N', content: 'https://cdn.invalid/a.png', ...extra },
                 selected: true,
                 isConnectable: connectable,
               } as unknown as NodeProps)}
@@ -716,6 +719,47 @@ describe('the plus on a lone selected node’s handles', () => {
     renderSelected([{ id: 'n2', type: 'video', selected: true }]);
     expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
     expect(screen.getAllByTestId('handle-dot')).toHaveLength(2);
+  });
+
+  it('keeps the dot when a content node is selected beside a note', () => {
+    renderSelected([
+      { id: 'note', type: 'annotation', selected: true },
+      { id: 'n2', type: 'text', selected: true },
+    ]);
+    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
+  });
+
+  // The plus raises the source handle's connection zone to z-21 over the
+  // node's top right corner, where the task counts hang; the counts must stay
+  // above it or a press on a count starts a wire instead of opening the list.
+  it('keeps the task counts above the emphasized handle', () => {
+    renderSelected([], true, { taskCounts: { running: 1, done: 0, failed: 0, expired: 0 } });
+    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
+    const zOf = (el: Element): number => {
+      const z = [...el.classList].find((c) => /^z-\d+$/.test(c));
+      return z === undefined ? Number.NaN : Number(z.slice(2));
+    };
+    const anchor = screen.getByTestId('node-task-counts-anchor');
+    expect(anchor).toHaveClass('z-22');
+    const handles = [...document.querySelectorAll('.react-flow__handle')];
+    expect(handles).toHaveLength(2);
+    for (const handle of handles) expect(zOf(anchor)).toBeGreaterThan(zOf(handle));
+  });
+
+  // A marquee still being dragged has not settled the selection: the plus
+  // waits for the release, then shows.
+  it('waits for the marquee to be released before showing the plus', () => {
+    renderSelected([]);
+    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
+    act(() => {
+      storeApi?.setState({ userSelectionActive: true });
+    });
+    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
+    expect(screen.getAllByTestId('handle-dot')).toHaveLength(2);
+    act(() => {
+      storeApi?.setState({ userSelectionActive: false });
+    });
+    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
   });
 
   it('keeps the dot when the node takes no connections (viewer, reference pick)', () => {

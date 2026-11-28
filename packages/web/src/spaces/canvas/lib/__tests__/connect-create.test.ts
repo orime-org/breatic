@@ -3,13 +3,8 @@
 
 import { afterEach, describe, it, expect } from 'vitest';
 
-import fc from 'fast-check';
-
-import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
-import { CREATABLE_NODE_TYPES } from '@web/spaces/canvas/node-factory';
 import {
   connectableCreatableTypes,
-  connectableCreatableTypesForAny,
   isBlankCanvasRelease,
   resolveReleaseElement,
   resolveConnectCreateIntent,
@@ -52,42 +47,6 @@ describe('connectableCreatableTypes — creatable ∩ rule-compatible targets', 
     // no creatable modality's whitelist admits them as sources.
     expect(connectableCreatableTypes('3d')).toEqual([]);
     expect(connectableCreatableTypes('')).toEqual([]);
-  });
-});
-
-// The selection plus (inner#2216 design 4.3): a menu row is available when
-// ANY selected node connects into that type, so the offer is the union of
-// each node's rows, still in library order.
-describe('connectableCreatableTypesForAny — union over the selected kinds', () => {
-  it('offers nothing for no kinds', () => {
-    expect(connectableCreatableTypesForAny([])).toEqual([]);
-  });
-
-  it('offers nothing for kinds no creatable input accepts', () => {
-    expect(connectableCreatableTypesForAny(['3d', 'web'])).toEqual([]);
-  });
-
-  it('matches the single-kind rows for one kind', () => {
-    expect(connectableCreatableTypesForAny(['audio'])).toEqual(['text', 'audio', 'video']);
-  });
-
-  it('adds image once an image is among audio', () => {
-    expect(connectableCreatableTypesForAny(['audio', 'image'])).toEqual(['text', 'image', 'audio', 'video']);
-  });
-
-  it('ignores a kind nobody accepts beside one that connects', () => {
-    expect(connectableCreatableTypesForAny(['video', '3d'])).toEqual(['text', 'audio', 'video']);
-  });
-
-  it('is the library-ordered union for any kinds', () => {
-    const kinds = ['text', 'image', 'video', 'audio', '3d', 'web', 'annotation', ''];
-    fc.assert(
-      fc.property(fc.array(fc.constantFrom(...kinds), { maxLength: 8 }), (picked) => {
-        expect(connectableCreatableTypesForAny(picked)).toEqual(
-          CREATABLE_NODE_TYPES.filter((type) => picked.some((kind) => canConnect(kind, type))),
-        );
-      }),
-    );
   });
 });
 

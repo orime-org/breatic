@@ -220,7 +220,6 @@ import {
   placedNodes,
   planConnectedNode,
   resolveSelectionAdd,
-  type SelectionAddKind,
 } from '@web/spaces/canvas/selection-add';
 import { SelectionAddButton } from '@web/spaces/canvas/SelectionAddButton';
 import { SelectionAddPreview } from '@web/spaces/canvas/SelectionAddPreview';
@@ -2341,19 +2340,23 @@ function CanvasSpaceInner({
   // Understand node — slide at the user's zoom, and zoom out only when it
   // does not fit.
   const frameBuilt = React.useCallback(
-    (built: Rect, sourceNodeId: string): void => {
+    (built: Rect, source: Rect | null): void => {
       const { transform: [x, y, zoom], width, height } = rfStoreApi.getState();
-      // A collaborator can delete the node being read while the menu stands
-      // open. The press still produced a node, so it is still what has to be
-      // in front of the user — there is just no second box to frame it with.
-      const next = viewportForBuilt(built, measuredRects([sourceNodeId])[0] ?? null, { width, height }, { x, y, zoom });
+      const next = viewportForBuilt(built, source, { width, height }, { x, y, zoom });
       if (next === null) return;
       void setViewport(next, {
         duration: next.zoom === zoom ? FRAME_PAN_MS : PROPOSAL_FRAME_MS,
         interpolate: 'linear',
       });
     },
-    [measuredRects, rfStoreApi, setViewport],
+    [rfStoreApi, setViewport],
+  );
+  // A collaborator can delete the node being read while the menu stands
+  // open. The press still produced a node, so it is still what has to be in
+  // front of the user — there is just no second box to frame it with.
+  const sourceRectOf = React.useCallback(
+    (nodeId: string): Rect | null => measuredRects([nodeId])[0] ?? null,
+    [measuredRects],
   );
 
   // ---- Node creation (library mailbox + right-click) ----
@@ -3191,6 +3194,7 @@ function CanvasSpaceInner({
       () =>
         flowNodes.map((node) => ({
           id: node.id,
+          type: node.type ?? '',
           isGroup: node.type === 'group',
           isNote: !canJoinGroup(node.type) && node.type !== 'group',
           parentId: node.parentId,
@@ -3199,25 +3203,22 @@ function CanvasSpaceInner({
       [flowNodes],
     ),
     (info) =>
-      `${info.id}:${info.isGroup ? 1 : 0}:${info.isNote === true ? 1 : 0}:${info.parentId ?? ''}:${info.locked ? 1 : 0}`,
+      `${info.id}:${info.type}:${info.isGroup ? 1 : 0}:${info.isNote === true ? 1 : 0}:${info.parentId ?? ''}:${info.locked ? 1 : 0}`,
   );
   const groupOffer = React.useMemo(
     () => computeGroupToolbar(selectedIds, groupInfos),
     [selectedIds, groupInfos],
   );
+  // xyflow marks nodes selected while a marquee is still being dragged; the
+  // chrome a selection brings shows once the marquee is released, as xyflow
+  // draws its own selection rect only then.
+  const marqueeDragging = useStore((s) => s.userSelectionActive);
   // ---- Selection plus (inner#2216) ----
-  // Kinds and membership only, so a position drag or a data write never
-  // re-derives the offer.
-  const selectionAddKinds = useStableList(
-    React.useMemo<SelectionAddKind[]>(
-      () => flowNodes.map((node) => ({ id: node.id, type: node.type ?? '', parentId: node.parentId })),
-      [flowNodes],
-    ),
-    (kind) => `${kind.id}:${kind.type}:${kind.parentId ?? ''}`,
-  );
+  // Kinds and membership only (`groupInfos`), so a position drag or a data
+  // write never re-derives the offer.
   const selectionAdd = React.useMemo(
-    () => resolveSelectionAdd(selectedIds, selectionAddKinds),
-    [selectedIds, selectionAddKinds],
+    () => resolveSelectionAdd(selectedIds, groupInfos),
+    [selectedIds, groupInfos],
   );
   const selectionAddAnchors = useStableList(
     selectionAdd.kind === 'add' ? selectionAdd.anchorIds : NO_IDS,
@@ -3227,19 +3228,31 @@ function CanvasSpaceInner({
   );
   const selectionAddSourceKinds = useStableList(
     React.useMemo(() => {
-      const typeOf = new Map(selectionAddKinds.map((kind) => [kind.id, kind.type]));
+      const typeOf = new Map(groupInfos.map((info) => [info.id, info.type]));
       return selectionAddSources.map((id) => typeOf.get(id) ?? '');
-    }, [selectionAddKinds, selectionAddSources]),
+    }, [groupInfos, selectionAddSources]),
   );
-  // Same concealment as the group toolbar: viewers cannot create, and floating
-  // chrome over a reference pick would swallow candidate clicks.
+  // A marquee that ends on one node leaves xyflow's NodesSelection active,
+  // and its rect lies over the node and takes the presses meant for the
+  // node's own controls; a lone node takes its presses like a click-selected
+  // one (`selectOnlyNode`). xyflow sets it when the marquee is released,
+  // after the selection settled.
+  const selectionAddSingle = selectionAdd.kind === 'single';
+  const marqueeRectActive = useStore((s) => s.nodesSelectionActive);
+  React.useEffect(() => {
+    if (selectionAddSingle && marqueeRectActive) rfStoreApi.setState({ nodesSelectionActive: false });
+  }, [selectionAddSingle, marqueeRectActive, rfStoreApi]);
+  // Same concealment as the group toolbar: viewers cannot create, floating
+  // chrome over a reference pick would swallow candidate clicks, and a
+  // marquee still being dragged has not decided the selection yet.
   const selectionAddVisible =
-    selectionAddAnchors.length > 0 && !readOnly && pickForNodeId == null;
+    selectionAddAnchors.length > 0 && !readOnly && pickForNodeId == null && !marqueeDragging;
   const [selectionAddMenuOpen, setSelectionAddMenuOpen] = React.useState(false);
-  // A different selection is a different set of upstreams: the menu closes.
+  // A different selection is a different set of upstreams, and a plus that
+  // went away takes its menu with it: either way the menu closes.
   React.useEffect(() => {
     setSelectionAddMenuOpen(false);
-  }, [selectedIds]);
+  }, [selectedIds, selectionAddVisible]);
   const selectionAddOpen = selectionAddMenuOpen && selectionAddVisible;
   // Who would go into a new Group. A node a remote gesture is holding is left
   // out: taking it in would write its parent and its position relative to an
@@ -3676,23 +3689,18 @@ function CanvasSpaceInner({
     (type: CreatableNodeType): void => {
       const bounds = boundsOf(placedNodes(selectionAddAnchors, getInternalNode));
       if (!bounds) return;
-      // The selection is no obstacle: every node's task counts reach 68 canvas
-      // px past its right edge, and the 72px column clears them on its own.
-      const inSelection = new Set([...selectionAddAnchors, ...selectionAddSources]);
-      const obstacles = occupiedRects(
-        readNodePlacements(projectId, spaceId).filter((p) => !inSelection.has(p.id)),
-        (id) => {
+      const plan = planConnectedNode({
+        type,
+        sources: placedNodes(selectionAddSources, getInternalNode),
+        selectionBounds: bounds,
+        selectionIds: [...selectionAddAnchors, ...selectionAddSources],
+        placements: readNodePlacements(projectId, spaceId),
+        measuredOf: (id) => {
           const measured = getInternalNode(id)?.measured;
           return measured?.width && measured.height
             ? { width: measured.width, height: measured.height }
             : undefined;
         },
-      );
-      const plan = planConnectedNode({
-        type,
-        sources: placedNodes(selectionAddSources, getInternalNode),
-        selectionBounds: bounds,
-        obstacles,
         cap: getCachedReferencePoolCap(),
       });
       if (plan.kind === 'full') {
@@ -3710,6 +3718,10 @@ function CanvasSpaceInner({
       // An upstream deleted while the menu was open: the rest still land.
       if (failedSourceIds.length > 0) toast.error(t('canvas.generatePanel.referenceAddFailed'));
       setSelectAfterCreate([nodeId]);
+      // The column right of the selection is often past the window's edge:
+      // slide the new node in front of the user with what it was made from.
+      const { width, height } = EMPTY_NODE_SIZE;
+      frameBuilt({ x: plan.center.x - width / 2, y: plan.center.y - height / 2, width, height }, bounds);
     },
     [
       getInternalNode,
@@ -3718,6 +3730,7 @@ function CanvasSpaceInner({
       projectId,
       spaceId,
       createNodeAt,
+      frameBuilt,
       t,
     ],
   );
@@ -4247,11 +4260,11 @@ function CanvasSpaceInner({
         // user — a selection flag moves nothing.
         onBuilt: ({ id, position }) => {
           setSelectAfterCreate([id]);
-          frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), host.id);
+          frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), sourceRectOf(host.id));
         },
       };
     },
-    [frameBuilt, nodes, projectId, spaceId, viewerId],
+    [frameBuilt, sourceRectOf, nodes, projectId, spaceId, viewerId],
   );
   const understandFromMenu = React.useCallback((): void => {
     const run = readingRunOf(nodeMenu.nodeId, menuDownloadUrl);
@@ -4288,13 +4301,13 @@ function CanvasSpaceInner({
   const showMiniToolResults = React.useCallback((sourceId: string, built: Parameters<MiniToolRun['onBuilt']>[0], group?: BuiltGroup): void => {
     if (group !== undefined) {
       setSelectAfterCreate([group.id]);
-      frameBuilt({ ...group.position, width: group.width, height: group.height }, sourceId);
+      frameBuilt({ ...group.position, width: group.width, height: group.height }, sourceRectOf(sourceId));
       return;
     }
     setSelectAfterCreate(built.map((node) => node.id));
     const [first, ...rest] = built.map((node) => ({ ...node.position, width: node.width, height: node.height }));
-    if (first !== undefined) frameBuilt(freshNodesBox([first, ...rest]), sourceId);
-  }, [frameBuilt]);
+    if (first !== undefined) frameBuilt(freshNodesBox([first, ...rest]), sourceRectOf(sourceId));
+  }, [frameBuilt, sourceRectOf]);
 
   // A mini-tool's Run (inner#888 §7.5): the snapshot was taken by the panel.
   // Whatever the press makes in the browser first (a browser tool's file, a
