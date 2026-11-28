@@ -3019,26 +3019,30 @@ function CanvasSpaceInner({
     if (!selectAfterCreate.every((id) => nodes.some((node) => node.id === id)))
       return;
     const ids = selectAfterCreate;
-    const targets = new Set(ids);
-    // reconcileSelection keeps untouched nodes' references so React.memo
-    // bails on the rest of the canvas (same discipline as the other
-    // programmatic selection writes).
-    setFlowNodes((current) =>
-      reconcileSelection(current, (node) => targets.has(node.id)),
-    );
-    // One thing made (a node, or the Group a drop wraps) is selected like a
-    // click-selected one (`selectOnlyNode`): a marquee made before it leaves
-    // xyflow's NodesSelection active, whose rect would shrink onto it and take
-    // its members' and its own presses. Several keep the rect, so they move
+    // The selection becomes exactly what was made; edges selected before it
+    // are dropped, or Delete would take them along. One thing made (a node,
+    // or the Group a drop wraps) is selected like a click-selected one,
+    // which also clears a marquee's NodesSelection rect that would shrink
+    // onto it and take its presses. Several keep the rect, so they move
     // together.
-    if (ids.length === 1) rfStoreApi.setState({ nodesSelectionActive: false });
+    if (ids.length === 1) {
+      selectOnlyNode(ids[0]);
+    } else {
+      const targets = new Set(ids);
+      // reconcileSelection keeps untouched items' references so React.memo
+      // bails on the rest of the canvas.
+      setFlowNodes((current) =>
+        reconcileSelection(current, (node) => targets.has(node.id)),
+      );
+      setFlowEdges((current) => reconcileSelection(current, () => false));
+    }
     // A newer creation may already be waiting; only this run's ids clear.
     setSelectAfterCreate((current) => (current === ids ? null : current));
     const pasted = focusPastedRef.current;
     if (pasted?.ids !== ids) return;
     focusPastedRef.current = null;
     focusFirstCopy(ids, pasted.sources);
-  }, [selectAfterCreate, nodes, setFlowNodes, focusFirstCopy, rfStoreApi]);
+  }, [selectAfterCreate, nodes, setFlowNodes, setFlowEdges, selectOnlyNode, focusFirstCopy]);
 
   // A 3D capture's "View" press (#1411 design 5.4): once loaded and holding
   // the node, centre on it at the user's zoom and select it.

@@ -633,6 +633,55 @@ test('a marquee over two nodes, then two text files dropped: their Group comes o
   await expect.poll(() => selectedIds(page)).toEqual([members[0]!]);
 });
 
+// inner#2216: what a paste selects is exactly what it made. An edge selected
+// before it is let go, so its scissors go and Delete cannot take it along.
+test('a selected edge, then one copied node pasted: the edge is let go and the copy is the selection', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const first = crypto.randomUUID();
+  const second = crypto.randomUUID();
+  const copied = crypto.randomUUID();
+  await seedNode(first, 'image', undefined, 0, 0);
+  await seedNode(second, 'image', undefined, 520, 0);
+  await seedNode(copied, 'image', undefined, 0, 600);
+  const wire = `${first}->${second}`;
+  await onCanvas(
+    page,
+    'canvas.addEdge(pid, sid, { id: extra.id, source: extra.source, target: extra.target, createdAt: Date.now() });',
+    { id: wire, source: first, target: second },
+  );
+  const edge = visibleSpace(page).locator(`.react-flow__edge[data-id="${wire}"]`);
+  await expect(edge).toHaveCount(1);
+  await fit(page);
+  await zoomTo(page, 50);
+
+  await clickNode(page, copied);
+  await expect.poll(() => selectedIds(page)).toEqual([copied]);
+  await page.keyboard.press('ControlOrMeta+C');
+
+  // The middle of the wire's path on screen, confirmed to hit the wire.
+  const onWire = await edge.evaluate((el) => {
+    const path = el.querySelector('path.react-flow__edge-path') ?? el.querySelector('path');
+    if (!(path instanceof SVGPathElement)) return null;
+    const at = path.getPointAtLength(path.getTotalLength() / 2);
+    const matrix = path.getScreenCTM();
+    if (matrix === null) return null;
+    const point = new DOMPoint(at.x, at.y).matrixTransform(matrix);
+    const hit = document.elementFromPoint(point.x, point.y)?.closest('.react-flow__edge');
+    return hit === el ? { x: point.x, y: point.y } : null;
+  });
+  expect(onWire, 'a point on screen that hits the wire').not.toBeNull();
+  await page.mouse.click(onWire!.x, onWire!.y);
+  await expect(edge).toHaveClass(/selected/);
+  await expect(visibleSpace(page).getByTestId(`edge-scissors-${wire}`)).toBeVisible();
+
+  const before = (await graph(page)).nodes.map((n) => n.id);
+  await page.keyboard.press('ControlOrMeta+V');
+  const made = await newNode(page, before);
+  await expect.poll(() => selectedIds(page)).toEqual([made.id]);
+  await expect(edge).not.toHaveClass(/selected/);
+  await expect(visibleSpace(page).getByTestId(`edge-scissors-${wire}`)).toHaveCount(0);
+});
+
 test('a marquee over two nodes, then one copied node pasted: no selection rect, and the copy takes a click', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const first = crypto.randomUUID();

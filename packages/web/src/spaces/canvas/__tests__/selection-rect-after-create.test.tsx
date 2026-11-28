@@ -53,7 +53,7 @@ import { assetsApi } from '@web/data/api';
 import { canvasApi } from '@web/data/api/canvas';
 import { _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
-import { addNode, readNodes, _resetCanvasUndoCacheForTests } from '@web/data/yjs/canvas-space';
+import { addEdge, addNode, readNodes, _resetCanvasUndoCacheForTests } from '@web/data/yjs/canvas-space';
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { useUIStore } from '@web/stores';
 import { canvasGraphs } from '@web/stores/canvas-graph';
@@ -137,6 +137,32 @@ function marqueeAll(): void {
 
 const rect = (): Element | null => document.querySelector('.react-flow__nodesselection-rect');
 
+/**
+ * Seeds the wire a -> b and waits for the canvas to draw it.
+ * @returns The wire's id.
+ */
+async function wireAB(): Promise<string> {
+  addEdge(PID, SID, { id: 'a->b', source: 'a', target: 'b', createdAt: 1 });
+  await waitFor(() => expect(canvasGraphs.of(SID).getState().flowEdges.map((e) => e.id)).toEqual(['a->b']));
+  return 'a->b';
+}
+
+/**
+ * Sets what is selected in the canvas's ReactFlow mirror.
+ * @param nodeIds - The nodes to select; every other node is deselected.
+ * @param edgeIds - The edges to select; every other edge is deselected.
+ */
+function select(nodeIds: readonly string[], edgeIds: readonly string[]): void {
+  act(() => {
+    const graph = canvasGraphs.of(SID).getState();
+    graph.setFlowNodes((prev) => prev.map((n) => ({ ...n, selected: nodeIds.includes(n.id) })));
+    graph.setFlowEdges((prev) => prev.map((e) => ({ ...e, selected: edgeIds.includes(e.id) })));
+  });
+}
+
+const selectedEdgeIds = (): string[] =>
+  canvasGraphs.of(SID).getState().flowEdges.filter((e) => e.selected === true).map((e) => e.id).sort();
+
 const selectedIds = (): string[] =>
   canvasGraphs.of(SID).getState().flowNodes.filter((n) => n.selected === true).map((n) => n.id).sort();
 
@@ -198,5 +224,40 @@ describe('the marquee rect after a creation (inner#2216)', () => {
     marqueeAll();
     expect(selectedIds()).toEqual(['a']);
     await waitFor(() => expect(rect()).toBeNull());
+  });
+});
+
+// inner#2216: what a creation selects is exactly what it made. An edge that
+// was selected before it is dropped, or the scissors stay on it and Delete
+// would take it along with the new nodes.
+describe('the edges selected before a creation (inner#2216)', () => {
+  it('deselects a selected edge when one node is made', async () => {
+    await mountWith(['a', 'b']);
+    const wire = await wireAB();
+    select(['a'], [wire]);
+    expect(selectedEdgeIds()).toEqual([wire]);
+
+    duplicate();
+    await waitFor(() => expect(readNodes(getDoc(docName.canvasSpace(PID, SID)))).toHaveLength(3));
+    const copy = readNodes(getDoc(docName.canvasSpace(PID, SID))).find((n) => n.id !== 'a' && n.id !== 'b')!.id;
+    await waitFor(() => expect(selectedIds()).toEqual([copy]));
+    expect(selectedEdgeIds()).toEqual([]);
+  });
+
+  it('deselects a selected edge when several nodes are made, keeping the marquee rect around them', async () => {
+    await mountWith(['a', 'b', 'c']);
+    const wire = await wireAB();
+    marqueeAll();
+    // Narrowed to two nodes and the wire, the marquee's rect still standing.
+    select(['b', 'c'], [wire]);
+    expect(rect()).not.toBeNull();
+    expect(selectedEdgeIds()).toEqual([wire]);
+
+    duplicate();
+    await waitFor(() => expect(readNodes(getDoc(docName.canvasSpace(PID, SID)))).toHaveLength(5));
+    const copies = readNodes(getDoc(docName.canvasSpace(PID, SID))).map((n) => n.id).filter((id) => !['a', 'b', 'c'].includes(id)).sort();
+    await waitFor(() => expect(selectedIds()).toEqual(copies));
+    expect(selectedEdgeIds()).toEqual([]);
+    expect(rect()).not.toBeNull();
   });
 });
