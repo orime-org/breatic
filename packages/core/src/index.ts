@@ -286,7 +286,6 @@ export {
 export {
   flushServerAnalytics,
   initServerAnalytics,
-  reportAnalyticsFailure,
   resetServerAnalyticsForTest,
   serverAnalyticsOn,
   serverAnalyticsWanted,

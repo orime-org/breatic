@@ -67,9 +67,8 @@ function readConfig(): NonNullable<typeof parsed> {
   }
   try {
     const rawObject: unknown = JSON.parse(rawActions);
-    const parsedActions = actionsSchema.parse(rawObject);
+    const actions = actionsSchema.parse(rawObject);
     const ignoredKeys = Object.keys(rawObject as object).filter((key) => !(ADS_CONVERSIONS as readonly string[]).includes(key));
-    const actions = Object.fromEntries(Object.entries(parsedActions).filter(([, id]) => id !== undefined)) as Partial<Record<AdsConversionName, string>>;
     const credentials = credentialsSchema.parse(JSON.parse(rawCredentials));
     if (!/^\d{10}$/.test(customerId)) throw new Error("customer id");
     parsed = { config: { customerId, actions, credentials }, state: "on", ignoredKeys };

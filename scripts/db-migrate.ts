@@ -27,7 +27,7 @@ loadEnv(ROOT);
 // ── Run migration ───────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const { closeDb, closeYjsDb, ensureCollabLogin, initCore, runMigrations, runYjsMigrations } = await import(
+  const { closeDb, closeYjsDb, ensureCollabLogin, env, initCore, runMigrations, runYjsMigrations } = await import(
     "../packages/core/dist/index.js"
   );
   // Core reads no env directly (PR #168 env injection) — this migration
@@ -46,11 +46,19 @@ async function main(): Promise<void> {
   const { migrationsFolder: yjsFolder } = await runYjsMigrations();
   // eslint-disable-next-line no-console
   console.log(`✓ Yjs migrations completed (folder: ${yjsFolder})`);
-  const collabUrl = process.env.COLLAB_DATABASE_URL?.trim();
-  if (collabUrl) {
-    await ensureCollabLogin(process.env.DATABASE_URL ?? "", collabUrl);
-    // eslint-disable-next-line no-console
-    console.log(`✓ collab login ready (user: ${decodeURIComponent(new URL(collabUrl).username)})`);
+  if (env.COLLAB_DATABASE_URL !== undefined) {
+    try {
+      const { user } = await ensureCollabLogin(env.DATABASE_URL, env.COLLAB_DATABASE_URL);
+      // eslint-disable-next-line no-console
+      console.log(`✓ collab login ready (user: ${user})`);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`\n❌ collab login failed: ${err instanceof Error ? err.message : String(err)}`);
+      // eslint-disable-next-line no-console
+      console.error("   → Check COLLAB_DATABASE_URL in .env: collab's own login on DATABASE_URL's server and database\n");
+      await Promise.all([closeDb(), closeYjsDb()]);
+      process.exit(1);
+    }
   } else {
     // eslint-disable-next-line no-console
     console.log("! COLLAB_DATABASE_URL is not set: collab's login was not created, and collab will not start");
