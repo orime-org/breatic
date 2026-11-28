@@ -10,6 +10,9 @@
  * list needs the maintainer's approval and a migration in the same change.
  */
 
+/** The NOLOGIN role migration 0143 creates; collab's login holds it and nothing else. */
+export const COLLAB_WRITER_ROLE = "collab_writer";
+
 /** Per table: whether rows may be inserted, and the columns that may be updated. */
 export type CollabWriteScope = Readonly<Record<string, { readonly insert: boolean; readonly update: readonly string[] }>>;
 
