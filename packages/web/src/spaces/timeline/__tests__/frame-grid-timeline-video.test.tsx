@@ -114,6 +114,15 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client.clear(); _resetForTests(); vi.restoreAllMocks(); });
 
 describe('U05 the Timeline preview plays through Qp (§7.8, §7.9)', () => {
+  it('U05: a version selected while the preview stands still replaces the original layer at once, with no other render', async () => {
+    const preview = await mount(presentedResponse(presentedBinding(ASSET.fileUrl), { preparation: presentedPreparation(null) }));
+    expect(preview.querySelector(`video[src="${corsUrl(ASSET.fileUrl)}"]`)).not.toBeNull();
+    const bundle = presentedBundle(ASSET.fileUrl, { playback: { kind: 'native', carrier: { storageKey: 'timeline-playback.mp4', url: PLAYBACK, etag: '"p"', size: 4096, sha256: 'b'.repeat(64), contentType: 'video/mp4' }, displayRect: null } });
+    act(() => { client.setQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: ASSET.fileUrl, active: true }).queryKey, presentedResponse(presentedBinding(ASSET.fileUrl), { presentation: bundle })); });
+    await waitFor(() => expect(preview.querySelector(`video[src="${PLAYBACK}"]`)).not.toBeNull());
+    expect(preview.querySelector(`video[src="${corsUrl(ASSET.fileUrl)}"]`)).toBeNull();
+  });
+
   it('U05: with a selected version the preview plays the playback file, not the registered original', async () => {
     const bundle = presentedBundle(ASSET.fileUrl, { playback: { kind: 'native', carrier: { storageKey: 'timeline-playback.mp4', url: PLAYBACK, etag: '"p"', size: 4096, sha256: 'b'.repeat(64), contentType: 'video/mp4' }, displayRect: null } });
     const preview = await mount(presentedResponse(presentedBinding(ASSET.fileUrl), { presentation: bundle }));

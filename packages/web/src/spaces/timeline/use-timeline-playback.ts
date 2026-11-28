@@ -177,7 +177,9 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
     audio.current = null;
     if (context !== null && context.state !== 'closed') void context.close().catch(() => undefined);
   }, [controller]);
-  React.useEffect(() => {
+  // A layout effect, so a lane made or replaced here (a clip entering, a version selected) is in place before the Space's
+  // own layout effect mounts each lane's surface in the frame; a passive one would leave it unmounted until a later render.
+  React.useLayoutEffect(() => {
     controller.sync(videoLayers);
     evaluateNow.current?.();
   }, [controller, videoLayers]);

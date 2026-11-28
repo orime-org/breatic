@@ -927,7 +927,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
         <div ref={setPreviewArea} data-testid='timeline-preview-area' className='flex h-full w-full items-center justify-center'>
           <div className='relative shrink-0' style={previewStyle}>
             <div data-testid='timeline-preview' className='absolute inset-0 isolate flex items-center justify-center overflow-hidden rounded-content-sm border border-border bg-black'>
-              <div ref={videoHost} className='pointer-events-none absolute inset-0' />
+              <div ref={videoHost} data-testid='timeline-video-layers' className='pointer-events-none absolute inset-0' />
               {imageClips.map((clip) => {
                 const source = timelineClipSource(document.sources, clip);
                 if (source?.kind !== 'image') return null;
