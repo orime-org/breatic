@@ -3705,8 +3705,8 @@ function CanvasSpaceInner({
 
   /**
    * The selection plus's pick (inner#2216): build the picked type one column
-   * right of the selection and wire every selected node that connects into
-   * it, skipping the rest; the whole build is refused when they exceed the
+   * right of the selection and wire every node it covers that connects into
+   * it (the selected nodes and a selected Group's members), skipping the rest; the whole build is refused when they exceed the
    * reference cap, as every reference add is.
    * @param type - The picked node type.
    */

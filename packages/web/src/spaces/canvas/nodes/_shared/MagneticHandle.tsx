@@ -42,8 +42,10 @@ const PLUS_GAP_SCREEN_PX = 4;
 
 /**
  * The press zone of an emphasized handle, `--handle-zone` canvas px square
- * from the border outward: the plain zone's 36px on screen, so the plus
- * sitting wholly outside the node has room to follow the pointer. `z-23`
+ * from the border outward: never less than the plain zone's 36 canvas px,
+ * and widened below 100% zoom so it holds 36px on screen down to the 50%
+ * floor, so the plus sitting wholly outside the node has room to follow the
+ * pointer. `z-23`
  * lifts it above the task counts column (`z-22`, flow-node-types), the video
  * node's playback-error cover (`z-20`, VideoNode) and its control bar
  * (`z-10`, MediaPlayer), which share the node's stacking context.
@@ -114,7 +116,8 @@ export function MagneticHandle({
   const scale = React.useContext(NodeScaleContext);
   // Where the visible mark's centre may go, in canvas px out from the border:
   // the dot rests on the border; the plus rests its gap away and never
-  // crosses the border, inside a zone kept 36px on screen.
+  // crosses the border, inside a zone of at least 36 canvas px that holds
+  // 36px on screen between 50% and 100% zoom.
   const plusRadius = (PLUS_SCREEN_PX / 2) * scale;
   const zone = plus ? ZONE_OUT_PX * Math.max(1, scale) : ZONE_OUT_PX;
   const restOut = plus ? PLUS_GAP_SCREEN_PX * scale + plusRadius : 0;

@@ -743,9 +743,6 @@ async function expectRectAround(page: Page, ids: readonly string[]): Promise<voi
   }).toBe('around');
 }
 
-// inner#2216: building from the selection plus clears xyflow's marquee rect
-// for its one new node, but a duplicate or a paste of a marquee selection
-// keeps it: the copies come out selected inside the rect, ready to drag.
 // inner#2216: the selection rect wears the canvas's selected colour, not
 // xyflow's default blue, in whichever theme the page is in.
 test('a marquee over two nodes: the selection rect is filled with the selected colour, not xyflow\'s blue', async ({ page }) => {
@@ -774,6 +771,9 @@ test('a marquee over two nodes: the selection rect is filled with the selected c
   expect(fill, 'the selected background token').toBe(selectedBg);
 });
 
+// inner#2216: building from the selection plus clears xyflow's marquee rect
+// for its one new node, but a duplicate or a paste of a marquee selection
+// keeps it: the copies come out selected inside the rect, ready to drag.
 test('a marquee over two nodes and Cmd/Ctrl+D: the selection rect surrounds the copies', async ({ page }) => {
   const first = crypto.randomUUID();
   const second = crypto.randomUUID();

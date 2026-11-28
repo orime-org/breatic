@@ -674,7 +674,8 @@ export function renderProductGuide(): string {
       "from each selected node (a group's members) to the plus. Picking a type creates that node to the right, " +
       "already connected from every selected node that can connect into it, so they all show in its generation " +
       "panel; the others are simply left out. A type none of them can connect into is greyed out. " +
-      `${quoted(t("canvas.contextMenu.addToAgent"))} there does the same as in the right-click menu.`,
+      `${quoted(t("canvas.contextMenu.addToAgent"))} there hands every selected node to the Agent, as it does in the ` +
+      "right-click menu inside a box selection's frame.",
     "- Paste with Cmd/Ctrl+V: a copied node, a file or screenshot, or plain text, which becomes a text node. " +
       "Pictures, videos and sounds copied in a document's body, with nothing else selected, paste as nodes of " +
       "their kind named after their caption or file name, several at once four to a row inside a new group " +

@@ -35,7 +35,7 @@ interface CreatableNodeMenuItemsProps {
   types?: readonly CreatableNodeType[];
   /**
    * Types listed but not pickable: the selection plus lists all four and
-   * greys out the ones no selected node connects into (inner#2216).
+   * greys out the ones no node it would wire in connects into (inner#2216).
    */
   disabledTypes?: readonly CreatableNodeType[];
 }

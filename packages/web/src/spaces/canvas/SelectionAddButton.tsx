@@ -35,8 +35,9 @@ interface SelectionAddButtonProps {
 
 /**
  * The plus beside a multi-selection or a selected group (inner#2216) and its
- * menu: the four creatable types, greyed out where no selected node
- * connects into them, then Add to Agent. It sits in a `NodeToolbar` and the
+ * menu: the four creatable types, greyed out where no node a pick would wire
+ * in (the selected nodes and a selected Group's members) connects into them,
+ * then Add to Agent. It sits in a `NodeToolbar` and the
  * menu follows the canvas viewport.
  * @param root0 - Component props.
  * @param root0.sourceKinds - The modalities of the nodes a pick wires in.

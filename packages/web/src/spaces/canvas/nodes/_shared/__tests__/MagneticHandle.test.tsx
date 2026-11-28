@@ -267,8 +267,8 @@ describe('MagneticHandle — dot rests during a connection drag', () => {
 });
 
 /**
- * Mounts a handle at a node counter-scale (1 at 100% zoom and above, 2 at 50%
- * and below).
+ * Mounts a handle at a node counter-scale (1 / zoom from 50% zoom up, so 1 at
+ * 100%; 2 at 50% and below).
  * @param scale - The NodeScaleContext value.
  * @param emphasized - Whether the handle shows the plus.
  * @param type - Which side the handle is on.
@@ -326,8 +326,9 @@ const PLAIN_DOT = ['rounded-full', 'border', 'border-border', 'bg-muted'];
 // inner#2216 design 4.1: on a lone selected node the dot becomes a 20px
 // screen-size plus standing wholly outside the node, its near edge 4 screen
 // px past the border at rest and vertically centred, while the wire still
-// attaches at the border. The press zone is the plain 36px on screen (handed
-// over as `--handle-zone`), the handle rises above the video error layer
+// attaches at the border. The press zone is 36px on screen from 50% to 100%
+// zoom and never less than the plain 36 canvas px (handed over as
+// `--handle-zone`), the handle rises above the video error layer
 // (z-20) and the task counts (z-22) as z-23, nothing reaches into the node,
 // and the plus follows the pointer inside the zone without ever crossing the
 // border. At rest it carries no `handle-plus-zone`: that is only for a drag

@@ -204,7 +204,7 @@ function makeFlowNode(
     const expanding = useCanvasSession((s) => miniToolOpenOn(props.id)(s)?.expand != null);
     // The plus on the handles (inner#2216): the one selected node the canvas
     // names in the session (none while a marquee is dragged), when it takes
-    // connections and no mini tool draws over its picture. A selection change
+    // connections and no mini tool is open on it. A selection change
     // re-renders only the nodes whose answer changed.
     const miniToolOpen = useCanvasSession((s) => miniToolOpenOn(props.id)(s) != null);
     const lone = useCanvasSession((s) => s.loneSelectedId === props.id);
