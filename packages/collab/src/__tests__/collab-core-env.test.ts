@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { collabCoreEnv } from "@collab/collab-core-env.js";
+import { collabCoreEnv, collabPostgresHint } from "@collab/collab-core-env.js";
 
 const ADMIN = "postgres://breatic:admin-pw@localhost:5432/breatic";
 const COLLAB = "postgres://breatic_collab:collab-pw@localhost:5432/breatic";
@@ -37,5 +37,15 @@ describe("collabCoreEnv", () => {
     const raw = { DATABASE_URL: ADMIN, COLLAB_DATABASE_URL: COLLAB };
     collabCoreEnv(raw);
     expect(raw.DATABASE_URL).toBe(ADMIN);
+  });
+});
+
+describe("collabPostgresHint", () => {
+  it("points at COLLAB_DATABASE_URL and the migration command that makes the login, without the password", () => {
+    const hint = collabPostgresHint(COLLAB);
+    expect(hint).toContain("COLLAB_DATABASE_URL=postgres://breatic_collab:***@localhost:5432/breatic");
+    expect(hint).toContain("pnpm db:migrate");
+    expect(hint).not.toContain("collab-pw");
+    expect(hint).not.toMatch(/\bDATABASE_URL=/u);
   });
 });

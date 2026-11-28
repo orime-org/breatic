@@ -61,7 +61,7 @@ async function withBootTimeout<T>(probe: Promise<T>, label: string): Promise<T> 
  * @param raw - The connection URL.
  * @returns The URL without its password; a value that does not parse as a URL is withheld whole.
  */
-function withoutPassword(raw: string): string {
+export function withoutPassword(raw: string): string {
   try {
     const url = new URL(raw);
     if (url.password !== "") url.password = "***";

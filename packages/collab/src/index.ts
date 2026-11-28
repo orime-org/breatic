@@ -43,6 +43,7 @@ import {
   type MemberChangeListener,
 } from "@breatic/core";
 import { getTimelineConfig, onDatabaseWaitTimeout, publishSceneLookSettled } from "@breatic/core";
+import { collabPostgresHint } from "@collab/collab-core-env.js";
 import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
@@ -182,7 +183,11 @@ async function main(): Promise<void> {
   } catch (err) {
     if (err instanceof InfraNotReadyError) {
       logger.error(
-        { component: err.component, hint: err.hint, err: err.cause },
+        {
+          component: err.component,
+          hint: err.component === "PostgreSQL" ? collabPostgresHint(env.DATABASE_URL) : err.hint,
+          err: err.cause,
+        },
         "infra_not_ready",
       );
     } else {
