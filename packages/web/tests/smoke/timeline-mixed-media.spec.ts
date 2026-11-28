@@ -18,7 +18,7 @@ import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import {
-  openTimeline, selectTimelineClip, timelineClipIds, timelineVideoOf, uploadTimelineVideo, watchTimelineErrors, withTimelinePeer,
+  openTimeline, selectTimelineClip, timelineClipIds, timelineLayerOf, timelineVideoOf, uploadTimelineVideo, watchTimelineErrors, withTimelinePeer,
 } from '../helpers/timeline-media';
 import { roomForUploads } from '../helpers/upload-budget';
 import { uniquePicture } from '../helpers/upload';
@@ -293,7 +293,7 @@ test('video, picture, text and sound play on one clock, each layer appears as th
     await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
     // Stacked bottom-up by track: video, picture, text.
     await seekTo(page, 30);
-    const order = await Promise.all([timelineVideoOf(page, video.clipId), layerOf(page, pictureId), layerOf(page, textId)]
+    const order = await Promise.all([timelineLayerOf(page, video.clipId), layerOf(page, pictureId), layerOf(page, textId)]
       .map(async (layer) => Number(await layer.evaluate((element) => getComputedStyle(element).zIndex))));
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(new Set(order).size).toBe(3);

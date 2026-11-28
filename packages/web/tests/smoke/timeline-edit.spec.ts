@@ -8,7 +8,7 @@ import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import {
-  addProjectTimelineVideo, moveTimelineClip, timelineClipIds, timelineVideoOf, uploadTimelineVideo, watchTimelineErrors,
+  addProjectTimelineVideo, moveTimelineClip, timelineClipIds, timelineLayerOf, timelineVideoOf, uploadTimelineVideo, watchTimelineErrors,
 } from '../helpers/timeline-media';
 
 /** dnd-kit swallows clicks for 50 ms after a drag ends; a person never clicks that fast. */
@@ -150,8 +150,8 @@ test('the preview stacks the sub-track clip over the main clip where both play a
     // Both videos are in the frame, stacked by track from the bottom: the main track first, the new track above it.
     await expect(main).toBeVisible();
     await expect(above).toBeVisible();
-    await expect(main).toHaveCSS('z-index', '1');
-    await expect(above).toHaveCSS('z-index', '2');
+    await expect(timelineLayerOf(page, uploaded.clipId)).toHaveCSS('z-index', '1');
+    await expect(timelineLayerOf(page, upper)).toHaveCSS('z-index', '2');
     await seek.press('Home');
     await expect(main).toBeVisible();
     await expect(above).not.toBeVisible();

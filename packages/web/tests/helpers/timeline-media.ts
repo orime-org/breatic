@@ -143,16 +143,39 @@ export function timelineVideoOf(page: Page, clipId: string): Locator {
 }
 
 /**
+ * What a video placement places in the frame, stacked and positioned: its element, or the renderer host holding a
+ * selected version's picture with the element inside it.
+ * @throws {never} Never.
+ */
+export function timelineLayerOf(page: Page, clipId: string): Locator {
+  return visibleSpace(page).getByTestId('timeline-video-layers').locator(`:scope > [data-clip-id="${clipId}"]`);
+}
+
+/**
+ * The stored address a preview video element plays from: its src without the CORS marker the element adds (inner#1709
+ * design §5.2), or, for a selected version's playback file, the original it is derived from (`videoPresentationWorkKeyFor`
+ * names it by the source key, a dot and a job id starting `video-presentation:`).
+ * @throws {TypeError} When the src is not an absolute URL.
+ */
+export function storedVideoAddress(src: string): string {
+  const url = new URL(src);
+  url.searchParams.delete('cors');
+  const at = url.href.indexOf('.video-presentation:');
+  return at < 0 ? url.href : url.href.slice(0, at);
+}
+
+/**
  * Wait for the registered source to load and decode through the placement's real native video element.
  * @throws {Error} When authorized media cannot produce a decoded frame.
  */
 export async function expectTimelineVideoReady(page: Page, clipId: string, fileUrl: string): Promise<void> {
   const video = timelineVideoOf(page, clipId);
-  // The element reads its file in CORS mode so Web Audio can mix it (inner#1709 design §5.2).
-  const cors = new URL(fileUrl);
-  cors.searchParams.set('cors', '1');
-  await expect(video).toHaveAttribute('src', cors.href);
-  expect(cors.protocol).toMatch(/^https?:$/);
+  // The original in CORS mode, or, once a version of it is selected, that version's playback file (frames-split §7.14).
+  expect(new URL(fileUrl).protocol).toMatch(/^https?:$/);
+  await expect.poll(async () => {
+    const src = await video.getAttribute('src');
+    return src === null ? null : storedVideoAddress(src);
+  }).toBe(fileUrl);
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => ({
     decoded: element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && element.videoWidth > 0,
     error: element.error?.code ?? null,
@@ -252,10 +275,7 @@ export async function uploadTimelineVideo(page: Page, projectId: string, fixture
   const [clipId] = await timelineClipIds(page);
   const src = await timelineVideoOf(page, clipId).getAttribute('src');
   if (src === null) throw new Error('The registered placement has no video address');
-  // The element adds the CORS marker to the stored address (inner#1709 design §5.2); the list holds the address itself.
-  const stored = new URL(src);
-  stored.searchParams.delete('cors');
-  const fileUrl = stored.href;
+  const fileUrl = storedVideoAddress(src);
   const asset = await projectVideoByUrl(page, projectId, fileUrl);
   expect(asset.kind).toBe('video');
   expect(asset.assetId).toMatch(/^[0-9a-f-]{36}$/);
@@ -265,8 +285,12 @@ export async function uploadTimelineVideo(page: Page, projectId: string, fixture
   expect(Number.isSafeInteger(durationFrames)).toBe(true);
   expect(durationFrames).toBeGreaterThan(0);
   await expectTimelineVideoReady(page, clipId, asset.fileUrl);
-  const durationSeconds = await timelineVideoOf(page, clipId).evaluate((element: HTMLVideoElement) => element.duration);
-  expect(durationSeconds).toBeGreaterThan(0);
+  // A version selected just after the original decoded replaces the element, which then reads its metadata again.
+  let durationSeconds = Number.NaN;
+  await expect.poll(async () => {
+    durationSeconds = await timelineVideoOf(page, clipId).evaluate((element: HTMLVideoElement) => element.duration);
+    return durationSeconds > 0;
+  }, { timeout: 60_000 }).toBe(true);
   return { asset, clipId, durationFrames, durationSeconds, fps };
 }
 
