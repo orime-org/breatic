@@ -16,7 +16,7 @@ const upright = { photo: null, written: null, headers: null, answer: 200 };
 // The peaks cases (inner#1305): each file at its own path under /media/.
 const served = new Map();
 const origin = createServer(async (req, res) => {
-  if (req.url?.startsWith('/media/') && served.has(req.url)) {
+  if (served.has(req.url)) {
     // Ranged like the Worker's own object route (src/media-object-route.ts):
     // an m4a whose index sits at its end is read by seeking there.
     const bytes = readFileSync(served.get(req.url));
@@ -28,6 +28,10 @@ const origin = createServer(async (req, res) => {
     }
     const start = Number(range[1]);
     const end = range[2] === '' ? bytes.length - 1 : Math.min(Number(range[2]), bytes.length - 1);
+    if (start >= bytes.length || end < start) {
+      res.writeHead(416, { 'content-range': `bytes */${bytes.length}` }).end();
+      return;
+    }
     res.writeHead(206, { 'accept-ranges': 'bytes', 'content-range': `bytes ${start}-${end}/${bytes.length}`,
       'content-length': end - start + 1 });
     res.end(bytes.subarray(start, end + 1));
@@ -80,9 +84,25 @@ try {
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i',
     'color=c=blue:s=64x48:r=10', '-t', '1', '-c:v', 'libx264',
     '-pix_fmt', 'yuv420p', '-movflags', '+faststart', fixture], { timeout: 30000 });
-  served.set('/media/video.mp4', fixture);
+  served.set('/video.mp4', fixture);
   origin.listen(0, '127.0.0.1');
   await once(origin, 'listening');
+  const fixtureUrl = `http://127.0.0.1:${origin.address().port}/video.mp4`;
+  const fixtureBytes = readFileSync(fixture);
+  const whole = await fetch(fixtureUrl);
+  assert.equal(whole.status, 200);
+  assert.equal(whole.headers.get('content-length'), String(fixtureBytes.length));
+  assert.equal(whole.headers.get('accept-ranges'), 'bytes');
+  assert.deepEqual(Buffer.from(await whole.arrayBuffer()), fixtureBytes);
+  const partial = await fetch(fixtureUrl, { headers: { range: 'bytes=2-7' } });
+  assert.equal(partial.status, 206);
+  assert.equal(partial.headers.get('content-range'), `bytes 2-7/${fixtureBytes.length}`);
+  assert.equal(partial.headers.get('content-length'), '6');
+  assert.deepEqual(Buffer.from(await partial.arrayBuffer()), fixtureBytes.subarray(2, 8));
+  const outside = await fetch(fixtureUrl, { headers: { range: `bytes=${fixtureBytes.length}-` } });
+  assert.equal(outside.status, 416);
+  assert.equal(outside.headers.get('content-range'), `bytes */${fixtureBytes.length}`);
+  assert.equal((await fetch(new URL('/missing', fixtureUrl))).status, 404);
   service = spawn(process.execPath, ['/app/server.mjs'], { stdio: 'inherit' });
   for (let attempt = 0; ; attempt++) {
     try {
@@ -97,7 +117,7 @@ try {
   for (const wantCover of [true, false]) {
     const answer = await fetch('http://127.0.0.1:8080/probe', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ objectUrl: `http://127.0.0.1:${origin.address().port}/media/video.mp4`,
+      body: JSON.stringify({ objectUrl: `http://127.0.0.1:${origin.address().port}/video.mp4`,
         wantCover, deadlineAt: Date.now() + 25000 }), signal: AbortSignal.timeout(25000),
     });
     assert.equal(answer.status, 200);

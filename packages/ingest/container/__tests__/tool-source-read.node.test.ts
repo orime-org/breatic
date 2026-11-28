@@ -190,11 +190,12 @@ describe('a planned job reads its tool source in place and holds one output at a
     // mfra index the mov demuxer walks every top-level moof on open, which over HTTP reads the whole file, as one long
     // read or one Range request per fragment, on every probe and every decode.
     const edit = join(dir, 'edit.mp4');
-    const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=30:d=10,noise=alls=60:allf=t',
+    const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=30:d=20,noise=alls=60:allf=t',
       '-c:v', 'libx264', '-g', '1', '-crf', '8', '-pix_fmt', 'yuv420p', '-movflags', '+frag_keyframe+empty_moov', '-f', 'mp4', 'pipe:1'], { encoding: 'buffer', maxBuffer: 1 << 28 });
     await writeFile(edit, stdout);
-    expect(boxes(new Uint8Array(stdout)).filter((type) => type === 'moof').length, 'every frame is its own fragment').toBe(300);
-    const grid = { fps: { numerator: 30, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 300, realFrameCount: 300 };
+    expect(boxes(new Uint8Array(stdout)).filter((type) => type === 'moof').length, 'every frame is its own fragment').toBe(600);
+    expect(boxes(new Uint8Array(stdout)).at(-1), 'the edit file ends with its random-access index').toBe('mfra');
+    const grid = { fps: { numerator: 30, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 600, realFrameCount: 600 };
     const store = vi.mocked(fetch).getMockImplementation()!;
     let [requests, read] = [0, 0];
     vi.mocked(fetch).mockImplementation(async (input, init) => {
@@ -215,14 +216,17 @@ describe('a planned job reads its tool source in place and holds one output at a
       }, { highWaterMark: 0 });
       return new Response(body, { status: answer.status, headers: answer.headers });
     });
-    const { report, bytes } = await runJob({ [SOURCE]: edit }, [{ recipe: { ...segment(210, 225), grid, source: { kind: 'edit' } }, contentType: 'video/mp4' }]);
+    const { report, bytes } = await runJob({ [SOURCE]: edit }, [{ recipe: { ...segment(420, 435), grid, source: { kind: 'edit' } }, contentType: 'video/mp4' }]);
     expect(report, JSON.stringify(vi.mocked(console.error).mock.calls)).toMatchObject({ ok: true });
-    expect(bytes[0]).toBeDefined();
-    // A probe and one decode from frame 210 read the index, the moov and the frames from 7 s (30% of the file). Each read
-    // the reader opens and drops at once (the whole-object open, the moov) also carries what the loopback buffered before
-    // it was dropped, about 3 MB each in the production image. Walking every moof reads the whole file per open, so
-    // the probe and the decode would read it twice.
+    // Count decoded output frames independently: a successful but short output must not satisfy the byte budget.
+    const output = join(dir, 'edit-segment.mp4');
+    await writeFile(output, bytes[0]!);
+    const count = JSON.parse((await run('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v:0',
+      '-show_entries', 'stream=nb_read_frames', '-of', 'json', output])).stdout) as { streams: { nb_read_frames: string }[] };
+    expect(count.streams).toEqual([{ nb_read_frames: '15' }]);
+    // Twenty seconds separates fixed probe and socket read-ahead from an unindexed whole-file scan.
+    // A probe and one decode from frame 420 read the index, the moov and the frames from 14 s: a small part of the file.
     expect(requests, 'source requests for the probe and one seek').toBeLessThan(20);
-    expect(read, `bytes read of the ${stdout.byteLength}-byte edit file`).toBeLessThan(stdout.byteLength);
+    expect(read, `bytes read of the ${stdout.byteLength}-byte edit file`).toBeLessThan(stdout.byteLength / 2);
   }, 120_000);
 });

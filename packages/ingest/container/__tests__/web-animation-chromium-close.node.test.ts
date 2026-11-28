@@ -12,8 +12,9 @@
  * The "browser" here is a real detached node process whose child keeps creating files in `profile/Default`.
  */
 
+import type * as fs from "node:fs/promises";
 import { type ChildProcess, spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,7 +33,11 @@ require("fs").writeFileSync(process.argv[2], String(writer.pid)); setInterval(()
 let dir: string;
 let browser: ChildProcess | undefined;
 let writerPid = 0;
-let locked: string | undefined;
+vi.mock("node:fs/promises", async (original) => {
+  const actual = await original<typeof fs>();
+  return { ...actual, rm: vi.fn(actual.rm) };
+});
+const { rm: realRm } = await vi.importActual<typeof fs>("node:fs/promises");
 
 /**
  * Whether a process still exists.
@@ -64,11 +69,13 @@ async function until(condition: () => boolean | Promise<boolean>, withinMs: numb
 }
 
 beforeEach(async () => {
+  vi.mocked(rm).mockImplementation(realRm);
   dir = await mkdtemp(join(tmpdir(), "chromium-close-test-"));
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(async () => {
+  vi.mocked(rm).mockImplementation(realRm);
   vi.restoreAllMocks();
   // A pid of 0 would signal the test runner's own process group, so only real pids are signalled.
   const browserPid = browser?.pid ?? 0;
@@ -81,8 +88,6 @@ afterEach(async () => {
   }
   browser = undefined;
   writerPid = 0;
-  if (locked !== undefined) await chmod(locked, 0o700);
-  locked = undefined;
   await new Promise((resolve) => setTimeout(resolve, 20));
   await rm(dir, { recursive: true, force: true });
 });
@@ -105,22 +110,33 @@ describe("closeChromium", () => {
   });
 
   it("logs a profile it cannot remove after Chromium has exited, without rejecting", async () => {
-    locked = join(dir, "locked");
-    const profile = join(locked, "profile");
+    const profile = join(dir, "profile");
     await mkdir(profile, { recursive: true });
     await writeFile(join(profile, "Local State"), "{}");
-    await chmod(locked, 0o500);
+    // Inject the filesystem failure explicitly: the production image runs as root, which bypasses mode bits.
+    const denied = Object.assign(new Error("profile removal denied"), { code: "EACCES" });
     browser = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore" });
     const child = browser;
+    const exitedWhenRemoved: boolean[] = [];
     const exitedWhenLogged: boolean[] = [];
+    vi.mocked(rm).mockImplementation(async (path, options) => {
+      if (path === profile) {
+        exitedWhenRemoved.push(child.exitCode !== null || child.signalCode !== null);
+        throw denied;
+      }
+      return realRm(path, options);
+    });
     vi.mocked(console.error).mockImplementation(() => {
       exitedWhenLogged.push(child.exitCode !== null || child.signalCode !== null);
     });
 
     await expect(closeChromium(child, profile)).resolves.toBeUndefined();
 
-    expect(exitedWhenLogged.length).toBeGreaterThan(0);
-    expect(exitedWhenLogged.every(Boolean)).toBe(true);
+    expect(console.error).toHaveBeenCalledExactlyOnceWith("web_animation_profile_cleanup_failed", {
+      profile, err: "profile removal denied",
+    });
+    expect(exitedWhenLogged).toEqual([true]);
+    expect(exitedWhenRemoved).toEqual([true]);
   });
 });
 
