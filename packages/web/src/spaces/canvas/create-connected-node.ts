@@ -45,15 +45,16 @@ export interface ConnectedNodeResult {
  * to the order of their random ids (`deriveReferences`; the Agent proposal
  * path stamps the same way in `use-node-creation.ts`).
  * @param input - What to build.
- * @returns The new node's id and the sources left unwired.
+ * @returns The new node's id and the sources left unwired, or null when the
+ *   Space refused the write (its own toast tells the user).
  * @throws {never} Never.
  */
-export function createConnectedNode(input: CreateConnectedNodeInput): ConnectedNodeResult {
+export function createConnectedNode(input: CreateConnectedNodeInput): ConnectedNodeResult | null {
   const { projectId, spaceId } = input;
   let nodeId = '';
   const failedSourceIds: string[] = [];
   // One add for the size cap: the empty node and its wires.
-  runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
+  const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
     nodeId = input.createNodeAt(input.type, input.center);
     const start = (input.now ?? Date.now)();
     input.sourceIds.forEach((source, index) => {
@@ -66,5 +67,5 @@ export function createConnectedNode(input: CreateConnectedNodeInput): ConnectedN
       if (!added) failedSourceIds.push(source);
     });
   });
-  return { nodeId, failedSourceIds };
+  return written.ok ? { nodeId, failedSourceIds } : null;
 }

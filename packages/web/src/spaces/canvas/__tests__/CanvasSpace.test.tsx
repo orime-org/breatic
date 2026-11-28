@@ -4730,14 +4730,18 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     expect(css).not.toMatch(/^\.canvas-pick-selectable\s*\{/m);
   });
 
-  it('stands the magnetic handle ::before zone down while connecting (round-4)', () => {
+  it('stands the magnetic handle ::before zone down while connecting, except the plus zone (round-4, inner#2216)', () => {
     // The synchronous .canvas-connecting class disables the 36px handle hit
     // zone during a drag so it cannot hijack xyflow's elementFromPoint target
-    // resolution for a nearby node. Block-scoped so a decoy elsewhere can't
-    // satisfy the substring (R4 gameable-contract lesson).
+    // resolution for a nearby node. The lone selected node's plus zone
+    // (`handle-plus-zone`, MagneticHandle) is left out: its plus sits outside
+    // the anchor's radius, so a wire released on it must still land there.
+    // Block-scoped so a decoy elsewhere can't satisfy the substring (R4
+    // gameable-contract lesson).
     expect(css).toMatch(
-      /\.canvas-connecting \.react-flow__handle::before\s*\{[^}]*pointer-events:\s*none/,
+      /\.canvas-connecting \.react-flow__handle:not\(\.handle-plus-zone\)::before\s*\{[^}]*pointer-events:\s*none/,
     );
+    expect(css).not.toMatch(/\.canvas-connecting \.react-flow__handle::before\s*\{/);
   });
 
   it('hides the NodesSelection rect during a pick (marquee dead-zone neutralizer)', () => {
@@ -5647,5 +5651,69 @@ describe('the placing callback the generate panels receive', () => {
     expect(body).toMatch(/placeProposalAt\([^,]+,[^,]+,[^,]+,[^)]+\)/);
     expect(body).not.toContain('setViewport');
     expect(body).not.toContain('whatToFocus');
+  });
+});
+
+// inner#2216: the canvas works out the one selected non-note node once per
+// selection and names it in the session; each node compares its own id to
+// show the plus on its handles (flow-node-types). A layout effect writes it,
+// and leaving the canvas clears it.
+describe('the lone selected node the canvas names in the session (inner#2216)', () => {
+  beforeEach(() => {
+    mockUseCanvasSpace.mockReset();
+    vi.mocked(useSocket).mockReset();
+    canvasSessions.clear();
+    useCurrentUserStore.getState().setUser({
+      id: 'u-1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      personalStudio: null,
+      membershipTier: 'base',
+    });
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { handling: false } },
+          { id: 'b', type: 'image', position: { x: 400, y: 0 }, data: { handling: false } },
+          { id: 'note', type: 'annotation', position: { x: 0, y: 400 }, data: { content: 'n', createdBy: 'u-1', createdAt: 1, replies: [] } },
+        ],
+      }),
+    );
+  });
+
+  /**
+   * Marks the given nodes selected in the canvas's ReactFlow mirror.
+   * @param ids - The ids to select; every other node is deselected.
+   */
+  function select(...ids: string[]): void {
+    act(() => {
+      canvasGraphs.of('s').getState()
+        .setFlowNodes((prev) => prev.map((n) => ({ ...n, selected: ids.includes(n.id) })));
+    });
+  }
+
+  const lone = (): string | null => canvasSessions.of('s').getState().loneSelectedId;
+
+  it('names the node selected alone, also beside a note, and nothing for none or two', () => {
+    renderSpace();
+    expect(lone()).toBeNull();
+    select('a');
+    expect(lone()).toBe('a');
+    select('a', 'note');
+    expect(lone()).toBe('a');
+    select('a', 'b');
+    expect(lone()).toBeNull();
+    select('b');
+    expect(lone()).toBe('b');
+    select();
+    expect(lone()).toBeNull();
+  });
+
+  it('clears the name when the canvas unmounts', () => {
+    const { unmount } = renderSpace();
+    select('a');
+    expect(lone()).toBe('a');
+    unmount();
+    expect(lone()).toBeNull();
   });
 });

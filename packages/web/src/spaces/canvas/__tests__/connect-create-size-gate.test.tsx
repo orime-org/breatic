@@ -120,6 +120,28 @@ function releaseOnBlankCanvas(): void {
   });
 }
 
+/**
+ * Runs a press and collects what its handlers threw: a pick that went on
+ * after a refused build (no node) throws inside the menu's handler, which the
+ * page reports as an uncaught error rather than failing the test.
+ * @param run - The press.
+ * @returns The errors thrown meanwhile.
+ * @throws {Error} Whatever `run` itself throws.
+ */
+async function uncaughtDuring(run: () => Promise<void>): Promise<unknown[]> {
+  const thrown: unknown[] = [];
+  const onError = (event: ErrorEvent): void => {
+    thrown.push(event.error);
+  };
+  window.addEventListener('error', onError);
+  try {
+    await run();
+  } finally {
+    window.removeEventListener('error', onError);
+  }
+  return thrown;
+}
+
 beforeEach(() => {
   flow.props = null;
   useUIStore.setState({ activeRegion: 'space' });
@@ -143,8 +165,11 @@ describe('E-01 connect-create is one add batch', () => {
     const doc = mountAt(code);
     const before = Y.encodeStateAsUpdate(doc);
     releaseOnBlankCanvas();
-    await userEvent.setup().click(await screen.findByTestId('create-node-text'));
-    await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+    const thrown = await uncaughtDuring(async () => {
+      await userEvent.setup().click(await screen.findByTestId('create-node-text'));
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+    });
+    expect(thrown).toEqual([]);
     expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(sentence);
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(doc.getMap(CANVAS_NODES_KEY).size).toBe(1);
@@ -174,5 +199,81 @@ describe('E-01 connect-create is one add batch', () => {
     expect(created.type).toBe('text');
     expect(readEdges(doc).map((e) => [e.id, e.source, e.target])).toEqual([[`i1->${created.id}`, 'i1', created.id]]);
     expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
+
+// inner#2216: the selection plus builds through the same one-add batch. A
+// refused build leaves nothing behind: no node, no wire, the selection the
+// user made untouched and the camera where it was. In jsdom xyflow reads the
+// pane as 0 and falls back to 500 x 500 (`useResizeHandler`), and nodes are
+// unmeasured (0 x 0), so with i2 at x 1200 the new node lands one column
+// right of it, outside the view at the opening camera: a build slides the
+// camera there (`viewportForBuilt`), a refusal must not.
+describe('the selection plus is one add batch', () => {
+  /**
+   * Seeds two image nodes, enters one size state, mounts the real canvas and
+   * selects both, which puts the selection plus beside them.
+   * @param code - The size state.
+   * @returns The canvas document.
+   * @throws {Error} When mounting fails.
+   */
+  async function mountTwoSelectedAt(code: SizeCode): Promise<Y.Doc> {
+    addNode(PID, SID, {
+      id: 'i2',
+      type: 'image',
+      position: { x: 1200, y: 400 },
+      data: { name: 'i2', createdAt: 1, createdBy: 'u1', locked: false, attachments: [], content: 'https://cdn.example.test/i2.png' },
+    } as CanvasNodeFields);
+    const doc = mountAt(code);
+    await waitFor(() => expect(canvasGraphs.of(SID).getState().flowNodes).toHaveLength(2));
+    act(() => {
+      canvasGraphs.of(SID).getState().setFlowNodes((prev) => prev.map((n) => ({ ...n, selected: true })));
+    });
+    return doc;
+  }
+
+  const selectedIds = (): string[] =>
+    canvasGraphs.of(SID).getState().flowNodes.filter((n) => n.selected === true).map((n) => n.id).sort();
+
+  const camera = (): string =>
+    (document.querySelector('.react-flow__viewport') as HTMLElement | null)?.style.transform ?? 'no viewport';
+
+  it.each(['F', 'O'] as const)('creates nothing, keeps the selection and leaves the camera [%s]', async (code) => {
+    const doc = await mountTwoSelectedAt(code);
+    await waitFor(() => expect(selectedIds()).toEqual(['i1', 'i2']));
+    const before = Y.encodeStateAsUpdate(doc);
+    const opening = camera();
+    const thrown = await uncaughtDuring(async () => {
+      const user = userEvent.setup();
+      await user.click(await screen.findByTestId('selection-add-button'));
+      await user.click(await screen.findByTestId('create-node-text'));
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+      await act(async () => { await Promise.resolve(); });
+    });
+    expect(thrown).toEqual([]);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(readNodes(doc).map((n) => n.id).sort()).toEqual(['i1', 'i2']);
+    expect(readEdges(doc)).toHaveLength(0);
+    expect(selectedIds()).toEqual(['i1', 'i2']);
+    // Longer than the slide the control case below observes.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); });
+    expect(camera()).toBe(opening);
+  });
+
+  // Control: the same press in the warning band builds the node, selects it
+  // alone and slides the camera to it, so the kept selection and camera above
+  // are not vacuous.
+  it('builds the node wired from both, selects it and slides the camera to it in the warning band [W]', async () => {
+    const doc = await mountTwoSelectedAt('W');
+    await waitFor(() => expect(selectedIds()).toEqual(['i1', 'i2']));
+    const opening = camera();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('selection-add-button'));
+    await user.click(await screen.findByTestId('create-node-text'));
+    await waitFor(() => expect(readNodes(doc)).toHaveLength(3));
+    const created = readNodes(doc).find((n) => n.id !== 'i1' && n.id !== 'i2')!;
+    expect(readEdges(doc).map((e) => e.target)).toEqual([created.id, created.id]);
+    await waitFor(() => expect(selectedIds()).toEqual([created.id]));
+    await waitFor(() => expect(camera()).not.toBe(opening));
   });
 });

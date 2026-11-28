@@ -489,8 +489,10 @@ body {
    resolution (which forces a style flush, so this applies immediately). With
    the 36px ::before hit zone non-interactive, target resolution falls back to
    the 8px anchor + connectionRadius — a neighbor's zone can no longer hijack
-   the wire's endpoint, with no first-frame window a React class would leave. */
-.canvas-connecting .react-flow__handle::before {
+   the wire's endpoint, with no first-frame window a React class would leave.
+   The lone selected node's plus zone stays pressable: the plus is drawn
+   outside the anchor's radius, and a wire released on it lands there. */
+.canvas-connecting .react-flow__handle:not(.handle-plus-zone)::before {
   pointer-events: none;
 }
 .react-flow .react-flow__node.canvas-pick-selectable {

@@ -28,7 +28,6 @@ import {
   planConnectedNode,
   previewWires,
   resolveSelectionAdd,
-  SELECTION_ADD_BUTTON_PX,
   SELECTION_ADD_OFFSET_PX,
   type SelectionAddNode,
 } from '@web/spaces/canvas/selection-add';
@@ -178,17 +177,14 @@ describe('resolveSelectionAdd — where the plus shows (design 4.2)', () => {
 });
 
 describe('handlesEmphasized — when a node shows the plus on its handles (design 4.1)', () => {
-  it('shows the plus only on the one selected, connectable node with no mini tool open', () => {
-    for (const selected of [true, false]) {
-      for (const othersSelected of [true, false]) {
-        for (const connectable of [true, false]) {
-          for (const miniToolOpen of [true, false]) {
-            const expected = selected && !othersSelected && connectable && !miniToolOpen;
-            expect(
-              handlesEmphasized({ selected, othersSelected, connectable, miniToolOpen }),
-              JSON.stringify({ selected, othersSelected, connectable, miniToolOpen }),
-            ).toBe(expected);
-          }
+  it('shows the plus only on the lone selected, connectable node with no mini tool open', () => {
+    for (const lone of [true, false]) {
+      for (const connectable of [true, false]) {
+        for (const miniToolOpen of [true, false]) {
+          expect(
+            handlesEmphasized({ lone, connectable, miniToolOpen }),
+            JSON.stringify({ lone, connectable, miniToolOpen }),
+          ).toBe(lone && connectable && !miniToolOpen);
         }
       }
     }
@@ -469,50 +465,14 @@ const sizedNode = fc.record({
   height: fc.integer({ min: 1, max: 2000 }),
 });
 
+// boundsOf hands the nodes to groupRectForMembers with no padding
+// (group-geometry's own tests cover the union); this guards the adapter.
 describe('boundsOf — the rect the plus sits beside (design 4.2)', () => {
-  it('has no bounds for no nodes', () => {
+  it('is the union of the nodes\' position and size, and null for no nodes', () => {
     expect(boundsOf([])).toBeNull();
-  });
-
-  it('is the node itself for one node', () => {
-    expect(boundsOf([sized('a', 10, -20, 288, 192)])).toEqual({ x: 10, y: -20, width: 288, height: 192 });
-  });
-
-  it('spans from the leftmost and topmost edge to the rightmost and bottom edge', () => {
     const nodes = [sized('a', 0, 100, 200, 100), sized('b', 50, -40, 300, 80), sized('c', -30, 400, 100, 250)];
     // left -30, top -40, right 350 (b), bottom 650 (c)
     expect(boundsOf(nodes)).toEqual({ x: -30, y: -40, width: 380, height: 690 });
-  });
-
-  it('contains every node and touches the outermost edges for any nodes', () => {
-    fc.assert(
-      fc.property(fc.array(sizedNode, { minLength: 1, maxLength: 15 }), (rects) => {
-        const nodes = rects.map((r, i) => sized(`n${i}`, r.x, r.y, r.width, r.height));
-        const b = boundsOf(nodes);
-        expect(b).not.toBeNull();
-        if (b === null) return;
-        for (const n of nodes) {
-          expect(n.position.x).toBeGreaterThanOrEqual(b.x);
-          expect(n.position.y).toBeGreaterThanOrEqual(b.y);
-          expect(n.position.x + n.width).toBeLessThanOrEqual(b.x + b.width);
-          expect(n.position.y + n.height).toBeLessThanOrEqual(b.y + b.height);
-        }
-        expect(nodes.some((n) => n.position.x === b.x)).toBe(true);
-        expect(nodes.some((n) => n.position.y === b.y)).toBe(true);
-        expect(nodes.some((n) => n.position.x + n.width === b.x + b.width)).toBe(true);
-        expect(nodes.some((n) => n.position.y + n.height === b.y + b.height)).toBe(true);
-      }),
-    );
-  });
-});
-
-describe('selection plus size and gap (design 4.2)', () => {
-  it('sits 16 screen px outside the selection edge', () => {
-    expect(SELECTION_ADD_OFFSET_PX).toBe(16);
-  });
-
-  it('is a 24 screen px button', () => {
-    expect(SELECTION_ADD_BUTTON_PX).toBe(24);
   });
 });
 

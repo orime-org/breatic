@@ -11,7 +11,7 @@
  */
 
 import type { NodePlacement } from '@web/data/yjs/canvas-space';
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
+import { EMPTY_NODE_SIZE, groupRectForMembers, type Rect } from '@web/spaces/canvas/group-geometry';
 import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
 import {
   LAYER_STEP_PX,
@@ -37,9 +37,6 @@ export interface SelectionAddNode {
 /** How far outside the selection's right edge the plus sits, in screen px. */
 export const SELECTION_ADD_OFFSET_PX = 16;
 
-/** The plus button's size, in screen px. */
-export const SELECTION_ADD_BUTTON_PX = 24;
-
 /** One preview wire, in flow coordinates. */
 export interface PreviewWire {
   sourceId: string;
@@ -49,14 +46,6 @@ export interface PreviewWire {
 
 /** The node facts that decide the offer, without geometry. */
 export type SelectionAddKind = Pick<SelectionAddNode, 'id' | 'type' | 'parentId'>;
-
-/** A rect in flow coordinates. */
-interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
 
 /** What the current selection offers. */
 export type SelectionAdd =
@@ -114,23 +103,18 @@ export function resolveSelectionAdd(
 
 /**
  * Whether a node's handles show the plus: it is the one selected node once
- * notes are left out, it takes connections, and no mini tool is drawing on
- * it (those layers sit over the picture where the plus would be).
+ * notes are left out ({@link resolveSelectionAdd}'s `single`), it takes
+ * connections, and no mini tool is drawing on it (those layers sit over the
+ * picture where the plus would be).
  * @param input - The node's state.
- * @param input.selected - Whether the node is selected.
- * @param input.othersSelected - Whether any other non-note node is selected.
+ * @param input.lone - Whether it is the one selected node.
  * @param input.connectable - Whether its handles take connections.
  * @param input.miniToolOpen - Whether a mini tool is open on it.
  * @returns Whether to show the plus.
  * @throws {never} Never.
  */
-export function handlesEmphasized(input: {
-  selected: boolean;
-  othersSelected: boolean;
-  connectable: boolean;
-  miniToolOpen: boolean;
-}): boolean {
-  return input.selected && !input.othersSelected && input.connectable && !input.miniToolOpen;
+export function handlesEmphasized(input: { lone: boolean; connectable: boolean; miniToolOpen: boolean }): boolean {
+  return input.lone && input.connectable && !input.miniToolOpen;
 }
 
 /**
@@ -186,12 +170,10 @@ export function placedNodes(
  * @throws {never} Never.
  */
 export function boundsOf(nodes: readonly SelectionAddNode[]): Rect | null {
-  if (nodes.length === 0) return null;
-  const left = Math.min(...nodes.map((node) => node.position.x));
-  const top = Math.min(...nodes.map((node) => node.position.y));
-  const right = Math.max(...nodes.map((node) => node.position.x + node.width));
-  const bottom = Math.max(...nodes.map((node) => node.position.y + node.height));
-  return { x: left, y: top, width: right - left, height: bottom - top };
+  return groupRectForMembers(
+    nodes.map((node) => ({ ...node.position, width: node.width, height: node.height })),
+    0,
+  );
 }
 
 /**

@@ -204,20 +204,17 @@ function makeFlowNode(
     // the selected border and the connection dots give way while it is open.
     const expanding = useCanvasSession((s) => miniToolOpenOn(props.id)(s)?.expand != null);
     // The plus on the handles (inner#2216): only the one selected node, with
-    // no mini tool drawing over its picture. Unselected nodes read a constant
-    // false, so a selection change elsewhere never re-renders them; a selected
-    // one stops at the first other selected node a marquee sweeps in.
+    // no mini tool drawing over its picture. The canvas names that node in
+    // the session, so a selection change re-renders only the nodes whose
+    // answer changed.
     const selected = Boolean(props.selected);
     const miniToolOpen = useCanvasSession((s) => miniToolOpenOn(props.id)(s) != null);
-    const othersSelected = useStore(
-      (s) => selected && s.nodes.some((n) => n.selected && n.id !== props.id && n.type !== 'annotation'),
-    );
+    const lone = useCanvasSession((s) => s.loneSelectedId === props.id);
     // A marquee still being dragged has not decided the selection yet; the
     // plus shows once it is released (same as the selection plus).
     const marqueeDragging = useStore((s) => selected && s.userSelectionActive);
     const plusOnHandles = handlesEmphasized({
-      selected: selected && !marqueeDragging,
-      othersSelected,
+      lone: selected && lone && !marqueeDragging,
       connectable: props.isConnectable,
       miniToolOpen,
     });
@@ -322,8 +319,9 @@ function makeFlowNode(
                       // drag: xyflow's threshold is one pixel, so opening the list
                       // would otherwise slide the node under the cursor and write
                       // a new position into the shared document. `z-22` keeps the
-                      // counts above the connection zone, which the selected
-                      // node's plus raises to `z-21` over this corner.
+                      // counts above the plain connection zone; the lone
+                      // selected node's plus zone (`z-23`) is drawn over them
+                      // where a tall column reaches it.
                       className='nodrag absolute left-full top-0 z-22'
                       style={{
                         transform: `scale(${headerScale})`,

@@ -328,7 +328,9 @@ const PLAIN_DOT = ['rounded-full', 'border', 'border-border', 'bg-muted'];
 // px past the border at rest and vertically centred, while the wire still
 // attaches at the border. The press zone is the plain 36px on screen (handed
 // over as `--handle-zone`), the handle rises above the video error layer
-// (z-20) as z-21, nothing reaches into the node, and the plus follows the
+// (z-20) and the task counts (z-22) as z-23, carries `handle-plus-zone` so
+// it stays pressable while a wire is dragged (index.css), nothing reaches
+// into the node, and the plus follows the
 // pointer inside the zone without ever crossing the border.
 describe('MagneticHandle — emphasized (the plus on a lone selected node)', () => {
   it('draws a plus inside the visible dot', () => {
@@ -343,9 +345,10 @@ describe('MagneticHandle — emphasized (the plus on a lone selected node)', () 
     expect(mountEmphasized(2).handle.style.getPropertyValue('--handle-zone')).toBe('72px');
   });
 
-  it('lifts a source handle above the video error layer (z-20) with only the variable-sized zone, reaching nothing inward', () => {
+  it('lifts a source handle above the task counts (z-22) as a plus zone with only the variable-sized zone, reaching nothing inward', () => {
     const classes = classesOf(mountEmphasized(1).handle);
-    expect(classes).toContain('z-21');
+    expect(classes).toContain('z-23');
+    expect(classes).toContain('handle-plus-zone');
     expect(classes.filter((c) => c.startsWith('before:h-'))).toEqual(['before:h-[var(--handle-zone)]']);
     expect(classes.filter((c) => c.startsWith('before:w-'))).toEqual(['before:w-[var(--handle-zone)]']);
     expect(classes).toContain('before:left-2');
@@ -355,7 +358,8 @@ describe('MagneticHandle — emphasized (the plus on a lone selected node)', () 
 
   it('starts a target handle\'s zone its own width left of the border', () => {
     const classes = classesOf(mountEmphasized(1, true, 'target').handle);
-    expect(classes).toContain('z-21');
+    expect(classes).toContain('z-23');
+    expect(classes).toContain('handle-plus-zone');
     expect(classes).toContain('before:left-[calc(var(--handle-zone)*-1)]');
     expect(classes).not.toContain('before:-left-9');
     expect(classes.filter((c) => c.startsWith('before:h-'))).toEqual(['before:h-[var(--handle-zone)]']);
@@ -439,7 +443,8 @@ describe('MagneticHandle — emphasized (the plus on a lone selected node)', () 
     const classes = classesOf(handle);
     expect(classes).toContain('before:h-9');
     expect(classes).toContain('before:w-9');
-    expect(classes).not.toContain('z-21');
+    expect(classes).not.toContain('z-23');
+    expect(classes).not.toContain('handle-plus-zone');
     expect(classes.filter((c) => c.startsWith('after:'))).toEqual([]);
     expect(handle.style.getPropertyValue('--handle-zone')).toBe('');
     for (const plain of PLAIN_DOT) expect(dot.classList.contains(plain), plain).toBe(true);
@@ -463,7 +468,8 @@ describe('MagneticHandle — emphasized (the plus on a lone selected node)', () 
     const classes = classesOf(handle);
     expect(classes).toContain('!invisible');
     expect(classes).toContain('before:h-9');
-    expect(classes).not.toContain('z-21');
+    expect(classes).not.toContain('z-23');
+    expect(classes).not.toContain('handle-plus-zone');
     expect(classes.filter((c) => c.startsWith('after:'))).toEqual([]);
     expect(handle.style.getPropertyValue('--handle-zone')).toBe('');
     expect(container.querySelector('[data-testid="handle-plus"]')).toBeNull();

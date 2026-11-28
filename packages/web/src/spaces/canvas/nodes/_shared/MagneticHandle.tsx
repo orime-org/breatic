@@ -43,12 +43,15 @@ const PLUS_GAP_SCREEN_PX = 4;
 /**
  * The press zone of an emphasized handle, `--handle-zone` canvas px square
  * from the border outward: the plain zone's 36px on screen, so the plus
- * sitting wholly outside the node has room to follow the pointer. `z-21`
- * lifts it above the video node's playback-error cover (`z-20`, VideoNode)
- * and its control bar (`z-10`, MediaPlayer), which share the node's
- * stacking context.
+ * sitting wholly outside the node has room to follow the pointer. `z-23`
+ * lifts it above the task counts column (`z-22`, flow-node-types), the video
+ * node's playback-error cover (`z-20`, VideoNode) and its control bar
+ * (`z-10`, MediaPlayer), which share the node's stacking context.
+ * `handle-plus-zone` keeps the zone pressable while a wire is being dragged
+ * (index.css), so a wire released on the plus lands on this handle.
  */
-const EMPHASIZED_ZONE_CLASS = 'z-21 before:h-[var(--handle-zone)] before:w-[var(--handle-zone)]';
+const EMPHASIZED_ZONE_CLASS =
+  'handle-plus-zone z-23 before:h-[var(--handle-zone)] before:w-[var(--handle-zone)]';
 
 /** Props for {@link MagneticHandle}. */
 interface MagneticHandleProps {

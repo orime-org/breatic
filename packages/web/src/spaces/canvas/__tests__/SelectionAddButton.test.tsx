@@ -55,6 +55,12 @@ describe('SelectionAddButton', () => {
     expect(onOpenChange).toHaveBeenCalledWith(true);
   });
 
+  // Design 4.2: a 24 screen px button; the preview wires end at its left edge.
+  it('draws the plus as a 24px (size-6) round button', () => {
+    setup({ open: false });
+    expect(screen.getByTestId('selection-add-button')).toHaveClass('size-6', 'rounded-full');
+  });
+
   it('lists the four types, a separator, then Add to Agent', () => {
     setup();
     const rows = Array.from(document.querySelectorAll('[role="menuitem"], [role="separator"]')).map((el) =>

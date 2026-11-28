@@ -358,6 +358,7 @@ import {
 } from '@web/spaces/canvas/node-clipboard';
 import { snapshotNodeData } from '@web/data/yjs/node-data-snapshot';
 import {
+  centerToTopLeft,
   createAnnotationNode,
   isCreatableNodeType,
   type CreatableNodeType,
@@ -2316,6 +2317,17 @@ function CanvasSpaceInner({
       }),
     [getInternalNode],
   );
+  // The size xyflow measured for a node, when it has one; what the placement
+  // helpers in `lib/place-flow.ts` read beside the document's own sizes.
+  const measuredSizeOf = React.useCallback(
+    (id: string): { width: number; height: number } | undefined => {
+      const measured = getInternalNode(id)?.measured;
+      return measured?.width && measured.height
+        ? { width: measured.width, height: measured.height }
+        : undefined;
+    },
+    [getInternalNode],
+  );
   // Slide what an action just made in front of the user, together with what
   // it was made from. Pans only, keeping the user's zoom, the way locate does
   // above; `framedBox` picks what of it to frame and `frameBuiltNode` whether
@@ -2481,7 +2493,7 @@ function CanvasSpaceInner({
         x: connectCreate.x,
         y: connectCreate.y,
       });
-      const { nodeId, failedSourceIds } = createConnectedNode({
+      const built = createConnectedNode({
         projectId,
         spaceId,
         type,
@@ -2489,6 +2501,8 @@ function CanvasSpaceInner({
         sourceIds: [connectCreate.sourceId],
         createNodeAt,
       });
+      if (!built) return;
+      const { nodeId, failedSourceIds } = built;
       // Source deleted while the menu was open (collaborator race): the node
       // still lands; surface the missing wire like every failed reference.
       if (failedSourceIds.length > 0) toast.error(t('canvas.generatePanel.referenceAddFailed'));
@@ -2815,12 +2829,7 @@ function CanvasSpaceInner({
         try {
           // Sized as `occupiedRects` describes, from the document and the
           // canvas's measurements together.
-          const occupied = occupiedRects(readNodePlacements(projectId, spaceId), (id) => {
-            const measured = getInternalNode(id)?.measured;
-            return measured?.width && measured.height
-              ? { width: measured.width, height: measured.height }
-              : undefined;
-          });
+          const occupied = occupiedRects(readNodePlacements(projectId, spaceId), measuredSizeOf);
           // The card reports a refusal by the size cap itself, so no toast here.
           const placed = placeProposalAt(proposal, center, occupied, undefined, undefined, false);
           if ('ok' in placed) {
@@ -2891,7 +2900,7 @@ function CanvasSpaceInner({
     openGeneratePanel,
     projectId,
     spaceId,
-    getInternalNode,
+    measuredSizeOf,
     rfStoreApi,
     clearOpeningFit,
     setViewport,
@@ -3016,17 +3025,13 @@ function CanvasSpaceInner({
     setFlowNodes((current) =>
       reconcileSelection(current, (node) => targets.has(node.id)),
     );
-    // A marquee made before the creation (the selection plus is pressed on
-    // one) leaves xyflow's NodesSelection active, and its rect would shrink
-    // onto the new node and swallow its clicks; same as `selectOnlyNode`.
-    rfStoreApi.setState({ nodesSelectionActive: false });
     // A newer creation may already be waiting; only this run's ids clear.
     setSelectAfterCreate((current) => (current === ids ? null : current));
     const pasted = focusPastedRef.current;
     if (pasted?.ids !== ids) return;
     focusPastedRef.current = null;
     focusFirstCopy(ids, pasted.sources);
-  }, [selectAfterCreate, nodes, setFlowNodes, focusFirstCopy, rfStoreApi]);
+  }, [selectAfterCreate, nodes, setFlowNodes, focusFirstCopy]);
 
   // A 3D capture's "View" press (#1411 design 5.4): once loaded and holding
   // the node, centre on it at the user's zoom and select it.
@@ -3238,6 +3243,14 @@ function CanvasSpaceInner({
   // one (`selectOnlyNode`). xyflow sets it when the marquee is released,
   // after the selection settled.
   const selectionAddSingle = selectionAdd.kind === 'single';
+  // The node whose handles show the plus: worked out here once per selection
+  // and read by every node against its own id.
+  const loneSelectedId = selectionAdd.kind === 'single' ? selectionAdd.nodeId : null;
+  const setLoneSelectedId = useCanvasSession((s) => s.setLoneSelectedId);
+  React.useLayoutEffect(() => {
+    setLoneSelectedId(loneSelectedId);
+  }, [loneSelectedId, setLoneSelectedId]);
+  React.useEffect(() => () => setLoneSelectedId(null), [setLoneSelectedId]);
   const marqueeRectActive = useStore((s) => s.nodesSelectionActive);
   React.useEffect(() => {
     if (selectionAddSingle && marqueeRectActive) rfStoreApi.setState({ nodesSelectionActive: false });
@@ -3695,19 +3708,14 @@ function CanvasSpaceInner({
         selectionBounds: bounds,
         selectionIds: [...selectionAddAnchors, ...selectionAddSources],
         placements: readNodePlacements(projectId, spaceId),
-        measuredOf: (id) => {
-          const measured = getInternalNode(id)?.measured;
-          return measured?.width && measured.height
-            ? { width: measured.width, height: measured.height }
-            : undefined;
-        },
+        measuredOf: measuredSizeOf,
         cap: getCachedReferencePoolCap(),
       });
       if (plan.kind === 'full') {
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap: plan.cap }));
         return;
       }
-      const { nodeId, failedSourceIds } = createConnectedNode({
+      const built = createConnectedNode({
         projectId,
         spaceId,
         type,
@@ -3715,16 +3723,18 @@ function CanvasSpaceInner({
         sourceIds: plan.sourceIds,
         createNodeAt,
       });
+      if (!built) return;
+      const { nodeId, failedSourceIds } = built;
       // An upstream deleted while the menu was open: the rest still land.
       if (failedSourceIds.length > 0) toast.error(t('canvas.generatePanel.referenceAddFailed'));
       setSelectAfterCreate([nodeId]);
       // The column right of the selection is often past the window's edge:
       // slide the new node in front of the user with what it was made from.
-      const { width, height } = EMPTY_NODE_SIZE;
-      frameBuilt({ x: plan.center.x - width / 2, y: plan.center.y - height / 2, width, height }, bounds);
+      frameBuilt({ ...centerToTopLeft(plan.center, EMPTY_NODE_SIZE), ...EMPTY_NODE_SIZE }, bounds);
     },
     [
       getInternalNode,
+      measuredSizeOf,
       selectionAddAnchors,
       selectionAddSources,
       projectId,

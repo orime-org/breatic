@@ -11,8 +11,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 
+vi.mock('@web/lib/toast', () => ({
+  toast: { warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
+  muteToasts: vi.fn(),
+  _unmuteToastsForTests: vi.fn(),
+}));
+
 import type { CanvasNodeFields } from '@breatic/shared';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
+import { clearAllDocSizes } from '@web/data/yjs/doc-size';
+import { enterSize } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 import {
   addNode,
   getCanvasUndoManager,
@@ -78,6 +86,7 @@ beforeEach(() => {
 afterEach(() => {
   _resetForTests();
   _resetCanvasUndoCacheForTests();
+  clearAllDocSizes();
   vi.restoreAllMocks();
 });
 
@@ -161,6 +170,28 @@ describe('createConnectedNode', () => {
     });
     expect(result).toEqual({ nodeId: NEW_ID, failedSourceIds: ['gone'] });
     expect(readEdges(getDoc(NAME)).map((e) => e.id)).toEqual([`a->${NEW_ID}`]);
+  });
+
+  // The Space refuses the add (full, over the ceiling, or being rebuilt): the
+  // builder is never called, no wire is written, and the callers get null so
+  // they neither select nor frame a node that does not exist.
+  it.each(['F', 'O', 'Z'] as const)('returns null and writes nothing when the Space refuses the add [%s]', (code) => {
+    seed('a', 'image');
+    enterSize(NAME, code);
+    const builder = vi.fn(createNodeAt);
+    const result = createConnectedNode({
+      projectId: PID,
+      spaceId: SID,
+      type: 'image',
+      center: { x: 600, y: 0 },
+      sourceIds: ['a'],
+      createNodeAt: builder,
+      now: () => 1,
+    });
+    expect(result).toBeNull();
+    expect(builder).not.toHaveBeenCalled();
+    expect(readNodes(getDoc(NAME)).map((n) => n.id)).toEqual(['a']);
+    expect(readEdges(getDoc(NAME))).toEqual([]);
   });
 
   // Critical path (Yjs canvas write): for any set of upstreams in any order

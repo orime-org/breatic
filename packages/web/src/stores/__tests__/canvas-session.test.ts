@@ -115,6 +115,26 @@ describe('canvas session store', () => {
   });
 });
 
+// inner#2216: the canvas names the one selected node, whose handles show the
+// plus; each canvas keeps its own.
+describe('lone selected node (inner#2216)', () => {
+  it('starts with no node named', () => {
+    expect(createCanvasSessionStore().getState().loneSelectedId).toBeNull();
+  });
+
+  it('names a node, replaces it and clears it, on its own canvas only', () => {
+    const a = createCanvasSessionStore();
+    const b = createCanvasSessionStore();
+    a.getState().setLoneSelectedId('n1');
+    expect(a.getState().loneSelectedId).toBe('n1');
+    expect(b.getState().loneSelectedId).toBeNull();
+    a.getState().setLoneSelectedId('n2');
+    expect(a.getState().loneSelectedId).toBe('n2');
+    a.getState().setLoneSelectedId(null);
+    expect(a.getState().loneSelectedId).toBeNull();
+  });
+});
+
 describe('mini-tool draft (inner#888 §7.2)', () => {
   const OPEN = { sourceContent: 'https://cdn.example/a.png', params: { creativity: 0 } };
 

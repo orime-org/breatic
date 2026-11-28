@@ -475,6 +475,14 @@ export interface CanvasSessionState {
    * its full screen.
    */
   fullscreenTextNode: string | null;
+  /**
+   * The one node selected once notes are left out, or null (inner#2216). The
+   * canvas works it out once per selection; each node compares its own id,
+   * so a selection change re-renders only the node it concerns.
+   */
+  loneSelectedId: string | null;
+  /** Set {@link CanvasSessionState.loneSelectedId}. */
+  setLoneSelectedId: (nodeId: string | null) => void;
   /** Open a text node full screen. */
   openTextFullscreen: (nodeId: string) => void;
   /** Close a text node's full screen, if it is still the one open. */
@@ -661,6 +669,11 @@ export function createCanvasSessionStore(): CanvasSessionStore {
       historyFocus: null,
       editingTextNode: null,
       fullscreenTextNode: null,
+      loneSelectedId: null,
+      setLoneSelectedId: (nodeId) =>
+        set((s) => {
+          s.loneSelectedId = nodeId;
+        }),
       taskPanelStatus: null,
       pickSession: null,
       pendingFocusUploads: [],

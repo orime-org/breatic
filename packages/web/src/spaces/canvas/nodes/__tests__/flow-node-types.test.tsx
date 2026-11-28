@@ -655,26 +655,30 @@ describe('a stored image zoomed past its preview', () => {
 
 // inner#2216 design 4.1: the handles of a node show the plus only while it is
 // the one selected non-note node on the canvas, connectable, and no mini tool
-// is open on it. The wrapper asks the xyflow store whether any other non-note
-// node is selected.
+// is open on it. The canvas names that node in the session
+// (`loneSelectedId`); the wrapper compares it with its own id.
 describe('the plus on a lone selected node’s handles', () => {
   afterEach(() => {
     storeApi = null;
     canvasSessions.of('').getState().closeActivePanel();
+    canvasSessions.of('').getState().setLoneSelectedId(null);
   });
 
   /**
-   * Renders image node n1 as selected and connectable, with the store's
-   * selection set to the given nodes.
-   * @param others - Other nodes on the canvas, with their type and selection.
+   * Renders image node n1, connectable unless told otherwise, with the
+   * session naming the given node as the lone selected one.
+   * @param lone - The id the session names, or null.
    * @param connectable - Whether the node takes connections.
    * @param extra - More of the view the wrapper hands the body.
+   * @param selected - Whether xyflow reports n1 selected.
    */
   function renderSelected(
-    others: ReadonlyArray<{ id: string; type: string; selected: boolean }>,
+    lone: string | null,
     connectable = true,
     extra: Record<string, unknown> = {},
+    selected = true,
   ): void {
+    canvasSessions.of('').getState().setLoneSelectedId(lone);
     const Image = FLOW_NODE_TYPES.image;
     render(
       <TooltipProvider>
@@ -688,7 +692,7 @@ describe('the plus on a lone selected node’s handles', () => {
                 id: 'n1',
                 type: 'image',
                 data: { handling: false, name: 'N', content: 'https://cdn.invalid/a.png', ...extra },
-                selected: true,
+                selected,
                 isConnectable: connectable,
               } as unknown as NodeProps)}
             />
@@ -696,44 +700,49 @@ describe('the plus on a lone selected node’s handles', () => {
         </ReactFlowProvider>
       </TooltipProvider>,
     );
-    act(() => {
-      storeApi?.getState().setNodes([
-        { id: 'n1', type: 'image', position: { x: 0, y: 0 }, data: {}, selected: true },
-        ...others.map((n) => ({ ...n, position: { x: 400, y: 0 }, data: {} })),
-      ]);
-    });
   }
 
-  it('shows the plus on both handles when the node is the only one selected', () => {
-    renderSelected([{ id: 'n2', type: 'video', selected: false }]);
-    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
-  });
-
-  it('shows the plus when the only other selected node is a note', () => {
-    renderSelected([{ id: 'note', type: 'annotation', selected: true }]);
+  it('shows the plus on both handles when the session names this node', () => {
+    renderSelected('n1');
     expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
   });
 
   // Guards: the dot stays wherever the plus is not due.
-  it('keeps the dot when another content node is selected too', () => {
-    renderSelected([{ id: 'n2', type: 'video', selected: true }]);
+  it('keeps the dot when the session names another node', () => {
+    renderSelected('n2');
     expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
     expect(screen.getAllByTestId('handle-dot')).toHaveLength(2);
   });
 
-  it('keeps the dot when a content node is selected beside a note', () => {
-    renderSelected([
-      { id: 'note', type: 'annotation', selected: true },
-      { id: 'n2', type: 'text', selected: true },
-    ]);
+  it('keeps the dot when the session names no node', () => {
+    renderSelected(null);
+    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
+    expect(screen.getAllByTestId('handle-dot')).toHaveLength(2);
+  });
+
+  it('keeps the dot when xyflow no longer reports the node selected', () => {
+    renderSelected('n1', true, {}, false);
     expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
   });
 
-  // The plus raises the source handle's connection zone to z-21 over the
-  // node's top right corner, where the task counts hang; the counts must stay
-  // above it or a press on a count starts a wire instead of opening the list.
-  it('keeps the task counts above the emphasized handle', () => {
-    renderSelected([], true, { taskCounts: { running: 1, done: 0, failed: 0, expired: 0 } });
+  it('follows the session: the plus goes when another node is named and comes back', () => {
+    renderSelected('n1');
+    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
+    act(() => {
+      canvasSessions.of('').getState().setLoneSelectedId('n2');
+    });
+    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
+    act(() => {
+      canvasSessions.of('').getState().setLoneSelectedId('n1');
+    });
+    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
+  });
+
+  // The plus raises the handles' connection zone to z-23 over the node's top
+  // right corner, where the task counts (z-22) hang: a wire released on the
+  // plus must land on the handle even where a tall counts column reaches it.
+  it('draws the emphasized handles above the task counts', () => {
+    renderSelected('n1', true, { taskCounts: { running: 1, done: 0, failed: 0, expired: 0 } });
     expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
     const zOf = (el: Element): number => {
       const z = [...el.classList].find((c) => /^z-\d+$/.test(c));
@@ -743,13 +752,13 @@ describe('the plus on a lone selected node’s handles', () => {
     expect(anchor).toHaveClass('z-22');
     const handles = [...document.querySelectorAll('.react-flow__handle')];
     expect(handles).toHaveLength(2);
-    for (const handle of handles) expect(zOf(anchor)).toBeGreaterThan(zOf(handle));
+    for (const handle of handles) expect(zOf(handle)).toBeGreaterThan(zOf(anchor));
   });
 
   // A marquee still being dragged has not settled the selection: the plus
   // waits for the release, then shows.
   it('waits for the marquee to be released before showing the plus', () => {
-    renderSelected([]);
+    renderSelected('n1');
     expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
     act(() => {
       storeApi?.setState({ userSelectionActive: true });
@@ -763,13 +772,13 @@ describe('the plus on a lone selected node’s handles', () => {
   });
 
   it('keeps the dot when the node takes no connections (viewer, reference pick)', () => {
-    renderSelected([], false);
+    renderSelected('n1', false);
     expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
   });
 
   it('keeps the dot while a mini tool is open on the node', () => {
     canvasSessions.of('').getState().openMiniTool('n1', 'image.crop', { sourceContent: 'https://cdn.invalid/a.png', params: {} });
-    renderSelected([]);
+    renderSelected('n1');
     expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
     expect(screen.getAllByTestId('handle-dot')).toHaveLength(2);
   });

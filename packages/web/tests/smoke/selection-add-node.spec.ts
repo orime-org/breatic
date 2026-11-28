@@ -487,6 +487,127 @@ test('a singly selected node shows a plus 4px outside both borders that presses 
     .toEqual([`${other}->${chosen}`]);
 });
 
+/**
+ * Drags a wire from a node's source handle and releases it at a point.
+ * @param page - The page.
+ * @param fromId - The node the wire starts from.
+ * @param to - Where it is released, on screen.
+ */
+async function wireTo(page: Page, fromId: string, to: Point): Promise<void> {
+  const from = (await nodeOf(page, fromId).locator('.react-flow__handle.source').boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 12 });
+  await page.mouse.up();
+}
+
+// inner#2216: a wire released anywhere on the lone selected node's plus lands
+// on that handle, at 50% zoom too, where the plus sits furthest outside the
+// handle's own radius; the drag-to-blank create menu never opens instead.
+test('at 50% zoom a wire released on the centre or the outer edge of a lone selected node\'s target plus connects to it', async ({ page }) => {
+  const source = crypto.randomUUID();
+  const chosen = crypto.randomUUID();
+  await seedNode(source, 'image', undefined, 0, 0);
+  await seedNode(chosen, 'image', undefined, 520, 0);
+  await fit(page);
+  await zoomTo(page, 50);
+
+  const cases: Array<{ name: string; at: (plus: { x: number; y: number; width: number; height: number }) => Point }> = [
+    { name: 'centre', at: (b) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 }) },
+    // The target plus sits left of the node, so its outer edge is its left one.
+    { name: 'outer edge', at: (b) => ({ x: b.x + 1, y: b.y + b.height / 2 }) },
+  ];
+  for (const { name, at } of cases) {
+    await clickNode(page, chosen);
+    await expect.poll(() => selectedIds(page)).toEqual([chosen]);
+    const plus = nodeOf(page, chosen).locator('.react-flow__handle.target').getByTestId('handle-plus');
+    await expect(plus).toHaveCount(1);
+    // The plus chases the pointer; park it on the empty canvas and let it spring back.
+    const rest = await emptyPoint(page);
+    await page.mouse.move(rest.x, rest.y);
+    await page.waitForTimeout(500);
+    await wireTo(page, source, at((await plus.boundingBox())!));
+    await expect.poll(async () => (await graph(page)).edges.map((e) => `${e.source}->${e.target}`), { message: `released on the ${name}` })
+      .toEqual([`${source}->${chosen}`]);
+    await expect(page.getByTestId('create-node-text'), `no create menu after a release on the ${name}`).toHaveCount(0);
+
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(async () => (await graph(page)).edges).toEqual([]);
+  }
+});
+
+/**
+ * Drags a marquee over the given nodes and waits for xyflow's selection rect.
+ * @param page - The page.
+ * @param ids - The nodes the marquee covers.
+ */
+async function marqueeOver(page: Page, ids: readonly string[]): Promise<void> {
+  await holdMarqueeOver(page, ids);
+  await page.mouse.up();
+  await expect.poll(() => selectedIds(page)).toEqual([...ids].sort());
+  await expect(visibleSpace(page).locator('.react-flow__nodesselection-rect')).toBeVisible();
+}
+
+/**
+ * Waits for xyflow's selection rect to stand around exactly the given nodes.
+ * @param page - The page.
+ * @param ids - The nodes it must surround.
+ */
+async function expectRectAround(page: Page, ids: readonly string[]): Promise<void> {
+  await expect.poll(() => selectedIds(page)).toEqual([...ids].sort());
+  const rect = visibleSpace(page).locator('.react-flow__nodesselection-rect');
+  await expect(rect).toBeVisible();
+  await expect.poll(async () => {
+    const r = await rect.boundingBox();
+    if (r === null) return 'no rect';
+    for (const id of ids) {
+      const b = await nodeOf(page, id).boundingBox();
+      if (b === null) return `${id} is not drawn`;
+      if (b.x < r.x - 1 || b.y < r.y - 1 || b.x + b.width > r.x + r.width + 1 || b.y + b.height > r.y + r.height + 1) {
+        return `${id} lies outside the rect`;
+      }
+    }
+    return 'around';
+  }).toBe('around');
+}
+
+// inner#2216: building from the selection plus clears xyflow's marquee rect
+// for its one new node, but a duplicate or a paste of a marquee selection
+// keeps it: the copies come out selected inside the rect, ready to drag.
+test('a marquee over two nodes and Cmd/Ctrl+D: the selection rect surrounds the copies', async ({ page }) => {
+  const first = crypto.randomUUID();
+  const second = crypto.randomUUID();
+  await seedNode(first, 'image', undefined, 0, 0);
+  await seedNode(second, 'image', undefined, 360, 0);
+  await fit(page);
+  await zoomTo(page, 50);
+
+  await marqueeOver(page, [first, second]);
+  const before = (await graph(page)).nodes.map((n) => n.id);
+  await page.keyboard.press('ControlOrMeta+D');
+  await expect.poll(async () => (await graph(page)).nodes.length, { timeout: 20_000 }).toBe(before.length + 2);
+  const copies = (await graph(page)).nodes.filter((n) => !before.includes(n.id)).map((n) => n.id);
+  await expectRectAround(page, copies);
+});
+
+test('a marquee over two nodes, copied and pasted: the selection rect surrounds the pasted copies', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const first = crypto.randomUUID();
+  const second = crypto.randomUUID();
+  await seedNode(first, 'image', undefined, 0, 0);
+  await seedNode(second, 'image', undefined, 360, 0);
+  await fit(page);
+  await zoomTo(page, 50);
+
+  await marqueeOver(page, [first, second]);
+  const before = (await graph(page)).nodes.map((n) => n.id);
+  await page.keyboard.press('ControlOrMeta+C');
+  await page.keyboard.press('ControlOrMeta+V');
+  await expect.poll(async () => (await graph(page)).nodes.length, { timeout: 20_000 }).toBe(before.length + 2);
+  const copies = (await graph(page)).nodes.filter((n) => !before.includes(n.id)).map((n) => n.id);
+  await expectRectAround(page, copies);
+});
+
 test('a marquee over one node leaves nothing over it: its body takes a press and its plus presses the handle', async ({ page }) => {
   const lone = crypto.randomUUID();
   const other = crypto.randomUUID();
