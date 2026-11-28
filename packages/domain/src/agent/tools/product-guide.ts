@@ -663,8 +663,19 @@ export function renderProductGuide(): string {
     `- ${quoted(t("menu.item.upload"))} (an arrow pointing up out of a tray) in that menu opens a file picker ` +
       "that lists supported pictures, videos, sounds and plain text files; PDF, Word and Excel files go in by dropping or " +
       "pasting them. What you pick arrives the same way as dropped files, in the middle of the view.",
-    "- Drag from the dot on a node's right edge and let go on empty canvas: a menu lists the types that can take " +
-      "that connection, and the one you pick appears there, already connected.",
+    "- Drag from the dot on a node's right edge (a plus just outside it while that node is the only one selected) " +
+      "and let go on " +
+      "empty canvas: a menu lists the types that can take that connection, and the one you pick appears there, " +
+      "already connected.",
+    "- With two or more nodes selected (notes aside), by dragging a box or with Cmd/Ctrl-click, or with a group " +
+      "selected, a plus sits just outside the right edge of the selection or the group; after dragging a box it " +
+      "appears once the mouse is let go. Clicking it opens a menu " +
+      `of the four node types and ${quoted(t("canvas.contextMenu.addToAgent"))}; while it is open, a line runs ` +
+      "from each selected node (a group's members) to the plus. Picking a type creates that node to the right, " +
+      "already connected from every selected node that can connect into it, so they all show in its generation " +
+      "panel; the others are simply left out. A type none of them can connect into is greyed out. " +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} there hands every selected node to the Agent, as it does in the ` +
+      "right-click menu inside a box selection's frame.",
     "- Paste with Cmd/Ctrl+V: a copied node, a file or screenshot, or plain text, which becomes a text node. " +
       "Pictures, videos and sounds copied in a document's body, with nothing else selected, paste as nodes of " +
       "their kind named after their caption or file name, several at once four to a row inside a new group " +
@@ -1266,8 +1277,10 @@ export function renderProductGuide(): string {
       "click the first node; otherwise mention the first node in the prompt.",
     "",
     "## Connections",
-    "Picture, video, sound and text nodes show a small dot on their left and right edges; groups and notes have " +
-      "none. Drag from a node's right dot to another node's left dot, or click one dot and then the other; the " +
+    "Picture, video, sound and text nodes show a small dot on their left and right edges; while the node is the " +
+      "only one selected (notes aside) and no tool is open on it, a plus stands just outside each edge in its place. " +
+      "It works the same either way. " +
+      "Groups and notes have none. Drag from a node's right dot to another node's left dot, or click one dot and then the other; the " +
       "first node then shows as a chip in the second node's generation panel. A pair that is not allowed snaps " +
       "back with a message naming the two kinds. What may connect into each node:",
     ...connectionLines(),

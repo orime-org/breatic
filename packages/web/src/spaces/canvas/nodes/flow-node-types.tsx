@@ -202,6 +202,13 @@ function makeFlowNode(
     // draws its own edge and eight grips on the node's border, so the counts,
     // the selected border and the connection dots give way while it is open.
     const expanding = useCanvasSession((s) => miniToolOpenOn(props.id)(s)?.expand != null);
+    // The plus on the handles (inner#2216): the one selected node the canvas
+    // names in the session (none while a marquee is dragged), when it takes
+    // connections and no mini tool is open on it. A selection change
+    // re-renders only the nodes whose answer changed.
+    const miniToolOpen = useCanvasSession((s) => miniToolOpenOn(props.id)(s) != null);
+    const lone = useCanvasSession((s) => s.loneSelectedId === props.id);
+    const plusOnHandles = lone && props.isConnectable && !miniToolOpen;
     const openTaskPanel = useCanvasSession((s) => s.openTaskPanel);
     const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
     const onOpenTasks = React.useCallback(
@@ -271,11 +278,13 @@ function makeFlowNode(
                         type='target'
                         isConnectable={props.isConnectable}
                         hidden={expanding}
+                        emphasized={plusOnHandles}
                       />
                       <MagneticHandle
                         type='source'
                         isConnectable={props.isConnectable}
                         hidden={expanding}
+                        emphasized={plusOnHandles}
                       />
                     </>
                   ) : null}
@@ -300,8 +309,11 @@ function makeFlowNode(
                       // `nodrag` keeps a press on a count from starting a node
                       // drag: xyflow's threshold is one pixel, so opening the list
                       // would otherwise slide the node under the cursor and write
-                      // a new position into the shared document.
-                      className='nodrag absolute left-full top-0'
+                      // a new position into the shared document. `z-22` keeps the
+                      // counts above the plain connection zone; the lone
+                      // selected node's plus zone (`z-23`) is drawn over them
+                      // where a tall column reaches it.
+                      className='nodrag absolute left-full top-0 z-22'
                       style={{
                         transform: `scale(${headerScale})`,
                         transformOrigin: 'top left',

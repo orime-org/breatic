@@ -652,3 +652,111 @@ describe('a stored image zoomed past its preview', () => {
     expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
   });
 });
+
+// inner#2216 design 4.1: the handles of a node show the plus only while it is
+// the one selected non-note node on the canvas, connectable, and no mini tool
+// is open on it. The canvas names that node in the session
+// (`loneSelectedId`); the wrapper compares it with its own id.
+describe('the plus on a lone selected node’s handles', () => {
+  afterEach(() => {
+    storeApi = null;
+    canvasSessions.of('').getState().closeActivePanel();
+    canvasSessions.of('').getState().setLoneSelectedId(null);
+  });
+
+  /**
+   * Renders image node n1, connectable unless told otherwise, with the
+   * session naming the given node as the lone selected one.
+   * @param lone - The id the session names, or null.
+   * @param connectable - Whether the node takes connections.
+   * @param extra - More of the view the wrapper hands the body.
+   */
+  function renderSelected(
+    lone: string | null,
+    connectable = true,
+    extra: Record<string, unknown> = {},
+  ): void {
+    canvasSessions.of('').getState().setLoneSelectedId(lone);
+    const Image = FLOW_NODE_TYPES.image;
+    render(
+      <TooltipProvider>
+        <ReactFlowProvider>
+          <StoreGrabber />
+          <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined,
+            deleteNode: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
+            reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
+            <Image
+              {...({
+                id: 'n1',
+                type: 'image',
+                data: { handling: false, name: 'N', content: 'https://cdn.invalid/a.png', ...extra },
+                selected: true,
+                isConnectable: connectable,
+              } as unknown as NodeProps)}
+            />
+          </CanvasActionsContext.Provider>
+        </ReactFlowProvider>
+      </TooltipProvider>,
+    );
+  }
+
+  it('shows the plus on both handles when the session names this node', () => {
+    renderSelected('n1');
+    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
+  });
+
+  // Guards: the dot stays wherever the plus is not due.
+  it('keeps the dot when the session names another node', () => {
+    renderSelected('n2');
+    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
+    expect(screen.getAllByTestId('handle-dot')).toHaveLength(2);
+  });
+
+  it('keeps the dot when the session names no node', () => {
+    renderSelected(null);
+    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
+    expect(screen.getAllByTestId('handle-dot')).toHaveLength(2);
+  });
+
+  it('follows the session: the plus goes when another node is named and comes back', () => {
+    renderSelected('n1');
+    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
+    act(() => {
+      canvasSessions.of('').getState().setLoneSelectedId('n2');
+    });
+    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
+    act(() => {
+      canvasSessions.of('').getState().setLoneSelectedId('n1');
+    });
+    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
+  });
+
+  // The plus raises the handles' connection zone to z-23 over the node's top
+  // right corner, where the task counts (z-22) hang: a wire released on the
+  // plus must land on the handle even where a tall counts column reaches it.
+  it('draws the emphasized handles above the task counts', () => {
+    renderSelected('n1', true, { taskCounts: { running: 1, done: 0, failed: 0, expired: 0 } });
+    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
+    const zOf = (el: Element): number => {
+      const z = [...el.classList].find((c) => /^z-\d+$/.test(c));
+      return z === undefined ? Number.NaN : Number(z.slice(2));
+    };
+    const anchor = screen.getByTestId('node-task-counts-anchor');
+    expect(anchor).toHaveClass('z-22');
+    const handles = [...document.querySelectorAll('.react-flow__handle')];
+    expect(handles).toHaveLength(2);
+    for (const handle of handles) expect(zOf(handle)).toBeGreaterThan(zOf(anchor));
+  });
+
+  it('keeps the dot when the node takes no connections (viewer, reference pick)', () => {
+    renderSelected('n1', false);
+    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
+  });
+
+  it('keeps the dot while a mini tool is open on the node', () => {
+    canvasSessions.of('').getState().openMiniTool('n1', 'image.crop', { sourceContent: 'https://cdn.invalid/a.png', params: {} });
+    renderSelected('n1');
+    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
+    expect(screen.getAllByTestId('handle-dot')).toHaveLength(2);
+  });
+});

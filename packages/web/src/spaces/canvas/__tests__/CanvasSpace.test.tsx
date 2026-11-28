@@ -4730,14 +4730,29 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     expect(css).not.toMatch(/^\.canvas-pick-selectable\s*\{/m);
   });
 
-  it('stands the magnetic handle ::before zone down while connecting (round-4)', () => {
+  it('stands the magnetic handle ::before zone down while connecting, except the plus zone a drag can end on (round-4, inner#2216)', () => {
     // The synchronous .canvas-connecting class disables the 36px handle hit
     // zone during a drag so it cannot hijack xyflow's elementFromPoint target
-    // resolution for a nearby node. Block-scoped so a decoy elsewhere can't
-    // satisfy the substring (R4 gameable-contract lesson).
+    // resolution for a nearby node. The one plus zone a drag can end on
+    // (`handle-plus-zone`, MagneticHandle) is left out: its plus sits outside
+    // the anchor's radius, so a wire released on it must still land there.
+    // Block-scoped so a decoy elsewhere can't satisfy the substring (R4
+    // gameable-contract lesson).
     expect(css).toMatch(
-      /\.canvas-connecting \.react-flow__handle::before\s*\{[^}]*pointer-events:\s*none/,
+      /\.canvas-connecting \.react-flow__handle:not\(\.handle-plus-zone\)::before\s*\{[^}]*pointer-events:\s*none/,
     );
+    expect(css).not.toMatch(/\.canvas-connecting \.react-flow__handle::before\s*\{/);
+  });
+
+  // inner#2216: xyflow paints the marquee and the NodesSelection rect from
+  // `--xy-selection-*` (blue `-default` fallbacks in its style.css); the canvas
+  // gives them the selected colour in both themes, in the same rule that
+  // colours the edges, which outranks the library's later sheet.
+  it('colours the marquee and selection rect with the selected tokens inside the canvas edge colour rule', () => {
+    const block = /\.react-flow\.react-flow\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(block).toContain('--xy-edge-stroke-default');
+    expect(block).toMatch(/--xy-selection-background-color:\s*var\(--color-status-selected-bg\);/);
+    expect(block).toMatch(/--xy-selection-border:\s*1px dotted var\(--color-status-selected-border\);/);
   });
 
   it('hides the NodesSelection rect during a pick (marquee dead-zone neutralizer)', () => {
@@ -4854,8 +4869,9 @@ describe('what an Understand or Transcribe press leaves on screen', () => {
     src.indexOf('const readingRunOf'),
     src.indexOf('const onUploadInputChange'),
   );
-  // frameBuilt reads the source's box through measuredRects and the live
-  // viewport, asks viewportForBuilt where to go, and moves there.
+  // frameBuilt takes the source's box (sourceRectOf reads it through
+  // measuredRects) and the live viewport, asks viewportForBuilt where to go,
+  // and moves there.
   const framing = src.slice(
     src.indexOf('const frameBuilt'),
     src.indexOf('// ---- Node creation (library mailbox + right-click) ----'),
@@ -4866,7 +4882,7 @@ describe('what an Understand or Transcribe press leaves on screen', () => {
     // The call, not the name: a dependency array mentions it too, and a
     // press that only lists it moves nothing.
     expect(press).toContain('setSelectAfterCreate([id])');
-    expect(press).toContain('frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), host.id)');
+    expect(press).toContain('frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), sourceRectOf(host.id))');
   });
 
   it('connects both reading actions to the builder that selects and frames the result', () => {
@@ -4891,7 +4907,8 @@ describe('what an Understand or Transcribe press leaves on screen', () => {
   // viewport from the live transform. A grouped source read off
   // `node.position` would be measured a whole group-origin away.
   it('frames against the live viewport and the source node absolute box', () => {
-    expect(framing).toContain('measuredRects([sourceNodeId])');
+    expect(framing).toContain('measuredRects([nodeId])');
+    expect(framing).toContain('viewportForBuilt(built, source,');
     expect(framing).toContain('rfStoreApi.getState()');
     expect(measured).toContain('positionAbsolute');
   });
@@ -5645,5 +5662,93 @@ describe('the placing callback the generate panels receive', () => {
     expect(body).toMatch(/placeProposalAt\([^,]+,[^,]+,[^,]+,[^)]+\)/);
     expect(body).not.toContain('setViewport');
     expect(body).not.toContain('whatToFocus');
+  });
+});
+
+// inner#2216: the canvas works out the one selected non-note node once per
+// selection and names it in the session; each node compares its own id to
+// show the plus on its handles (flow-node-types). A layout effect writes it,
+// and leaving the canvas clears it.
+describe('the lone selected node the canvas names in the session (inner#2216)', () => {
+  beforeEach(() => {
+    mockUseCanvasSpace.mockReset();
+    vi.mocked(useSocket).mockReset();
+    canvasSessions.clear();
+    useCurrentUserStore.getState().setUser({
+      id: 'u-1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      personalStudio: null,
+      membershipTier: 'base',
+    });
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { handling: false } },
+          { id: 'b', type: 'image', position: { x: 400, y: 0 }, data: { handling: false } },
+          { id: 'note', type: 'annotation', position: { x: 0, y: 400 }, data: { content: 'n', createdBy: 'u-1', createdAt: 1, replies: [] } },
+        ],
+      }),
+    );
+  });
+
+  /**
+   * Marks the given nodes selected in the canvas's ReactFlow mirror.
+   * @param ids - The ids to select; every other node is deselected.
+   */
+  function select(...ids: string[]): void {
+    act(() => {
+      canvasGraphs.of('s').getState()
+        .setFlowNodes((prev) => prev.map((n) => ({ ...n, selected: ids.includes(n.id) })));
+    });
+  }
+
+  const lone = (): string | null => canvasSessions.of('s').getState().loneSelectedId;
+
+  it('names the node selected alone, also beside a note, and nothing for none or two', () => {
+    renderSpace();
+    expect(lone()).toBeNull();
+    select('a');
+    expect(lone()).toBe('a');
+    select('a', 'note');
+    expect(lone()).toBe('a');
+    select('a', 'b');
+    expect(lone()).toBeNull();
+    select('b');
+    expect(lone()).toBe('b');
+    select();
+    expect(lone()).toBeNull();
+  });
+
+  // A marquee still being dragged has not decided the selection: no node is
+  // named until it is released.
+  it('names no node while a marquee is being dragged, and the lone one on release', () => {
+    renderSpace();
+    const pane = document.querySelector('.react-flow__pane');
+    if (!pane) throw new Error('the pane is not mounted');
+    const press = (type: string, x: number, y: number): void => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y });
+      Object.defineProperty(event, 'isPrimary', { value: true });
+      Object.defineProperty(event, 'pointerId', { value: 1 });
+      act(() => {
+        pane.dispatchEvent(event);
+      });
+    };
+    press('pointerdown', 1, 1);
+    press('pointermove', 50, 50);
+    press('pointermove', 5000, 5000);
+    // Narrowed to one node while the marquee is still held.
+    select('a');
+    expect(lone()).toBeNull();
+    press('pointerup', 5000, 5000);
+    expect(lone()).toBe('a');
+  });
+
+  it('clears the name when the canvas unmounts', () => {
+    const { unmount } = renderSpace();
+    select('a');
+    expect(lone()).toBe('a');
+    unmount();
+    expect(lone()).toBeNull();
   });
 });

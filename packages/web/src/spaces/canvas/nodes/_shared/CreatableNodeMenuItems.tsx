@@ -22,6 +22,9 @@ const NODE_LABEL_KEY: Record<CreatableNodeType, string> = {
   video: 'canvas.handle.nodeVideo',
 };
 
+/** The default for `disabledTypes`: one stable empty list. */
+const NONE_DISABLED: readonly CreatableNodeType[] = [];
+
 interface CreatableNodeMenuItemsProps {
   /** Called with the chosen creatable node type when a row is selected. */
   onPick: (type: CreatableNodeType) => void;
@@ -30,6 +33,11 @@ interface CreatableNodeMenuItemsProps {
    * modalities; the connect-create menu passes the rule-compatible subset.
    */
   types?: readonly CreatableNodeType[];
+  /**
+   * Types listed but not pickable: the selection plus lists all four and
+   * greys out the ones no node it would wire in connects into (inner#2216).
+   */
+  disabledTypes?: readonly CreatableNodeType[];
 }
 
 /**
@@ -40,11 +48,13 @@ interface CreatableNodeMenuItemsProps {
  * @param root0 - Component props.
  * @param root0.onPick - Called with the chosen creatable node type.
  * @param root0.types - The types to offer (defaults to all 4).
+ * @param root0.disabledTypes - Types shown greyed out and not pickable.
  * @returns The creatable-node dropdown items.
  */
 export function CreatableNodeMenuItems({
   onPick,
   types = CREATABLE_NODE_TYPES,
+  disabledTypes = NONE_DISABLED,
 }: CreatableNodeMenuItemsProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -55,6 +65,11 @@ export function CreatableNodeMenuItems({
           <DropdownMenuItem
             key={type}
             data-testid={`create-node-${type}`}
+            disabled={disabledTypes.includes(type)}
+            // The vendor row drops pointer events when disabled, which hides
+            // the not-allowed cursor; same override as NodeContextMenu's
+            // snapshot row. Radix still ignores the press.
+            className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
             onSelect={() => onPick(type)}
           >
             <Icon className='mr-2 h-4 w-4' aria-hidden='true' />

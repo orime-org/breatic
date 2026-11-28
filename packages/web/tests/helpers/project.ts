@@ -140,6 +140,10 @@ export async function openSmokeProject(
   // tickets start being counted (helpers/upload-budget.ts); the few that upload
   // elsewhere fit in its HEADROOM.
   watchUploadTickets(page, account, slot());
+  // A page from `browser.newPage()` has its own context, outside the one
+  // `helpers/slot.ts` widens, and `liveModuleUrl` reads the resource-timing
+  // list the Project page overflows at the default 250 entries.
+  await page.addInitScript(() => performance.setResourceTimingBufferSize(10_000));
   await page.goto(smokeProjectUrl(account, index));
 }
 

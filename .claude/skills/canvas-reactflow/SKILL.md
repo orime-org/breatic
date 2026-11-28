@@ -41,11 +41,11 @@ Playwright cannot send a hardware wheel and a synthetic `WheelEvent` does not sc
 
 ### Large handle hit areas hijack nearby targets
 
-**During a connection drag, turn off `pointer-events` on the handle's enlarged `::before` hit area.** `isValidHandle` takes the topmost handle under `elementFromPoint`, so a large hit area claims the space around it and a nearby node can be connected to the wrong handle without any error; with it off, the target falls back to the small anchor plus `connectionRadius`.
+**During a connection drag, turn off `pointer-events` on the handle's enlarged `::before` hit area.** `isValidHandle` takes the topmost handle under `elementFromPoint`, so a large hit area claims the space around it and a nearby node can be connected to the wrong handle without any error; with it off, the target falls back to the small anchor plus `connectionRadius`. The one exception is the plus a lone selected node shows on a handle the drag can end on (`handle-plus-zone`, set by `MagneticHandle.tsx`): below 150% zoom it reaches past `connectionRadius` (xyflow's default 20 flow px from the anchor), so its zone stays pressable.
 
 ### Drag-time styles apply synchronously
 
-**A style that must change what `elementFromPoint` sees during a connection drag is added with `classList.add` inside `onConnectStart`.** xyflow starts the connection and calls `isValidHandle` in the same pointermove tick, so a React class driven by `connection.inProgress` commits one frame late and the first frame slips through. The canvas adds `canvas-connecting` this way (`CanvasSpace.tsx`, the `.canvas-connecting .react-flow__handle::before` rule in `index.css`) and removes it in `onConnectEnd`.
+**A style that must change what `elementFromPoint` sees during a connection drag is added with `classList.add` inside `onConnectStart`.** xyflow starts the connection and calls `isValidHandle` in the same pointermove tick, so a React class driven by `connection.inProgress` commits one frame late and the first frame slips through. The canvas adds `canvas-connecting` this way (`CanvasSpace.tsx`, the `.canvas-connecting .react-flow__handle:not(.handle-plus-zone)::before` rule in `index.css`) and removes it in `onConnectEnd`.
 
 ### Edges attach to the handle's outer edge
 

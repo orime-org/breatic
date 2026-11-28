@@ -52,11 +52,15 @@ export const ScissorsEdge = React.memo(function ScissorsEdge(props: EdgeProps): 
   const { deleteEdge } = useCanvasActions();
   const t = useTranslation();
   const readOnly = Boolean((data as { readOnly?: unknown } | undefined)?.readOnly);
+  // xyflow selects an edge while a marquee is still being dragged over it;
+  // the scissors show once the marquee is released, as the selection plus
+  // does. Unselected edges read a constant false.
+  const marqueeDragging = useStore((s) => Boolean(selected) && s.userSelectionActive);
 
   return (
     <>
       <BaseEdge id={id} path={edgePath} />
-      {shouldShowScissors(Boolean(selected), readOnly) ? (
+      {shouldShowScissors(Boolean(selected) && !marqueeDragging, readOnly) ? (
         <EdgeLabelRenderer>
           <Button
             variant={null}

@@ -399,7 +399,9 @@ body {
    #555 selected) leaked into dark mode and made an unselected edge read brighter
    than a selected one. Drive both from our mode-aware tokens instead: a default
    edge is a recessive mid-grey and a selected edge takes the same selected colour
-   as a selected node — correct in light AND dark.
+   as a selected node — correct in light AND dark. The marquee and the
+   rect a released marquee leaves take that selected colour too, so a
+   multi-selection and a single selected node look selected the same way.
 
    `.react-flow.react-flow` (0,2,0) for the same reason the group rules above
    carry an ancestor: the library declares these two on `.react-flow` and its
@@ -407,6 +409,8 @@ body {
 .react-flow.react-flow {
   --xy-edge-stroke-default: var(--color-foreground-disabled);
   --xy-edge-stroke-selected-default: var(--color-status-selected);
+  --xy-selection-background-color: var(--color-status-selected-bg);
+  --xy-selection-border: 1px dotted var(--color-status-selected-border);
 }
 
 /* Reference-pick mode (canvas item 7, user 2026-07-10): while picking references
@@ -489,8 +493,11 @@ body {
    resolution (which forces a style flush, so this applies immediately). With
    the 36px ::before hit zone non-interactive, target resolution falls back to
    the 8px anchor + connectionRadius — a neighbor's zone can no longer hijack
-   the wire's endpoint, with no first-frame window a React class would leave. */
-.canvas-connecting .react-flow__handle::before {
+   the wire's endpoint, with no first-frame window a React class would leave.
+   The one plus zone a drag can end on (`handle-plus-zone`, MagneticHandle)
+   stays pressable: the plus is drawn outside the anchor's radius, and a wire
+   released on it lands there. */
+.canvas-connecting .react-flow__handle:not(.handle-plus-zone)::before {
   pointer-events: none;
 }
 .react-flow .react-flow__node.canvas-pick-selectable {

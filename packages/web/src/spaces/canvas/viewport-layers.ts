@@ -73,3 +73,13 @@ export const XYFLOW_SELECTED_NODE_Z = 1000;
  * its z-index inline and the viewport carries 2.
  */
 export const VIEWPORT_TOP_Z = FOCUS_TARGET_Z + XYFLOW_SELECTED_NODE_Z + 1;
+
+/**
+ * Stacking for the selection plus's preview wires (inner#2216): one above a
+ * selected node, the layer xyflow draws its own in-progress connection line
+ * on (`svg.react-flow__connectionline`, z 1001), so a wire passing behind a
+ * neighbouring source stays one unbroken line. They render through the
+ * viewport portal, which shares the `.react-flow__viewport` stacking context
+ * with the node wrappers (see {@link VIEWPORT_TOP_Z}), and take no pointer.
+ */
+export const SELECTION_ADD_PREVIEW_Z = XYFLOW_SELECTED_NODE_Z + 1;

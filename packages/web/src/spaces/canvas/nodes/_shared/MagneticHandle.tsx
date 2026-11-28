@@ -19,8 +19,11 @@
  *      back to the border on leave and the instant a connection drag starts.
  */
 
-import { Handle, Position, useStore } from '@xyflow/react';
+import { Handle, Position, useNodeId, useStore } from '@xyflow/react';
+import { Plus } from 'lucide-react';
 import * as React from 'react';
+
+import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 
 /** The anchor element (and the dot) are 8px — matches the historic handle dot. */
 const ANCHOR_PX = 8;
@@ -32,6 +35,22 @@ const ZONE_OUT_PX = 36;
 const MAX_OUT = ZONE_OUT_PX - DOT_RADIUS;
 /** Max vertical travel of the dot center (zone is 36 tall = ±18 from border). */
 const MAX_V = ZONE_OUT_PX / 2 - DOT_RADIUS;
+/** The plus a lone selected node shows on its handles is this wide on screen. */
+const PLUS_SCREEN_PX = 20;
+/** At rest the plus's near edge stands this far out from the border, on screen. */
+const PLUS_GAP_SCREEN_PX = 4;
+
+/**
+ * The press zone of an emphasized handle, `--handle-zone` canvas px square
+ * from the border outward: never less than the plain zone's 36 canvas px,
+ * and widened below 100% zoom so it holds 36px on screen down to the 50%
+ * floor, so the plus sitting wholly outside the node has room to follow the
+ * pointer. `z-23`
+ * lifts it above the task counts column (`z-22`, flow-node-types), the video
+ * node's playback-error cover (`z-20`, VideoNode) and its control bar
+ * (`z-10`, MediaPlayer), which share the node's stacking context.
+ */
+const EMPHASIZED_ZONE_CLASS = 'z-23 before:h-[var(--handle-zone)] before:w-[var(--handle-zone)]';
 
 /** Props for {@link MagneticHandle}. */
 interface MagneticHandleProps {
@@ -50,6 +69,14 @@ interface MagneticHandleProps {
    * takes no press.
    */
   hidden?: boolean;
+  /**
+   * Whether the handle shows the plus: the node is the one selected and takes
+   * connections (inner#2216). The plus rests just outside the border and
+   * follows the pointer inside its zone without crossing into the node; every
+   * gesture behaves as on the plain dot and the wire stays attached to the
+   * border.
+   */
+  emphasized?: boolean;
 }
 
 /**
@@ -71,16 +98,32 @@ function clamp(v: number, min: number, max: number): number {
  * @param root0.type - `source` (right) or `target` (left).
  * @param root0.isConnectable - Whether the handle accepts connections.
  * @param root0.hidden - Whether the handle gives way to a tool on the node's border.
+ * @param root0.emphasized - Whether the handle shows the plus.
  * @returns The magnetic handle.
  */
 export function MagneticHandle({
   type,
   isConnectable: connectable,
   hidden = false,
+  emphasized = false,
 }: MagneticHandleProps): React.JSX.Element {
   const isConnectable = connectable && !hidden;
+  const plus = emphasized && !hidden;
   const handleRef = React.useRef<HTMLDivElement>(null);
   const dotRef = React.useRef<HTMLSpanElement>(null);
+  // The node's counter-scale (1 / max(zoom, floor)), the same one the name
+  // header uses, so the plus keeps its screen size down to the floor zoom.
+  const scale = React.useContext(NodeScaleContext);
+  // Where the visible mark's centre may go, in canvas px out from the border:
+  // the dot rests on the border; the plus rests its gap away and never
+  // crosses the border, inside a zone of at least 36 canvas px that holds
+  // 36px on screen between 50% and 100% zoom.
+  const plusRadius = (PLUS_SCREEN_PX / 2) * scale;
+  const zone = plus ? ZONE_OUT_PX * Math.max(1, scale) : ZONE_OUT_PX;
+  const restOut = plus ? PLUS_GAP_SCREEN_PX * scale + plusRadius : 0;
+  const minOut = plus ? plusRadius : 0;
+  const maxOut = plus ? zone - plusRadius : MAX_OUT;
+  const maxV = plus ? Math.max(0, zone / 2 - plusRadius) : MAX_V;
   // Whether ANY connection drag is in progress (boolean selector → this only
   // re-renders on the flip, not per pointer-move). Used to REST the dot during
   // a drag (cosmetic — a one-frame lag is invisible). The correctness-critical
@@ -89,9 +132,21 @@ export function MagneticHandle({
   // done here: a React class commits one frame too late, and xyflow resolves
   // the target synchronously in the SAME tick it starts the connection
   // (adversarial round-4). That gate is a synchronous class the canvas adds in
-  // onConnectStart (see `.canvas-connecting .react-flow__handle::before` in
-  // index.css), which elementFromPoint's style flush picks up immediately.
+  // onConnectStart (see `.canvas-connecting .react-flow__handle:not(.handle-plus-zone)::before`
+  // in index.css), which elementFromPoint's style flush picks up immediately.
   const connecting = useStore((s) => s.connection.inProgress);
+  // The plus zone that stays pressable during a drag (`handle-plus-zone`):
+  // only one on a node other than the drag's own. xyflow takes the handle
+  // under the pointer before the closest one, so a live zone that could not
+  // take the wire would swallow it from a neighbour's handle. xyflow, in its
+  // default Strict connection mode (the canvas sets no `connectionMode`),
+  // already turns pointer events off on every handle of the drag's own type
+  // (`connectionindicator` is left off them), except the start handle, which
+  // keeps them (`connectingfrom`); the start node is left out here.
+  const nodeId = useNodeId();
+  const takesDrop = useStore(
+    (s) => plus && s.connection.inProgress && s.connection.fromNode.id !== nodeId,
+  );
 
   /** Springs the dot back to the border (home) — leave / drag-start / dead. */
   const rest = React.useCallback((): void => {
@@ -133,14 +188,15 @@ export function MagneticHandle({
       const cy = rect.top + rect.height / 2;
       const rawX = (event.clientX - cx) / zoom;
       const rawY = (event.clientY - cy) / zoom;
-      // Outward only: a source dot never crosses inward past the border (into
-      // the node), a target dot never crosses outward past it.
-      const dx =
-        type === 'source' ? clamp(rawX, 0, MAX_OUT) : clamp(rawX, -MAX_OUT, 0);
-      const dy = clamp(rawY, -MAX_V, MAX_V);
+      // Outward only: the mark never crosses inward past the border into the
+      // node. `out` is the centre's distance out from the border.
+      const out = clamp(type === 'source' ? rawX : -rawX, minOut, maxOut);
+      // `+ 0` turns a clamped -0 into 0 so the transform reads `0px`.
+      const dx = (type === 'source' ? out - restOut : restOut - out) + 0;
+      const dy = clamp(rawY, -maxV, maxV) + 0;
       dot.style.transform = `translate(${dx}px, ${dy}px)`;
     },
-    [isConnectable, connecting, type],
+    [isConnectable, connecting, type, minOut, maxOut, maxV, restOut],
   );
 
   // The 8px element is invisible (bg-transparent, border-0); the visual is the
@@ -157,19 +213,33 @@ export function MagneticHandle({
   // ::before offsets gain +4px (source left-1→left-2, target -left-8→-left-9) so
   // the 36px zone still spans exactly the border → border+36 outside. Vertically
   // centered (top-1/2 + -translate-y-1/2).
-  const zoneClass =
+  const sideZoneClass =
     type === 'source'
-      ? '!h-2 !w-2 !right-1 !border-0 !bg-transparent before:absolute before:left-2 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-[""]'
-      : '!h-2 !w-2 !left-1 !border-0 !bg-transparent before:absolute before:-left-9 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-[""]';
+      ? '!h-2 !w-2 !right-1 !border-0 !bg-transparent before:absolute before:left-2 before:top-1/2 before:-translate-y-1/2 before:content-[""]'
+      : '!h-2 !w-2 !left-1 !border-0 !bg-transparent before:absolute before:top-1/2 before:-translate-y-1/2 before:content-[""]';
+  // A target's zone ends at the border, so it starts its own width left of it.
+  const zoneClass = plus
+    ? `${sideZoneClass} ${EMPHASIZED_ZONE_CLASS}${type === 'source' ? '' : ' before:left-[calc(var(--handle-zone)*-1)]'}${takesDrop ? ' handle-plus-zone' : ''}`
+    : `${sideZoneClass} before:h-9 before:w-9${type === 'source' ? '' : ' before:-left-9'}`;
 
   // The 8px dot, offset +4px OUTWARD from the anchor so its centre straddles the
   // border (source left-1, target -left-1) — the anchor's outer edge is the
   // border, and half the dot sits each side of it. It springs further out via
-  // transform (written by `chase`), back to this base on rest.
-  const dotBase =
-    'pointer-events-none absolute inset-y-0 w-2 rounded-full border border-border bg-muted transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]';
-  const dotClass =
-    type === 'source' ? `${dotBase} left-1` : `${dotBase} -left-1`;
+  // transform (written by `chase`), back to this base on rest. The emphasized
+  // dot keeps the same chase box and draws nothing itself; the plus inside it
+  // is the visual.
+  const dotClass = `pointer-events-none absolute inset-y-0 w-2 transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+    plus ? '' : 'rounded-full border border-border bg-muted '
+  }${type === 'source' ? 'left-1' : '-left-1'}`;
+  const handleStyle = React.useMemo<React.CSSProperties | undefined>(
+    () =>
+      plus
+        ? ({
+          '--handle-zone': `${zone}px`,
+        } as React.CSSProperties)
+        : undefined,
+    [plus, zone],
+  );
 
   return (
     <Handle
@@ -183,6 +253,7 @@ export function MagneticHandle({
       onPointerLeave={rest}
       onPointerDown={rest}
       className={hidden ? `${zoneClass} !invisible` : zoneClass}
+      style={handleStyle}
     >
       {/* Visible dot: centre straddles the border, springs toward the cursor. */}
       {hidden ? null : (
@@ -191,7 +262,21 @@ export function MagneticHandle({
           data-testid='handle-dot'
           aria-hidden='true'
           className={dotClass}
-        />
+        >
+          {plus ? (
+            // At rest its gap out from the border, wholly outside the node;
+            // the chase moves the dot around it.
+            <span
+              data-testid='handle-plus'
+              className='absolute left-1/2 top-1/2 flex size-5 items-center justify-center rounded-full border border-border bg-popover text-foreground'
+              style={{
+                transform: `translate(calc(-50% + ${type === 'source' ? restOut : -restOut}px), -50%) scale(${scale})`,
+              }}
+            >
+              <Plus className='size-3.5' aria-hidden='true' />
+            </span>
+          ) : null}
+        </span>
       )}
     </Handle>
   );
