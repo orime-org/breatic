@@ -8,8 +8,10 @@
  * how the references are ordered; this file walks what a person does: marquee
  * or Cmd/Ctrl-click several nodes (or click a Group), press the plus, pick a
  * type, and read the wires and the new node's reference rail. It also measures
- * with `elementFromPoint` that the whole plus on a singly selected node presses
- * its handle at 100% and 50% zoom, while the node body just above it does not.
+ * that the plus on a singly selected node rests 4px outside each border,
+ * presses its handle and follows the pointer without crossing into the node
+ * at 100% and 50% zoom, while the node body inside the border is no handle
+ * (`elementFromPoint`).
  *
  * Nothing here generates: the Generate panel is only opened to read its rail.
  *
@@ -133,6 +135,17 @@ async function zoomTo(page: Page, percent: number): Promise<void> {
 }
 
 /**
+ * The canvas zoom the viewport is drawn at.
+ * @param page - The page.
+ * @returns The zoom.
+ */
+async function zoomOf(page: Page): Promise<number> {
+  return visibleSpace(page).locator('.react-flow__viewport').evaluate(
+    (el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).a,
+  );
+}
+
+/**
  * A point on the empty canvas: the pane itself is what it hits.
  * @param page - The page.
  * @returns The point.
@@ -248,12 +261,23 @@ test('a marquee over a picture, a video and an audio node: the plus builds a pic
   }
   await expect(page.getByTestId('selection-add-to-agent')).toBeVisible();
   await expect(visibleSpace(page).getByTestId('selection-add-preview').locator('path')).toHaveCount(3);
+  // Above a selected node (xyflow lifts those to 1000), so a wire passing
+  // behind a neighbouring source stays one unbroken line.
+  const previewZ = await visibleSpace(page).getByTestId('selection-add-preview').evaluate(
+    (el) => Number(getComputedStyle(el).zIndex),
+  );
+  expect(previewZ, 'the preview draws above the selected nodes').toBeGreaterThan(1000);
 
+  // With nothing to its right, the new node's left edge is one 72 canvas px
+  // column past the selection's right edge.
+  const zoom = await zoomOf(page);
+  const seededX = new Map([[image, 0], [video, 320], [audio, 640]]);
+  const selectionRight = Math.max(...[image, video, audio].map((id, i) => seededX.get(id)! + boxes[i]!.width / zoom));
   const before = (await graph(page)).nodes.map((n) => n.id);
   await page.getByTestId('create-node-image').click();
   const made = await newNode(page, before);
   expect(made.type).toBe('image');
-  expect(made.x, 'built right of the selection').toBeGreaterThan(640 + 288);
+  expect(Math.abs(made.x - (selectionRight + 72)), `built at ${String(selectionRight + 72)}, got ${String(made.x)}`).toBeLessThanOrEqual(1);
   await expect(nodeOf(page, made.id)).toBeVisible();
   await expect.poll(() => selectedIds(page)).toEqual([made.id]);
   await expect(visibleSpace(page).getByTestId('selection-add-preview')).toHaveCount(0);
@@ -267,12 +291,7 @@ test('a marquee over a picture, a video and an audio node: the plus builds a pic
     const el = document.elementFromPoint(p.x, p.y);
     return el?.closest('.react-flow__node')?.getAttribute('data-id') ?? el?.className ?? null;
   }, { x: madeBox.x + madeBox.width / 2, y: madeBox.y + madeBox.height / 2 });
-  expect.soft(onMade, 'a press on the new node reaches the new node').toBe(made.id);
-  // Select it the way a person gets past a leftover marquee, so the rail and
-  // the undo below are still checked.
-  const clear = await emptyPoint(page);
-  await page.mouse.click(clear.x, clear.y);
-  await clickNode(page, made.id);
+  expect(onMade, 'a press on the new node reaches the new node').toBe(made.id);
 
   await openGenerate(made.id, 'generate-execute');
   await expect.poll(() => railRefs(page)).toEqual([into[0]!.id]);
@@ -378,7 +397,7 @@ test('a selected Group: the plus builds a video outside it, wired from all three
   await expect.poll(() => railRefs(page)).toEqual([left, right, low].map((id) => `${id}->${made.id}`));
 });
 
-test('a singly selected node shows a plus on both handles that presses its handle at 100% and 50% zoom, and takes a wire', async ({ page }) => {
+test('a singly selected node shows a plus 4px outside both borders that presses its handle and follows the pointer outside the node at 100% and 50% zoom, and takes a wire', async ({ page }) => {
   const other = crypto.randomUUID();
   const chosen = crypto.randomUUID();
   await seedNode(other, 'image', undefined, 0, 0);
@@ -407,34 +426,54 @@ test('a singly selected node shows a plus on both handles that presses its handl
     const rest = await emptyPoint(page);
     await page.mouse.move(rest.x, rest.y);
     await page.waitForTimeout(500);
-    const handle = nodeOf(page, chosen).locator('.react-flow__handle.source');
-    const circle = (await handle.getByTestId('handle-plus').boundingBox())!;
-    expect(circle.width, `the plus is 20px on screen at ${String(percent)}%`).toBeCloseTo(20, 0);
-    const cx = circle.x + circle.width / 2;
-    const cy = circle.y + circle.height / 2;
-    const inset = 2;
-    const pressed = {
-      top: { x: cx, y: circle.y + inset },
-      bottom: { x: cx, y: circle.y + circle.height - inset },
-      innermost: { x: circle.x + inset, y: cy },
-      centre: { x: cx, y: cy },
-    };
-    const hits = await handle.evaluate((h, points) => Object.fromEntries(Object.entries(points).map(([name, p]) => {
-      const el = document.elementFromPoint(p.x, p.y);
-      return [name, el?.closest('.react-flow__handle') === h];
-    })), pressed);
-    expect(hits, `every part of the plus presses the handle at ${String(percent)}%`).toEqual({
-      top: true, bottom: true, innermost: true, centre: true,
-    });
-    const above = { x: cx - circle.width / 4, y: circle.y - 4 };
-    const aboveHit = await page.evaluate((p) => {
+    const node = (await nodeOf(page, chosen).boundingBox())!;
+    const source = nodeOf(page, chosen).locator('.react-flow__handle.source');
+    const target = nodeOf(page, chosen).locator('.react-flow__handle.target');
+    const out = (await source.getByTestId('handle-plus').boundingBox())!;
+    const back = (await target.getByTestId('handle-plus').boundingBox())!;
+    expect(out.width, `the plus is 20px on screen at ${String(percent)}%`).toBeCloseTo(20, 0);
+    // Wholly outside the node, 4 screen px from each border at rest.
+    const border = node.x + node.width;
+    expect(Math.abs(out.x - border - 4), `source gap at ${String(percent)}%`).toBeLessThanOrEqual(2);
+    expect(Math.abs(node.x - (back.x + back.width) - 4), `target gap at ${String(percent)}%`).toBeLessThanOrEqual(2);
+    const centre = { x: out.x + out.width / 2, y: out.y + out.height / 2 };
+    const pressesSource = await source.evaluate((h, p) => document.elementFromPoint(p.x, p.y)?.closest('.react-flow__handle') === h, centre);
+    expect(pressesSource, `the plus centre presses its handle at ${String(percent)}%`).toBe(true);
+    // Nothing reaches into the node: just past the target's 8px anchor (which
+    // sits inside the left border so the wire attaches flush), level with the
+    // target plus, is node body.
+    const anchor = (await target.boundingBox())!;
+    const inside = { x: anchor.x + anchor.width + 2, y: back.y + back.height / 2 };
+    const insideHit = await page.evaluate((p) => {
       const el = document.elementFromPoint(p.x, p.y);
       return {
         handle: el?.closest('.react-flow__handle') != null,
         node: el?.closest('.react-flow__node')?.getAttribute('data-id') ?? null,
       };
-    }, above);
-    expect(aboveHit, `the node body above the plus is no handle at ${String(percent)}%`).toEqual({ handle: false, node: chosen });
+    }, inside);
+    expect(insideHit, `just inside the left border is no handle at ${String(percent)}%`).toEqual({ handle: false, node: chosen });
+
+    // It follows the pointer inside its zone: out towards the zone's far end...
+    const restCentre = centre;
+    const far = { x: border + 32, y: restCentre.y + 6 };
+    await page.mouse.move(far.x, far.y, { steps: 4 });
+    await page.waitForTimeout(500);
+    const followed = (await source.getByTestId('handle-plus').boundingBox())!;
+    const followedCentre = { x: followed.x + followed.width / 2, y: followed.y + followed.height / 2 };
+    expect(followedCentre.x, `the plus moves out towards the pointer at ${String(percent)}%`).toBeGreaterThan(restCentre.x + 2);
+    expect(Math.hypot(far.x - followedCentre.x, far.y - followedCentre.y), `the plus moves closer to the pointer at ${String(percent)}%`)
+      .toBeLessThan(Math.hypot(far.x - restCentre.x, far.y - restCentre.y));
+    // ...in to the border, and never past it into the node...
+    await page.mouse.move(border + 1, restCentre.y, { steps: 4 });
+    await page.waitForTimeout(500);
+    const atBorder = (await source.getByTestId('handle-plus').boundingBox())!;
+    expect(atBorder.x - border, `the plus stops at the border at ${String(percent)}%`).toBeGreaterThanOrEqual(-1);
+    expect(atBorder.x - border, `the plus came in to the border at ${String(percent)}%`).toBeLessThanOrEqual(2);
+    // ...and back to its 4px rest once the pointer leaves the zone.
+    await page.mouse.move(rest.x, rest.y, { steps: 4 });
+    await page.waitForTimeout(500);
+    const back2 = (await source.getByTestId('handle-plus').boundingBox())!;
+    expect(Math.abs(back2.x - border - 4), `the plus returns to rest at ${String(percent)}%`).toBeLessThanOrEqual(2);
   }
 
   await zoomTo(page, 100);
@@ -446,6 +485,169 @@ test('a singly selected node shows a plus on both handles that presses its handl
   await page.mouse.up();
   await expect.poll(async () => (await graph(page)).edges.map((e) => `${e.source}->${e.target}`))
     .toEqual([`${other}->${chosen}`]);
+});
+
+test('a marquee over one node leaves nothing over it: its body takes a press and its plus presses the handle', async ({ page }) => {
+  const lone = crypto.randomUUID();
+  const other = crypto.randomUUID();
+  await seedNode(lone, 'image', undefined, 0, 0);
+  await seedNode(other, 'image', undefined, 520, 0);
+  await fit(page);
+  await zoomTo(page, 100);
+
+  const box = (await nodeOf(page, lone).boundingBox())!;
+  await page.mouse.move(box.x - 30, box.y - 30);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width + 30, box.y + box.height + 30, { steps: 10 });
+  await page.mouse.up();
+  await expect.poll(() => selectedIds(page)).toEqual([lone]);
+  await expect(nodeOf(page, lone).getByTestId('handle-plus')).toHaveCount(2);
+
+  // The plus chases the pointer; park it on the empty canvas and let it spring back.
+  const rest = await emptyPoint(page);
+  await page.mouse.move(rest.x, rest.y);
+  await page.waitForTimeout(500);
+  // xyflow leaves its marquee rect over a node the marquee ended on; it must
+  // be gone, so the node takes a press as a click-selected one does.
+  const onBody = await page.evaluate((p) => {
+    const el = document.elementFromPoint(p.x, p.y);
+    return el?.closest('.react-flow__node')?.getAttribute('data-id') ?? el?.getAttribute('class') ?? null;
+  }, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+  expect(onBody, 'a press on the node body reaches the node').toBe(lone);
+  const handle = nodeOf(page, lone).locator('.react-flow__handle.source');
+  const circle = (await handle.getByTestId('handle-plus').boundingBox())!;
+  const centre = { x: circle.x + circle.width / 2, y: circle.y + circle.height / 2 };
+  const pressesHandle = await handle.evaluate((h, p) => document.elementFromPoint(p.x, p.y)?.closest('.react-flow__handle') === h, centre);
+  expect(pressesHandle, 'the plus presses the handle').toBe(true);
+});
+
+/**
+ * Presses on the pane above and left of the given nodes and drags a marquee
+ * past their far corner, leaving the button held.
+ * @param page - The page.
+ * @param ids - The nodes the marquee covers.
+ */
+async function holdMarqueeOver(page: Page, ids: readonly string[]): Promise<void> {
+  const boxes = await Promise.all(ids.map(async (id) => (await nodeOf(page, id).boundingBox())!));
+  const left = Math.min(...boxes.map((b) => b.x));
+  const top = Math.min(...boxes.map((b) => b.y));
+  const right = Math.max(...boxes.map((b) => b.x + b.width));
+  const bottom = Math.max(...boxes.map((b) => b.y + b.height));
+  await page.mouse.move(left - 30, top - 30);
+  await page.mouse.down();
+  await page.mouse.move(right + 30, bottom + 30, { steps: 10 });
+}
+
+test('while a marquee over two connected nodes is still held, neither the plus, the group toolbar nor the edge scissors show; all show on release', async ({ page }) => {
+  const first = crypto.randomUUID();
+  const second = crypto.randomUUID();
+  await seedNode(first, 'image', undefined, 0, 0);
+  await seedNode(second, 'image', undefined, 360, 0);
+  await onCanvas(
+    page,
+    'canvas.addEdge(pid, sid, { id: extra.source + "->" + extra.target, source: extra.source, target: extra.target, createdAt: Date.now() });',
+    { source: first, target: second },
+  );
+  await expect(visibleSpace(page).locator('.react-flow__edge')).toHaveCount(1);
+  await fit(page);
+  await zoomTo(page, 50);
+
+  await holdMarqueeOver(page, [first, second]);
+  // The marquee has already selected both: what is held back is the chrome.
+  await expect.poll(() => selectedIds(page)).toEqual([first, second].sort());
+  await page.waitForTimeout(300);
+  await expect(visibleSpace(page).getByTestId('selection-add-button')).not.toBeVisible();
+  await expect(visibleSpace(page).getByTestId('group-selection-toolbar')).not.toBeVisible();
+  const scissors = visibleSpace(page).locator('[data-testid^="edge-scissors-"]');
+  await expect(scissors.filter({ visible: true })).toHaveCount(0);
+
+  await page.mouse.up();
+  await expect(visibleSpace(page).getByTestId('selection-add-button')).toBeVisible();
+  await expect(visibleSpace(page).getByTestId('group-selection-toolbar')).toBeVisible();
+  await expect(scissors.filter({ visible: true }).first()).toBeVisible();
+});
+
+test('while a marquee over one node is still held, its handles show no plus; both show it on release', async ({ page }) => {
+  const lone = crypto.randomUUID();
+  const other = crypto.randomUUID();
+  await seedNode(lone, 'image', undefined, 0, 0);
+  await seedNode(other, 'image', undefined, 520, 0);
+  await fit(page);
+  await zoomTo(page, 50);
+
+  await holdMarqueeOver(page, [lone]);
+  await expect.poll(() => selectedIds(page)).toEqual([lone]);
+  await page.waitForTimeout(300);
+  await expect(nodeOf(page, lone).getByTestId('handle-plus')).toHaveCount(0);
+
+  await page.mouse.up();
+  await expect(nodeOf(page, lone).getByTestId('handle-plus')).toHaveCount(2);
+});
+
+/**
+ * Seeds two picture nodes and a decoy far to their left, frames all three so
+ * the two sit against the pane's right edge, and selects the two.
+ * @param page - The page.
+ * @returns The two selected ids.
+ */
+async function selectTwoAtRightEdge(page: Page): Promise<[string, string]> {
+  const decoy = crypto.randomUUID();
+  const first = crypto.randomUUID();
+  const second = crypto.randomUUID();
+  await seedNode(decoy, 'image', undefined, -3000, 0);
+  await seedNode(first, 'image', undefined, 0, 0);
+  await seedNode(second, 'image', undefined, 0, 300);
+  await fit(page);
+  await clickNode(page, first);
+  await clickNode(page, second, true);
+  await expect.poll(() => selectedIds(page)).toEqual([first, second].sort());
+  return [first, second];
+}
+
+test('near the window\'s right edge, every row of the plus menu stays on screen', async ({ page }) => {
+  await selectTwoAtRightEdge(page);
+  const plus = visibleSpace(page).getByTestId('selection-add-button');
+  await expect(plus).toBeVisible();
+  await plus.click();
+  await expect(page.getByTestId('selection-add-to-agent')).toBeVisible();
+  // Let Radix settle its position before measuring.
+  await page.waitForTimeout(300);
+  const view = page.viewportSize()!;
+  const menu = (await page.getByRole('menu').boundingBox())!;
+  const plusBox = (await plus.boundingBox())!;
+  expect(plusBox.x + plusBox.width + menu.width, 'opened to the right, the menu would pass the window edge').toBeGreaterThan(view.width);
+  const rows = page.locator('[role="menuitem"]');
+  await expect(rows).toHaveCount(5);
+  for (const row of await rows.all()) {
+    const b = (await row.boundingBox())!;
+    const name = (await row.getAttribute('data-testid')) ?? 'row';
+    expect(b.x, `${name} left`).toBeGreaterThanOrEqual(0);
+    expect(b.y, `${name} top`).toBeGreaterThanOrEqual(0);
+    expect(b.x + b.width, `${name} right`).toBeLessThanOrEqual(view.width);
+    expect(b.y + b.height, `${name} bottom`).toBeLessThanOrEqual(view.height);
+  }
+  await page.keyboard.press('Escape');
+});
+
+test('a pick that lands past the window\'s edge slides the new node into the canvas', async ({ page }) => {
+  const [first, second] = await selectTwoAtRightEdge(page);
+  const pane = (await visibleSpace(page).locator('.react-flow__pane').boundingBox())!;
+  const zoom = await zoomOf(page);
+  const boxes = await Promise.all([first, second].map(async (id) => (await nodeOf(page, id).boundingBox())!));
+  const right = Math.max(...boxes.map((b) => b.x + b.width));
+  expect(right + (72 + 288) * zoom, 'without a pan the new node would end past the pane').toBeGreaterThan(pane.x + pane.width);
+
+  await visibleSpace(page).getByTestId('selection-add-button').click();
+  const before = (await graph(page)).nodes.map((n) => n.id);
+  await page.getByTestId('create-node-image').click();
+  const made = await newNode(page, before);
+  await expect(nodeOf(page, made.id)).toBeVisible();
+  await expect.poll(async () => {
+    const b = await nodeOf(page, made.id).boundingBox();
+    return b !== null
+      && b.x >= pane.x - 1 && b.y >= pane.y - 1
+      && b.x + b.width <= pane.x + pane.width + 1 && b.y + b.height <= pane.y + pane.height + 1;
+  }, { message: 'the new node ends inside the canvas pane', timeout: 5_000 }).toBe(true);
 });
 
 test('a Viewer sees no selection plus and no handle plus', async ({ page, browser, baseURL }) => {
