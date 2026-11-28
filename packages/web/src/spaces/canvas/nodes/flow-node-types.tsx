@@ -13,7 +13,6 @@ import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
 import { GroupResizer } from '@web/spaces/canvas/nodes/GroupResizer';
 import { MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
-import { handlesEmphasized } from '@web/spaces/canvas/selection-add';
 import {
   NodeOccupantsContext,
   NOBODY,
@@ -203,21 +202,13 @@ function makeFlowNode(
     // draws its own edge and eight grips on the node's border, so the counts,
     // the selected border and the connection dots give way while it is open.
     const expanding = useCanvasSession((s) => miniToolOpenOn(props.id)(s)?.expand != null);
-    // The plus on the handles (inner#2216): only the one selected node, with
-    // no mini tool drawing over its picture. The canvas names that node in
-    // the session, so a selection change re-renders only the nodes whose
-    // answer changed.
-    const selected = Boolean(props.selected);
+    // The plus on the handles (inner#2216): the one selected node the canvas
+    // names in the session (none while a marquee is dragged), when it takes
+    // connections and no mini tool draws over its picture. A selection change
+    // re-renders only the nodes whose answer changed.
     const miniToolOpen = useCanvasSession((s) => miniToolOpenOn(props.id)(s) != null);
     const lone = useCanvasSession((s) => s.loneSelectedId === props.id);
-    // A marquee still being dragged has not decided the selection yet; the
-    // plus shows once it is released (same as the selection plus).
-    const marqueeDragging = useStore((s) => selected && s.userSelectionActive);
-    const plusOnHandles = handlesEmphasized({
-      lone: selected && lone && !marqueeDragging,
-      connectable: props.isConnectable,
-      miniToolOpen,
-    });
+    const plusOnHandles = lone && props.isConnectable && !miniToolOpen;
     const openTaskPanel = useCanvasSession((s) => s.openTaskPanel);
     const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
     const onOpenTasks = React.useCallback(

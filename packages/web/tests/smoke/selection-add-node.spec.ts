@@ -25,7 +25,8 @@ import { openGenerate, registerCanvasStage, seedNode } from '../helpers/audio-pa
 import { credentialsFor } from '../helpers/credentials';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { cleanMembership, inviteMember } from '../helpers/project-members';
-import { openSpaceById, visibleSpace } from '../helpers/space';
+import { roomForUploads } from '../helpers/upload-budget';
+import { VISIBLE_SPACE, openSpaceById, visibleSpace } from '../helpers/space';
 
 registerCanvasStage();
 
@@ -249,6 +250,8 @@ test('a marquee over a picture, a video and an audio node: the plus builds a pic
   const plus = visibleSpace(page).getByTestId('selection-add-button');
   await expect(plus).toBeVisible();
   const plusBox = (await plus.boundingBox())!;
+  expect(plusBox.width, 'the plus is 24px wide on screen').toBeCloseTo(24, 0);
+  expect(plusBox.height, 'the plus is 24px tall on screen').toBeCloseTo(24, 0);
   expect(plusBox.x, 'the plus sits right of the selection').toBeGreaterThan(right);
   expect(plusBox.y + plusBox.height / 2).toBeGreaterThan(top);
   expect(plusBox.y + plusBox.height / 2).toBeLessThan(bottom);
@@ -534,6 +537,126 @@ test('at 50% zoom a wire released on the centre or the outer edge of a lone sele
     await page.keyboard.press('ControlOrMeta+z');
     await expect.poll(async () => (await graph(page)).edges).toEqual([]);
   }
+});
+
+// inner#2216: with A the lone selection, its source plus zone reaches 36
+// screen px past its right border, over a neighbour B whose left border sits
+// 15 screen px away. A drag from A's own plus, or from a third node C, must
+// still land on B's left dot: A's zone stands down for both (only a plus the
+// drag could end on stays pressable), and no create menu opens.
+for (const percent of [100, 50]) {
+  test(`at ${String(percent)}% zoom a wire from the lone node's plus or from another node lands on a neighbour 15px right of it`, async ({ page }) => {
+    const a = crypto.randomUUID();
+    const b = crypto.randomUUID();
+    const c = crypto.randomUUID();
+    await seedNode(a, 'image', undefined, 0, 0);
+    await seedNode(c, 'image', undefined, 0, 400);
+    await fit(page);
+    await zoomTo(page, percent);
+    const zoom = await zoomOf(page);
+    const aWidth = (await nodeOf(page, a).boundingBox())!.width / zoom;
+    await seedNode(b, 'image', undefined, aWidth + 15 / zoom, 0);
+    await fit(page);
+    await zoomTo(page, percent);
+
+    const aBox = (await nodeOf(page, a).boundingBox())!;
+    const bBox = (await nodeOf(page, b).boundingBox())!;
+    expect(Math.abs(bBox.x - (aBox.x + aBox.width) - 15), 'B\'s left border is 15 screen px right of A\'s').toBeLessThanOrEqual(2);
+    const aSource = nodeOf(page, a).locator('.react-flow__handle.source');
+    const bDot = nodeOf(page, b).locator('.react-flow__handle.target').getByTestId('handle-dot');
+    const centreOf = (box: { x: number; y: number; width: number; height: number }): Point => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+    const bDotAt = centreOf((await bDot.boundingBox())!);
+    expect(Math.abs(centreOf((await aSource.boundingBox())!).y - bDotAt.y), 'the handles sit at one height').toBeLessThanOrEqual(1);
+
+    for (const from of ['plus', 'other'] as const) {
+      await clickNode(page, a);
+      await expect.poll(() => selectedIds(page)).toEqual([a]);
+      await expect(nodeOf(page, a).getByTestId('handle-plus')).toHaveCount(2);
+      const rest = await emptyPoint(page);
+      await page.mouse.move(rest.x, rest.y);
+      await page.waitForTimeout(500);
+      const start = from === 'plus'
+        ? centreOf((await aSource.getByTestId('handle-plus').boundingBox())!)
+        : centreOf((await nodeOf(page, c).locator('.react-flow__handle.source').boundingBox())!);
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      // B's dot sits a few px from A's plus, so the wire swings out below
+      // first, as a hand does, rather than ending where it was pressed.
+      await page.mouse.move(bDotAt.x + 40, bDotAt.y + 80, { steps: 8 });
+      await page.mouse.move(bDotAt.x, bDotAt.y, { steps: 8 });
+      await page.mouse.up();
+      const wire = `${from === 'plus' ? a : c}->${b}`;
+      await expect.poll(async () => (await graph(page)).edges.map((e) => `${e.source}->${e.target}`), { message: `a wire from the ${from}` })
+        .toEqual([wire]);
+      await expect(page.getByTestId('create-node-text'), `no create menu after the wire from the ${from}`).toHaveCount(0);
+      await page.keyboard.press('ControlOrMeta+z');
+      await expect.poll(async () => (await graph(page)).edges).toEqual([]);
+    }
+  });
+}
+
+// inner#2216: one thing made after a marquee is selected like a clicked node:
+// the marquee's rect must not shrink onto it and take its presses.
+test('a marquee over two nodes, then two text files dropped: their Group comes out selected with no selection rect, and a member takes a click', async ({ page }) => {
+  const first = crypto.randomUUID();
+  const second = crypto.randomUUID();
+  await seedNode(first, 'image', undefined, 0, 0);
+  await seedNode(second, 'image', undefined, 360, 0);
+  await fit(page);
+  await zoomTo(page, 50);
+
+  await marqueeOver(page, [first, second]);
+  const before = (await graph(page)).nodes.map((n) => n.id);
+  const at = await emptyPoint(page);
+  await roomForUploads(2);
+  await page.evaluate(([point, space]: [Point, string]) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(['first brief'], 'rect-e2e-a.txt', { type: 'text/plain' }));
+    transfer.items.add(new File(['second brief'], 'rect-e2e-b.txt', { type: 'text/plain' }));
+    const pane = document.querySelector(`${space} .react-flow__pane`);
+    if (pane === null) throw new Error('no canvas pane');
+    const init = { clientX: point.x, clientY: point.y, bubbles: true, cancelable: true, dataTransfer: transfer };
+    pane.dispatchEvent(new DragEvent('dragover', init));
+    pane.dispatchEvent(new DragEvent('drop', init));
+  }, [at, VISIBLE_SPACE] as [Point, string]);
+  let group = '';
+  let members: string[] = [];
+  await expect.poll(async () => {
+    const g = await graph(page);
+    group = g.nodes.find((n) => n.type === 'group' && !before.includes(n.id))?.id ?? '';
+    members = g.nodes.filter((n) => n.parentId === group && group !== '').map((n) => n.id);
+    return members.length;
+  }, { timeout: 20_000 }).toBe(2);
+  await expect.poll(() => selectedIds(page)).toEqual([group]);
+  await expect(visibleSpace(page).locator('.react-flow__nodesselection-rect')).toHaveCount(0);
+  await clickNode(page, members[0]!);
+  await expect.poll(() => selectedIds(page)).toEqual([members[0]!]);
+});
+
+test('a marquee over two nodes, then one copied node pasted: no selection rect, and the copy takes a click', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const first = crypto.randomUUID();
+  const second = crypto.randomUUID();
+  const copied = crypto.randomUUID();
+  await seedNode(first, 'image', undefined, 0, 0);
+  await seedNode(second, 'image', undefined, 360, 0);
+  await seedNode(copied, 'image', undefined, 0, 600);
+  await fit(page);
+  await zoomTo(page, 50);
+
+  await clickNode(page, copied);
+  await expect.poll(() => selectedIds(page)).toEqual([copied]);
+  await page.keyboard.press('ControlOrMeta+C');
+  await marqueeOver(page, [first, second]);
+  const before = (await graph(page)).nodes.map((n) => n.id);
+  await page.keyboard.press('ControlOrMeta+V');
+  const made = await newNode(page, before);
+  await expect.poll(() => selectedIds(page)).toEqual([made.id]);
+  await expect(visibleSpace(page).locator('.react-flow__nodesselection-rect')).toHaveCount(0);
+  const box = (await nodeOf(page, made.id).boundingBox())!;
+  const hit = await page.evaluate((p) => document.elementFromPoint(p.x, p.y)?.closest('.react-flow__node')?.getAttribute('data-id') ?? null,
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+  expect(hit, 'a press on the copy reaches the copy').toBe(made.id);
 });
 
 /**

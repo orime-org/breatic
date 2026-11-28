@@ -1767,7 +1767,8 @@ function CanvasSpaceInner({
   // zones and could hijack to a neighbor. onConnectStart runs synchronously
   // BEFORE that first isValidHandle, so adding the class here — which
   // elementFromPoint's own style flush applies immediately — stands every
-  // handle's ::before zone down for the whole drag, with no first-frame window.
+  // handle's ::before zone down for the whole drag, with no first-frame window,
+  // except a lone node's plus zone the drag can end on (`handle-plus-zone`).
   const onConnectDragStart = React.useCallback<OnConnectStart>(() => {
     containerRef.current?.classList.add('canvas-connecting');
   }, []);
@@ -3025,13 +3026,19 @@ function CanvasSpaceInner({
     setFlowNodes((current) =>
       reconcileSelection(current, (node) => targets.has(node.id)),
     );
+    // One thing made (a node, or the Group a drop wraps) is selected like a
+    // click-selected one (`selectOnlyNode`): a marquee made before it leaves
+    // xyflow's NodesSelection active, whose rect would shrink onto it and take
+    // its members' and its own presses. Several keep the rect, so they move
+    // together.
+    if (ids.length === 1) rfStoreApi.setState({ nodesSelectionActive: false });
     // A newer creation may already be waiting; only this run's ids clear.
     setSelectAfterCreate((current) => (current === ids ? null : current));
     const pasted = focusPastedRef.current;
     if (pasted?.ids !== ids) return;
     focusPastedRef.current = null;
     focusFirstCopy(ids, pasted.sources);
-  }, [selectAfterCreate, nodes, setFlowNodes, focusFirstCopy]);
+  }, [selectAfterCreate, nodes, setFlowNodes, focusFirstCopy, rfStoreApi]);
 
   // A 3D capture's "View" press (#1411 design 5.4): once loaded and holding
   // the node, centre on it at the user's zoom and select it.
@@ -3237,24 +3244,25 @@ function CanvasSpaceInner({
       return selectionAddSources.map((id) => typeOf.get(id) ?? '');
     }, [groupInfos, selectionAddSources]),
   );
-  // A marquee that ends on one node leaves xyflow's NodesSelection active,
-  // and its rect lies over the node and takes the presses meant for the
-  // node's own controls; a lone node takes its presses like a click-selected
-  // one (`selectOnlyNode`). xyflow sets it when the marquee is released,
-  // after the selection settled.
-  const selectionAddSingle = selectionAdd.kind === 'single';
   // The node whose handles show the plus: worked out here once per selection
-  // and read by every node against its own id.
-  const loneSelectedId = selectionAdd.kind === 'single' ? selectionAdd.nodeId : null;
+  // and read by every node against its own id. A marquee still being dragged
+  // has not decided the selection yet, so no node shows it until release.
+  const loneSelectedId =
+    selectionAdd.kind === 'single' && !marqueeDragging ? selectionAdd.nodeId : null;
   const setLoneSelectedId = useCanvasSession((s) => s.setLoneSelectedId);
   React.useLayoutEffect(() => {
     setLoneSelectedId(loneSelectedId);
   }, [loneSelectedId, setLoneSelectedId]);
   React.useEffect(() => () => setLoneSelectedId(null), [setLoneSelectedId]);
+  // A marquee that ends on one node leaves xyflow's NodesSelection active,
+  // and its rect lies over the node and takes the presses meant for the
+  // node's own controls; a lone node takes its presses like a click-selected
+  // one (`selectOnlyNode`). xyflow sets it when the marquee is released,
+  // after the selection settled.
   const marqueeRectActive = useStore((s) => s.nodesSelectionActive);
   React.useEffect(() => {
-    if (selectionAddSingle && marqueeRectActive) rfStoreApi.setState({ nodesSelectionActive: false });
-  }, [selectionAddSingle, marqueeRectActive, rfStoreApi]);
+    if (loneSelectedId !== null && marqueeRectActive) rfStoreApi.setState({ nodesSelectionActive: false });
+  }, [loneSelectedId, marqueeRectActive, rfStoreApi]);
   // Same concealment as the group toolbar: viewers cannot create, floating
   // chrome over a reference pick would swallow candidate clicks, and a
   // marquee still being dragged has not decided the selection yet.

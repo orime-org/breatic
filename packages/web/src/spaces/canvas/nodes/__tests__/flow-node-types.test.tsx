@@ -670,13 +670,11 @@ describe('the plus on a lone selected node’s handles', () => {
    * @param lone - The id the session names, or null.
    * @param connectable - Whether the node takes connections.
    * @param extra - More of the view the wrapper hands the body.
-   * @param selected - Whether xyflow reports n1 selected.
    */
   function renderSelected(
     lone: string | null,
     connectable = true,
     extra: Record<string, unknown> = {},
-    selected = true,
   ): void {
     canvasSessions.of('').getState().setLoneSelectedId(lone);
     const Image = FLOW_NODE_TYPES.image;
@@ -692,7 +690,7 @@ describe('the plus on a lone selected node’s handles', () => {
                 id: 'n1',
                 type: 'image',
                 data: { handling: false, name: 'N', content: 'https://cdn.invalid/a.png', ...extra },
-                selected,
+                selected: true,
                 isConnectable: connectable,
               } as unknown as NodeProps)}
             />
@@ -718,11 +716,6 @@ describe('the plus on a lone selected node’s handles', () => {
     renderSelected(null);
     expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
     expect(screen.getAllByTestId('handle-dot')).toHaveLength(2);
-  });
-
-  it('keeps the dot when xyflow no longer reports the node selected', () => {
-    renderSelected('n1', true, {}, false);
-    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
   });
 
   it('follows the session: the plus goes when another node is named and comes back', () => {
@@ -753,22 +746,6 @@ describe('the plus on a lone selected node’s handles', () => {
     const handles = [...document.querySelectorAll('.react-flow__handle')];
     expect(handles).toHaveLength(2);
     for (const handle of handles) expect(zOf(handle)).toBeGreaterThan(zOf(anchor));
-  });
-
-  // A marquee still being dragged has not settled the selection: the plus
-  // waits for the release, then shows.
-  it('waits for the marquee to be released before showing the plus', () => {
-    renderSelected('n1');
-    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
-    act(() => {
-      storeApi?.setState({ userSelectionActive: true });
-    });
-    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
-    expect(screen.getAllByTestId('handle-dot')).toHaveLength(2);
-    act(() => {
-      storeApi?.setState({ userSelectionActive: false });
-    });
-    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
   });
 
   it('keeps the dot when the node takes no connections (viewer, reference pick)', () => {

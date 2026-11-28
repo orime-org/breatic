@@ -5709,6 +5709,30 @@ describe('the lone selected node the canvas names in the session (inner#2216)', 
     expect(lone()).toBeNull();
   });
 
+  // A marquee still being dragged has not decided the selection: no node is
+  // named until it is released.
+  it('names no node while a marquee is being dragged, and the lone one on release', () => {
+    renderSpace();
+    const pane = document.querySelector('.react-flow__pane');
+    if (!pane) throw new Error('the pane is not mounted');
+    const press = (type: string, x: number, y: number): void => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y });
+      Object.defineProperty(event, 'isPrimary', { value: true });
+      Object.defineProperty(event, 'pointerId', { value: 1 });
+      act(() => {
+        pane.dispatchEvent(event);
+      });
+    };
+    press('pointerdown', 1, 1);
+    press('pointermove', 50, 50);
+    press('pointermove', 5000, 5000);
+    // Narrowed to one node while the marquee is still held.
+    select('a');
+    expect(lone()).toBeNull();
+    press('pointerup', 5000, 5000);
+    expect(lone()).toBe('a');
+  });
+
   it('clears the name when the canvas unmounts', () => {
     const { unmount } = renderSpace();
     select('a');

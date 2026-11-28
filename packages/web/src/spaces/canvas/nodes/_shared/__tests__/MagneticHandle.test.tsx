@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { act, render } from '@testing-library/react';
-import { ReactFlowProvider, useStoreApi } from '@xyflow/react';
+import { ReactFlow, ReactFlowProvider, useStoreApi, type Node, type NodeProps } from '@xyflow/react';
 import * as React from 'react';
 
 import { MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
@@ -328,10 +328,10 @@ const PLAIN_DOT = ['rounded-full', 'border', 'border-border', 'bg-muted'];
 // px past the border at rest and vertically centred, while the wire still
 // attaches at the border. The press zone is the plain 36px on screen (handed
 // over as `--handle-zone`), the handle rises above the video error layer
-// (z-20) and the task counts (z-22) as z-23, carries `handle-plus-zone` so
-// it stays pressable while a wire is dragged (index.css), nothing reaches
-// into the node, and the plus follows the
-// pointer inside the zone without ever crossing the border.
+// (z-20) and the task counts (z-22) as z-23, nothing reaches into the node,
+// and the plus follows the pointer inside the zone without ever crossing the
+// border. At rest it carries no `handle-plus-zone`: that is only for a drag
+// this handle can take (see the describe below).
 describe('MagneticHandle — emphasized (the plus on a lone selected node)', () => {
   it('draws a plus inside the visible dot', () => {
     const { dot } = mountEmphasized(1);
@@ -345,10 +345,10 @@ describe('MagneticHandle — emphasized (the plus on a lone selected node)', () 
     expect(mountEmphasized(2).handle.style.getPropertyValue('--handle-zone')).toBe('72px');
   });
 
-  it('lifts a source handle above the task counts (z-22) as a plus zone with only the variable-sized zone, reaching nothing inward', () => {
+  it('lifts a source handle above the task counts (z-22) with only the variable-sized zone, reaching nothing inward', () => {
     const classes = classesOf(mountEmphasized(1).handle);
     expect(classes).toContain('z-23');
-    expect(classes).toContain('handle-plus-zone');
+    expect(classes).not.toContain('handle-plus-zone');
     expect(classes.filter((c) => c.startsWith('before:h-'))).toEqual(['before:h-[var(--handle-zone)]']);
     expect(classes.filter((c) => c.startsWith('before:w-'))).toEqual(['before:w-[var(--handle-zone)]']);
     expect(classes).toContain('before:left-2');
@@ -359,7 +359,7 @@ describe('MagneticHandle — emphasized (the plus on a lone selected node)', () 
   it('starts a target handle\'s zone its own width left of the border', () => {
     const classes = classesOf(mountEmphasized(1, true, 'target').handle);
     expect(classes).toContain('z-23');
-    expect(classes).toContain('handle-plus-zone');
+    expect(classes).not.toContain('handle-plus-zone');
     expect(classes).toContain('before:left-[calc(var(--handle-zone)*-1)]');
     expect(classes).not.toContain('before:-left-9');
     expect(classes.filter((c) => c.startsWith('before:h-'))).toEqual(['before:h-[var(--handle-zone)]']);
@@ -481,5 +481,119 @@ describe('MagneticHandle — emphasized (the plus on a lone selected node)', () 
     stubAnchorRectAt(handle, 1);
     firePointer(handle, 'pointermove', 400, 400);
     expect(dot.style.transform).toBe('translate(32px, 14px)');
+  });
+});
+
+/** What the test node hands its one handle. */
+type HandleNodeData = { side: 'source' | 'target'; emphasized: boolean };
+
+/**
+ * A node holding one MagneticHandle, so the handle reads its node's id the
+ * way it does on the canvas.
+ * @param props - xyflow's node props.
+ * @returns The handle.
+ */
+function HandleNode(props: NodeProps<Node<HandleNodeData>>): React.JSX.Element {
+  return <MagneticHandle type={props.data.side} isConnectable emphasized={props.data.emphasized} />;
+}
+
+const HANDLE_NODE_TYPES = { handle: HandleNode };
+
+/**
+ * Mounts node `own` with one handle inside a real ReactFlow.
+ * @param side - The handle's side.
+ * @param emphasized - Whether it shows the plus.
+ * @returns The handle element.
+ * @throws {Error} When the handle is not drawn.
+ */
+function mountInNode(side: 'source' | 'target', emphasized = true): HTMLElement {
+  storeApi = null;
+  render(
+    <ReactFlowProvider>
+      <StoreGrabber />
+      <ReactFlow
+        nodes={[{ id: 'own', type: 'handle', position: { x: 0, y: 0 }, data: { side, emphasized } }]}
+        edges={[]}
+        nodeTypes={HANDLE_NODE_TYPES}
+      />
+    </ReactFlowProvider>,
+  );
+  const handle = document.querySelector('.react-flow__node[data-id="own"] .react-flow__handle');
+  if (!(handle instanceof HTMLElement)) throw new Error('the handle is not drawn');
+  return handle;
+}
+
+/**
+ * Puts the store in a connection drag started on a node's handle, or ends it.
+ * @param from - Where the drag started, or null for no drag.
+ * @param from.node - The node it started on.
+ * @param from.side - The type of the handle it started on.
+ */
+function dragFrom(from: { node: string; side: 'source' | 'target' } | null): void {
+  const state = storeApi?.getState();
+  if (!state) throw new Error('no store');
+  act(() => {
+    storeApi?.setState({
+      connection: from === null
+        ? { ...state.connection, inProgress: false }
+        : {
+          ...state.connection,
+          inProgress: true,
+          isValid: null,
+          from: { x: 0, y: 0 },
+          fromHandle: { id: null, nodeId: from.node, type: from.side, position: 'right', x: 0, y: 0, width: 8, height: 8 },
+          fromPosition: 'right',
+          fromNode: { id: from.node },
+          to: { x: 40, y: 0 },
+          toHandle: null,
+          toPosition: 'left',
+          toNode: null,
+          pointer: { x: 40, y: 0 },
+        },
+    } as unknown as Parameters<NonNullable<typeof storeApi>['setState']>[0]);
+  });
+}
+
+// inner#2216: during a connection drag every handle's 36px zone stands down
+// (`.canvas-connecting` in index.css) except a plus zone marked
+// `handle-plus-zone`. Only a plus the drag can end on is marked: the opposite
+// side of where the drag started, on another node. A live zone that could not
+// take the wire would swallow it from a neighbour's handle.
+describe('MagneticHandle — the plus zone stays pressable only for a drag it can take', () => {
+  it('marks an emphasized target for a drag from another node\'s source, and drops it when the drag ends', () => {
+    const handle = mountInNode('target');
+    expect(handle.classList.contains('handle-plus-zone')).toBe(false);
+    dragFrom({ node: 'other', side: 'source' });
+    expect(handle.classList.contains('handle-plus-zone')).toBe(true);
+    dragFrom(null);
+    expect(handle.classList.contains('handle-plus-zone')).toBe(false);
+  });
+
+  it('leaves an emphasized target unmarked for a drag from a target', () => {
+    const handle = mountInNode('target');
+    dragFrom({ node: 'other', side: 'target' });
+    expect(handle.classList.contains('handle-plus-zone')).toBe(false);
+  });
+
+  it('leaves an emphasized target unmarked for a drag from its own node', () => {
+    const handle = mountInNode('target');
+    dragFrom({ node: 'own', side: 'source' });
+    expect(handle.classList.contains('handle-plus-zone')).toBe(false);
+  });
+
+  it('marks an emphasized source for a drag from another node\'s target only', () => {
+    const handle = mountInNode('source');
+    dragFrom({ node: 'other', side: 'target' });
+    expect(handle.classList.contains('handle-plus-zone')).toBe(true);
+    dragFrom({ node: 'other', side: 'source' });
+    expect(handle.classList.contains('handle-plus-zone')).toBe(false);
+    dragFrom({ node: 'own', side: 'target' });
+    expect(handle.classList.contains('handle-plus-zone')).toBe(false);
+  });
+
+  it('never marks a plain handle', () => {
+    const handle = mountInNode('target', false);
+    dragFrom({ node: 'other', side: 'source' });
+    expect(handle.classList.contains('handle-plus-zone')).toBe(false);
   });
 });

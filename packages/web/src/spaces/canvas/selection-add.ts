@@ -102,22 +102,6 @@ export function resolveSelectionAdd(
 }
 
 /**
- * Whether a node's handles show the plus: it is the one selected node once
- * notes are left out ({@link resolveSelectionAdd}'s `single`), it takes
- * connections, and no mini tool is drawing on it (those layers sit over the
- * picture where the plus would be).
- * @param input - The node's state.
- * @param input.lone - Whether it is the one selected node.
- * @param input.connectable - Whether its handles take connections.
- * @param input.miniToolOpen - Whether a mini tool is open on it.
- * @returns Whether to show the plus.
- * @throws {never} Never.
- */
-export function handlesEmphasized(input: { lone: boolean; connectable: boolean; miniToolOpen: boolean }): boolean {
-  return input.lone && input.connectable && !input.miniToolOpen;
-}
-
-/**
  * Reference order: top to bottom, then left to right.
  * @param nodes - The nodes to order.
  * @returns A sorted copy.

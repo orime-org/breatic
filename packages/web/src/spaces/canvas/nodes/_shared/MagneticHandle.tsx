@@ -19,7 +19,7 @@
  *      back to the border on leave and the instant a connection drag starts.
  */
 
-import { Handle, Position, useStore } from '@xyflow/react';
+import { Handle, Position, useNodeId, useStore } from '@xyflow/react';
 import { Plus } from 'lucide-react';
 import * as React from 'react';
 
@@ -47,11 +47,8 @@ const PLUS_GAP_SCREEN_PX = 4;
  * lifts it above the task counts column (`z-22`, flow-node-types), the video
  * node's playback-error cover (`z-20`, VideoNode) and its control bar
  * (`z-10`, MediaPlayer), which share the node's stacking context.
- * `handle-plus-zone` keeps the zone pressable while a wire is being dragged
- * (index.css), so a wire released on the plus lands on this handle.
  */
-const EMPHASIZED_ZONE_CLASS =
-  'handle-plus-zone z-23 before:h-[var(--handle-zone)] before:w-[var(--handle-zone)]';
+const EMPHASIZED_ZONE_CLASS = 'z-23 before:h-[var(--handle-zone)] before:w-[var(--handle-zone)]';
 
 /** Props for {@link MagneticHandle}. */
 interface MagneticHandleProps {
@@ -132,9 +129,19 @@ export function MagneticHandle({
   // done here: a React class commits one frame too late, and xyflow resolves
   // the target synchronously in the SAME tick it starts the connection
   // (adversarial round-4). That gate is a synchronous class the canvas adds in
-  // onConnectStart (see `.canvas-connecting .react-flow__handle::before` in
-  // index.css), which elementFromPoint's style flush picks up immediately.
+  // onConnectStart (see `.canvas-connecting .react-flow__handle:not(.handle-plus-zone)::before`
+  // in index.css), which elementFromPoint's style flush picks up immediately.
   const connecting = useStore((s) => s.connection.inProgress);
+  // The plus zone that stays pressable during a drag (`handle-plus-zone`):
+  // only one this drag can end on, the opposite side of where it started on
+  // another node. xyflow takes the handle under the pointer before the
+  // closest one, so a live zone that could not take the wire would swallow
+  // it from a neighbour's handle; this one only covers handles the drag
+  // cannot end on either.
+  const nodeId = useNodeId();
+  const takesDrop = useStore(
+    (s) => plus && s.connection.inProgress && s.connection.fromHandle.type !== type && s.connection.fromNode.id !== nodeId,
+  );
 
   /** Springs the dot back to the border (home) — leave / drag-start / dead. */
   const rest = React.useCallback((): void => {
@@ -207,7 +214,7 @@ export function MagneticHandle({
       : '!h-2 !w-2 !left-1 !border-0 !bg-transparent before:absolute before:top-1/2 before:-translate-y-1/2 before:content-[""]';
   // A target's zone ends at the border, so it starts its own width left of it.
   const zoneClass = plus
-    ? `${sideZoneClass} ${EMPHASIZED_ZONE_CLASS}${type === 'source' ? '' : ' before:left-[calc(var(--handle-zone)*-1)]'}`
+    ? `${sideZoneClass} ${EMPHASIZED_ZONE_CLASS}${type === 'source' ? '' : ' before:left-[calc(var(--handle-zone)*-1)]'}${takesDrop ? ' handle-plus-zone' : ''}`
     : `${sideZoneClass} before:h-9 before:w-9${type === 'source' ? '' : ' before:-left-9'}`;
 
   // The 8px dot, offset +4px OUTWARD from the anchor so its centre straddles the

@@ -23,7 +23,6 @@ import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 import { CREATABLE_NODE_TYPES, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import {
   boundsOf,
-  handlesEmphasized,
   orderSources,
   planConnectedNode,
   previewWires,
@@ -173,21 +172,6 @@ describe('resolveSelectionAdd — where the plus shows (design 4.2)', () => {
         },
       ),
     );
-  });
-});
-
-describe('handlesEmphasized — when a node shows the plus on its handles (design 4.1)', () => {
-  it('shows the plus only on the lone selected, connectable node with no mini tool open', () => {
-    for (const lone of [true, false]) {
-      for (const connectable of [true, false]) {
-        for (const miniToolOpen of [true, false]) {
-          expect(
-            handlesEmphasized({ lone, connectable, miniToolOpen }),
-            JSON.stringify({ lone, connectable, miniToolOpen }),
-          ).toBe(lone && connectable && !miniToolOpen);
-        }
-      }
-    }
   });
 });
 
