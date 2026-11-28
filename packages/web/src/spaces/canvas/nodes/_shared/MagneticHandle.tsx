@@ -135,8 +135,9 @@ export function MagneticHandle({
   // The plus zone that stays pressable during a drag (`handle-plus-zone`):
   // only one on a node other than the drag's own. xyflow takes the handle
   // under the pointer before the closest one, so a live zone that could not
-  // take the wire would swallow it from a neighbour's handle. xyflow already
-  // turns pointer events off on every handle of the drag's own type
+  // take the wire would swallow it from a neighbour's handle. xyflow, in its
+  // default Strict connection mode (the canvas sets no `connectionMode`),
+  // already turns pointer events off on every handle of the drag's own type
   // (`connectionindicator` is left off them), except the start handle, which
   // keeps them (`connectingfrom`); the start node is left out here.
   const nodeId = useNodeId();
